@@ -97,7 +97,7 @@ p {
 
 code,
 .counter {
-  font-family: var(--mono);
+  font-family: var(--sans);
   display: inline-flex;
   border-radius: 4px;
   color: var(--text-h);

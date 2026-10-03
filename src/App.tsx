@@ -4,7 +4,8 @@ import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import './App.css'
 import Button from './components/button'
-import { FaPlus } from 'react-icons/fa'
+import { FaPlus, FaRegTrashAlt  } from 'react-icons/fa'
+import { Md7kPlus } from 'react-icons/md'
 
 
 function App() {
@@ -32,6 +33,8 @@ function App() {
           Count is {count}
         </button>
         <Button text="Add to Counter" onClick={() => setCount((count) => count + 1)} icon={FaPlus} bold size="1.5rem" />
+        <Button text="Delete something" onClick={() => setCount((count) => count - 1)} icon={FaRegTrashAlt } colour='#e24242' />
+        <Button text="Add big" onClick={() => setCount((count) => count + 7000)} icon={Md7kPlus} colour='#0b3a0f' size="2.5rem" />
       </section>
 
       <div className="ticks"></div>
