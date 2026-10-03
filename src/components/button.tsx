@@ -140,6 +140,7 @@ var Button = ({
 				justifyContent: "center",
 				gap: "0.25rem",
 				backgroundColor: colour ? colour : "var(--accent)",
+        borderRadius: '0.5rem',
 			}}
 		>
 			{Icon && <Icon aria-hidden="true" />}
