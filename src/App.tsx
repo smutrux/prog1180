@@ -3,6 +3,9 @@ import heroImg from './assets/hero.png'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import './App.css'
+import Button from './components/button'
+import { FaPlus } from 'react-icons/fa'
+
 
 function App() {
   const [count, setCount] = useState(0)
@@ -28,6 +31,7 @@ function App() {
         >
           Count is {count}
         </button>
+        <Button text="Add to Counter" onClick={() => setCount((count) => count + 1)} icon={FaPlus} bold size="1.5rem" />
       </section>
 
       <div className="ticks"></div>
