@@ -32,9 +32,9 @@ function App() {
         >
           Count is {count}
         </button>
-        <Button text="Add to Counter" onClick={() => setCount((count) => count + 1)} icon={FaPlus} bold size="1.5rem" />
-        <Button text="Delete something" onClick={() => setCount((count) => count - 1)} icon={FaRegTrashAlt } colour='#e24242' />
-        <Button text="Add big" onClick={() => setCount((count) => count + 7000)} icon={Md7kPlus} colour='#0b3a0f' size="2.5rem" />
+        <Button text="Add to Counter" onClick={() => setCount((count) => count + 1)} icon={FaPlus} bold size="1.5rem" aria="Add to counter" />
+        <Button text="Delete something" onClick={() => setCount((count) => count - 1)} icon={FaRegTrashAlt } colour='#e24242' aria="Delete item" />
+        <Button text="Add big" onClick={() => setCount((count) => count + 7000)} icon={Md7kPlus} colour='#0b3a0f' size="2.5rem" aria="Add large amount" />
       </section>
 
       <div className="ticks"></div>

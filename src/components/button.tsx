@@ -82,6 +82,11 @@ interface ButtonProps {
 	 * @defaultValue `false`
 	 */
 	bold?: boolean;
+
+	/**
+	 * ARIA label for the button, used for accessibility. This should describe the action of the button for screen readers.
+	 */
+	aria: string;
 }
 
 /**
@@ -124,6 +129,7 @@ var Button = ({
 	colour,
 	size,
 	bold,
+	aria,
 }: ButtonProps) => {
 	return (
 		<button
@@ -131,6 +137,7 @@ var Button = ({
 			className="counter"
 			onClick={onClick}
 			disabled={!enabled}
+			aria-label={aria}
 			style={{
 				color: getTextColour(colour ?? "var(--accent)"),
 				fontWeight: bold ? "bold" : "normal",
