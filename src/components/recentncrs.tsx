@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { FiEdit3 } from "react-icons/fi";
 
 const RecentNcrs = () => {
@@ -15,8 +16,101 @@ const RecentNcrs = () => {
             supplier: "Random blah blah",
             product: "Yada Yada Yada",
             status: "Closed"
+        },
+        {
+            number: "NCR-2026-001",
+            date: "Oct 2, 2026",
+            supplier: "Random blah blah",
+            product: "Yada Yada Yada",
+            status: "Open"
+        },
+        {
+            number: "NCR-2026-002",
+            date: "Oct 2, 2026",
+            supplier: "Random blah blah",
+            product: "Yada Yada Yada",
+            status: "Closed"
+        },
+        {
+            number: "NCR-2026-001",
+            date: "Oct 2, 2026",
+            supplier: "Random blah blah",
+            product: "Yada Yada Yada",
+            status: "Open"
+        },
+        {
+            number: "NCR-2026-002",
+            date: "Oct 2, 2026",
+            supplier: "Random blah blah",
+            product: "Yada Yada Yada",
+            status: "Closed"
+        }, 
+         {
+            number: "NCR-2026-001",
+            date: "Oct 2, 2026",
+            supplier: "Random blah blah",
+            product: "Yada Yada Yada",
+            status: "Open"
+        },
+        {
+            number: "NCR-2026-002",
+            date: "Oct 2, 2026",
+            supplier: "Random blah blah",
+            product: "Yada Yada Yada",
+            status: "Closed"
+        },
+        {
+            number: "NCR-2026-001",
+            date: "Oct 2, 2026",
+            supplier: "Random blah blah",
+            product: "Yada Yada Yada",
+            status: "Open"
+        },
+        {
+            number: "NCR-2026-002",
+            date: "Oct 2, 2026",
+            supplier: "Random blah blah",
+            product: "Yada Yada Yada",
+            status: "Closed"
+        },
+        {
+            number: "NCR-2026-001",
+            date: "Oct 2, 2026",
+            supplier: "Random blah blah",
+            product: "Yada Yada Yada",
+            status: "Open"
+        },
+        {
+            number: "NCR-2026-002",
+            date: "Oct 2, 2026",
+            supplier: "Random blah blah",
+            product: "Yada Yada Yada",
+            status: "Closed"
         }
     ];
+
+    const [currentPage, setCurrentPage] = useState(1);
+    const ncrsPerPage = 4;
+
+    const totalPages = Math.ceil(ncrs.length / ncrsPerPage);
+    const startIndex = (currentPage - 1) * ncrsPerPage;
+
+    const currentNcrs = ncrs.slice(
+        startIndex,
+        startIndex + ncrsPerPage
+    );
+
+    const previousPage = () => {
+        if (currentPage > 1) {
+            setCurrentPage(currentPage - 1);
+        }
+    };
+
+    const nextPage = () => {
+        if (currentPage < totalPages) {
+            setCurrentPage(currentPage + 1);
+        }
+    };
 
     return (
         <div className="recentNcrs">
@@ -35,15 +129,17 @@ const RecentNcrs = () => {
                 </thead>
 
                 <tbody>
-                    {ncrs.map((ncr) => (
-                        <tr key={ncr.number}>
+                    {currentNcrs.map((ncr, index) => (
+                        <tr key={`${ncr.number}-${index}`}>
                             <td className="ncrNumber">{ncr.number}</td>
                             <td>{ncr.date}</td>
                             <td>{ncr.supplier}</td>
                             <td>{ncr.product}</td>
 
                             <td>
-                                <span className={`status ${ncr.status.toLowerCase()}`}>
+                                <span
+                                    className={`status ${ncr.status.toLowerCase()}`}
+                                >
                                     <span className="statusDot"></span>
                                     {ncr.status}
                                 </span>
@@ -60,17 +156,36 @@ const RecentNcrs = () => {
             </table>
 
             <div className="pagination">
-                <button>Previous</button>
-                <button>Next</button>
+                <button
+                    onClick={previousPage}
+                    disabled={currentPage === 1}
+                >
+                    Previous
+                </button>
+
+                <span>
+                    Page {currentPage} of {totalPages}
+                </span>
+
+                <button
+                    onClick={nextPage}
+                    disabled={currentPage === totalPages}
+                >
+                    Next
+                </button>
             </div>
 
             <style jsx>{`
                 @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:ital,wght@0,100..900;1,100..900&display=swap');
+
                 .recentNcrs {
+                    position: relative;
                     width: 100%;
+                    height: 620px;
                     background-color: #e4e4e4;
                     padding: 2rem;
                     border-radius: 12px;
+                    box-sizing: border-box;
                 }
 
                 .recentNcrsTitle {
@@ -178,10 +293,12 @@ const RecentNcrs = () => {
                 }
 
                 .pagination {
+                    position: absolute;
+                    bottom: 1rem;
+                    right: 2rem;
                     display: flex;
-                    justify-content: flex-end;
+                    align-items: center;
                     gap: 2rem;
-                    margin-top: 2rem;
                 }
 
                 .pagination button {
@@ -197,6 +314,11 @@ const RecentNcrs = () => {
                     background-color: #fff;
                 }
 
+                .pagination button:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+
                 @media (max-width: 900px) {
                     .recentNcrs {
                         overflow-x: auto;
@@ -204,6 +326,18 @@ const RecentNcrs = () => {
 
                     table {
                         min-width: 800px;
+                    }
+                }
+
+                @media (max-width: 600px) {
+                    .recentNcrs {
+                        height: 650px;
+                        padding: 1rem;
+                    }
+
+                    .pagination {
+                        right: 1rem;
+                        bottom: 1rem;
                     }
                 }
             `}</style>
