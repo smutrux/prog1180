@@ -7,6 +7,7 @@ import Button from "./components/button";
 import { FaPlus, FaRegTrashAlt } from "react-icons/fa";
 import { Md7kPlus } from "react-icons/md";
 import Input from "./components/input";
+import NcrForm from "./components/submitForm";
 
 function App() {
 	const [count, setCount] = useState(0);
@@ -135,6 +136,8 @@ function App() {
 				/>
 				<Input type={Input.TEXT} name="text" label="Text" aria="Text input" />
 				<Input type={Input.URL} name="url" label="URL" aria="URL input" />
+
+				<NcrForm />
 			</section>
 
 			<div className="ticks"></div>
