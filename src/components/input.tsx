@@ -127,7 +127,7 @@ const Field = ({
 );
 
 const DropdownField = (props: DropdownInputProps) => {
-	const { items, value, onChange, name, label, required, disabled, error } =
+	const { items, value, onChange, name, required, disabled, error } =
 		props;
 	const id = props.id ?? name;
 	const common = {
