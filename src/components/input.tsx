@@ -101,6 +101,7 @@ var InputComponent = (props: InputProps) => {
 							border: 1px solid var(--border);
 							padding: 0.5rem;
 							color: var(--text-h);
+							font-family: var(--sans);
 						}
 					`}</style>
 				</div>
@@ -145,6 +146,7 @@ var InputComponent = (props: InputProps) => {
 							border: 1px solid var(--border);
 							padding: 0.5rem;
 							color: var(--text-h);
+							font-family: var(--sans);
 						}
 					`}</style>
 				</div>
@@ -202,11 +204,13 @@ var InputComponent = (props: InputProps) => {
 							padding: 0.5rem;
 							resize: none;
 							color: var(--text-h);
+							font-family: var(--sans);
 						}
 
 						label {
 							text-align: left;
 							margin-left: 3px;
+							font-family: var(--sans);
 						}
 
 						.toggle-password-btn {
