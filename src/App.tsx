@@ -1,22 +1,25 @@
-import { useState } from 'react'
 import './App.css'
-import Button from './components/button'
 import SidebarNav from './components/sidebarnav'
-import { FaPlus, FaRegTrashAlt  } from 'react-icons/fa'
-import { Md7kPlus } from 'react-icons/md'
+
+
+import Dashboard from './pages/Dashboard'
+import NCRs from './pages/NCRs'
+import Reports from './pages/Reports'
+import Archive from './pages/Archive'
 
 
 function App() {
-  const [count, setCount] = useState(0)
+  const path = window.location.pathname;
 
   return (
     <>
       <SidebarNav></SidebarNav>
-      <div className='page'>
-        <Button text="Add to Counter" onClick={() => setCount((count) => count + 1)} icon={FaPlus} bold size="1.5rem" aria="Add to counter" />
-        <Button text="Delete something" onClick={() => setCount((count) => count - 1)} icon={FaRegTrashAlt } colour='#e24242' aria="Delete item" />
-        <Button text="Add big" onClick={() => setCount((count) => count + 7000)} icon={Md7kPlus} colour='#0b3a0f' size="2.5rem" aria="Add large amount" />
-      </div>
+      <main>
+        {path === "/dashboard" && <Dashboard />}
+        {path === "/ncrs" && <NCRs />}
+        {path === "/reports" && <Reports />}
+        {path === "/archive" && <Archive />}
+      </main>
       
     </>
   )

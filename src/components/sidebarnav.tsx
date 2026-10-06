@@ -5,16 +5,11 @@ import { FaRegChartBar } from "react-icons/fa";
 import { IoTrashOutline } from "react-icons/io5";
 
 var SidebarNav = () => {
+  const path = window.location.pathname;
   return (
     <nav style={{
       display: "flex",
       flexDirection: "column",
-      width: "250px",
-      height: "100vh",
-      overflowY: "auto",
-      position: "fixed",
-      top: "0",
-      left: "0",
       gap: "5rem",
       background: "#151825",
       padding: "2rem"
@@ -38,17 +33,17 @@ var SidebarNav = () => {
       }}>
         <li className="sidebarLink">  
           
-          <a href="#"> <LuLayoutDashboard aria-hidden="true"/>Dashboard</a>
+          <a href="/dashboard" aria-current={path === "/dashboard" ? "page" : undefined} className={path === "/dashboard" ? "active" : ""}> <LuLayoutDashboard aria-hidden="true"/>Dashboard</a>
         </li>
         <li className="sidebarLink">  
       
-          <a href="#"> <FiAlertTriangle aria-hidden="true"/>NCRs</a>
+          <a href="/ncrs" aria-current={path === "/ncrs" ? "page" : undefined} className={path === "/ncrs" ? "active" : ""}> <FiAlertTriangle aria-hidden="true"/>NCRs</a>
         </li>
-        <li className="sidebarLink">  
-          <a href="#"> <FaRegChartBar aria-hidden="true"/>Reports</a>
+        <li className="sidebarLink" aria-current={path === "/reports" ? "page" : undefined}>  
+          <a href="/reports" aria-current={path === "/reports" ? "page" : undefined} className={path === "/reports" ? "active" : ""}> <FaRegChartBar aria-hidden="true"/>Reports</a>
         </li>
-        <li className="sidebarLink">  
-          <a href="#"> <IoTrashOutline aria-hidden="true"/>Archive</a>
+        <li className="sidebarLink" aria-current={path === "/archive" ? "page" : undefined}>  
+          <a href="/archive" aria-current={path === "/archive" ? "page" : undefined} className={path === "/archive" ? "active" : ""}> <IoTrashOutline aria-hidden="true"/>Archive</a>
         </li>
       </ul>
     </nav>
