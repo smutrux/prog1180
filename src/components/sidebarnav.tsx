@@ -17,11 +17,12 @@ var SidebarNav = () => {
 
       <div style={{display: "flex", gap: "1rem", alignItems: "center"}}>
         <img src={crossfireLogo} style={{width: "40px"}} alt="" />
-        <p style={{
+        <a style={{
           fontWeight: "bold",
           fontSize: "1.75rem",
-          color: "var(--sidebar-title)"
-        }}>Crossfire</p>
+          color: "var(--sidebar-title)",
+          textDecoration: "none"
+        }} href="/dashboard">Crossfire</a>
       </div>
      
       <ul style={{
