@@ -1,4 +1,8 @@
 import crossfireLogo from '../assets/crossfireLogo.svg'
+// import { ReactComponent as ReportsIcon}  from '../assets/reportsIcon.svg'
+import dashboardIcon from '../assets/dashboardIcon.svg'
+import NCRsIcon from '../assets/ncrIcon.svg'
+import archiveIcon from '../assets/archiveIcon.svg'
 var SidebarNav = () => {
   return (
     <div style={{
@@ -28,12 +32,25 @@ var SidebarNav = () => {
         display: "flex",
         flexDirection: "column",
         padding: "0",
-        gap: "1rem"
+        gap: "1rem",
+        listStyle: "none"
       }}>
-        <a href="#" className="sidebarLink">Dashboard</a>
-        <a href="#" className="sidebarLink">NCRs</a>
-        <a href="#" className="sidebarLink">Reports</a>
-        <a href="#" className="sidebarLink">Archive </a>
+        <li className="sidebarLink">  
+          <img src={dashboardIcon} style={{width: "25px"}} alt="" />
+          <a href="#">Dashboard</a>
+        </li>
+        <li className="sidebarLink">  
+          <img src={NCRsIcon} style={{width: "25px"}} alt="" />
+          <a href="#">NCRs</a>
+        </li>
+        <li className="sidebarLink">  
+          {/* <ReportsIcon className="sidebarIcon" /> */}
+          <a href="#">Reports</a>
+        </li>
+        <li className="sidebarLink">  
+          <img src={archiveIcon} style={{width: "25px"}} alt="" />
+          <a href="#">Archive</a>
+        </li>
       </ul>
     </div>
   )
