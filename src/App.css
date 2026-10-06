@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Geist:ital,wght@0,100..900;1,100..900&display=swap');
 
 * {
-  box-sizing: 0;
+  /* box-sizing: border-box; */
   margin: 0;
   padding: 0;
 }
@@ -15,7 +15,6 @@
 
 .sidebarLink {
   position: relative;
-  padding: 0.9rem 1rem;
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -23,10 +22,16 @@
 }
 
 .sidebarLink > a {
+  padding: 0.9rem 1rem;
   color: #94A3B8;
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   font-weight: 500;
-  text-decoration: none;
+  text-decoration: none;  
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  height: 100%;
 }
 
 .sidebarLink > a:hover {

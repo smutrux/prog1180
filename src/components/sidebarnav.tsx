@@ -1,11 +1,12 @@
 import crossfireLogo from '../assets/crossfireLogo.svg'
-// import { ReactComponent as ReportsIcon}  from '../assets/reportsIcon.svg'
-import dashboardIcon from '../assets/dashboardIcon.svg'
-import NCRsIcon from '../assets/ncrIcon.svg'
-import archiveIcon from '../assets/archiveIcon.svg'
+import { LuLayoutDashboard } from "react-icons/lu";
+import { FiAlertTriangle } from "react-icons/fi";
+import { FaRegChartBar } from "react-icons/fa";
+import { IoTrashOutline } from "react-icons/io5";
+
 var SidebarNav = () => {
   return (
-    <div style={{
+    <nav style={{
       display: "flex",
       flexDirection: "column",
       width: "250px",
@@ -17,7 +18,7 @@ var SidebarNav = () => {
       gap: "5rem",
       background: "#151825",
       padding: "2rem"
-    }}>
+    }} aria-label="Sidebar Navigation">
 
       <div style={{display: "flex", gap: "1rem"}}>
         <img src={crossfireLogo} style={{width: "40px"}} alt="" />
@@ -36,23 +37,21 @@ var SidebarNav = () => {
         listStyle: "none"
       }}>
         <li className="sidebarLink">  
-          <img src={dashboardIcon} style={{width: "25px"}} alt="" />
-          <a href="#">Dashboard</a>
+          
+          <a href="#"> <LuLayoutDashboard aria-hidden="true"/>Dashboard</a>
         </li>
         <li className="sidebarLink">  
-          <img src={NCRsIcon} style={{width: "25px"}} alt="" />
-          <a href="#">NCRs</a>
+      
+          <a href="#"> <FiAlertTriangle aria-hidden="true"/>NCRs</a>
         </li>
         <li className="sidebarLink">  
-          {/* <ReportsIcon className="sidebarIcon" /> */}
-          <a href="#">Reports</a>
+          <a href="#"> <FaRegChartBar aria-hidden="true"/>Reports</a>
         </li>
         <li className="sidebarLink">  
-          <img src={archiveIcon} style={{width: "25px"}} alt="" />
-          <a href="#">Archive</a>
+          <a href="#"> <IoTrashOutline aria-hidden="true"/>Archive</a>
         </li>
       </ul>
-    </div>
+    </nav>
   )
 }
 
