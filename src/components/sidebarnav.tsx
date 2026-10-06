@@ -15,7 +15,7 @@ var SidebarNav = () => {
       padding: "2rem"
     }} aria-label="Sidebar Navigation">
 
-      <div style={{display: "flex", gap: "1rem"}}>
+      <div style={{display: "flex", gap: "1rem", alignItems: "center"}}>
         <img src={crossfireLogo} style={{width: "40px"}} alt="" />
         <p style={{
           fontWeight: "bold",
