@@ -1,17 +1,48 @@
 @import url('https://fonts.googleapis.com/css2?family=Geist:ital,wght@0,100..900;1,100..900&display=swap');
 
+* {
+  box-sizing: 0;
+  margin: 0;
+  padding: 0;
+}
+
 #root {
   display: flex;
   font-family: "Geist", sans-serif;
+  background-color: #F5F5F5;
+
 }
 
 .sidebarLink {
+  position: relative;
   color: #94A3B8;
   font-size: 1.1rem;
   text-decoration: none;
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
 }
 
 .sidebarLink:hover {
   color: white;
   text-decoration: underline;
+  background-color: #1E293B;
 }
+
+.sidebarLink::after {
+  content: "";
+  position: absolute;
+
+  right: 8%;
+  top: 50%;
+  transform: translateY(-50%);
+
+  width: 5px;
+  height: 22px;
+  background-color: #4F6FED;
+  border-radius: 10px;
+  opacity: 0;
+}
+
+.sidebarLink:hover::after {
+  opacity: 1;
+} 

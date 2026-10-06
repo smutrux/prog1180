@@ -10,6 +10,7 @@ var SidebarNav = () => {
       position: "fixed",
       top: "0",
       left: "0",
+      gap: "5rem",
       background: "#151825",
       padding: "2rem"
     }}>
@@ -27,7 +28,7 @@ var SidebarNav = () => {
         display: "flex",
         flexDirection: "column",
         padding: "0",
-        gap: "2rem"
+        gap: "1rem"
       }}>
         <a href="#" className="sidebarLink">Dashboard</a>
         <a href="#" className="sidebarLink">NCRs</a>
