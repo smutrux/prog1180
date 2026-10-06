@@ -6,6 +6,7 @@ import './App.css'
 import Button from './components/button'
 import { FaPlus, FaRegTrashAlt  } from 'react-icons/fa'
 import { Md7kPlus } from 'react-icons/md'
+import Input from './components/input'
 
 
 function App() {
@@ -35,6 +36,17 @@ function App() {
         <Button text="Add to Counter" onClick={() => setCount((count) => count + 1)} icon={FaPlus} bold size="1.5rem" aria="Add to counter" />
         <Button text="Delete something" onClick={() => setCount((count) => count - 1)} icon={FaRegTrashAlt } colour='#e24242' aria="Delete item" />
         <Button text="Add big" onClick={() => setCount((count) => count + 7000)} icon={Md7kPlus} colour='#0b3a0f' size="2.5rem" aria="Add large amount" />
+        <Input type={Input.DATE} name="date" label="Date" aria="Date input" />
+        <Input type={Input.DROPDOWN} name="dropdown" label="Dropdown" items={['Item 1', 'Item 2', 'Item 3']} aria="Dropdown input" />
+        <Input type={Input.EMAIL} name="email" label="Email" aria="Email input" />
+        <Input type={Input.FILE} name="file" label="File" aria="File input" />
+        <Input type={Input.NUMBER} name="number" label="Number" aria="Number input" />
+        <Input type={Input.PARAGRAPH} name="paragraph" label="Paragraph" aria="Paragraph input" />
+        <Input type={Input.PASSWORD} name="password" label="Password" aria="Password input" />
+        <Input type={Input.RADIO} name="radio" label="Radio" aria="Radio input" groupName="group" />
+        <Input type={Input.RADIO} name="radio" label="Radio" aria="Radio input" groupName="group" />
+        <Input type={Input.TEXT} name="text" label="Text" aria="Text input" />
+        <Input type={Input.URL} name="url" label="URL" aria="URL input" />
       </section>
 
       <div className="ticks"></div>
