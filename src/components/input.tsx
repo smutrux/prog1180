@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { LuEye, LuEyeOff } from "react-icons/lu";
 
 const InputType = {
@@ -151,21 +152,49 @@ var InputComponent = (props: InputProps) => {
 
 		default:
 			var { name, placeholder, value, onChange, label, type } = props;
+			const [showPassword, setShowPassword] = useState(false);
+			var isPasswordType = type === InputType.PASSWORD;
+			var inputType = isPasswordType
+				? showPassword
+					? "text"
+					: "password"
+				: type;
+
 			return (
 				<div className="input-wrapper">
-					<input
-						type={type}
-						name={name}
-						placeholder={placeholder}
-						value={value}
-						onChange={onChange}
-					/>
+					<div className="input-field-container">
+						<input
+							type={inputType}
+							name={name}
+							placeholder={placeholder}
+							value={value}
+							onChange={onChange}
+						/>
+						{isPasswordType && (
+							<button
+								type="button"
+								className="toggle-password-btn"
+								onClick={() => setShowPassword((prev) => !prev)}
+								aria-label={showPassword ? "Hide password" : "Show password"}
+							>
+								{showPassword ? <LuEyeOff size={18} /> : <LuEye size={18} />}
+							</button>
+						)}
+					</div>
 					<label htmlFor={name}>{label}</label>
 					<style jsx>{`
 						.input-wrapper {
 							display: flex;
 							flex-direction: column-reverse;
 						}
+
+						.input-field-container {
+							position: relative;
+							display: flex;
+							align-items: center;
+							width: 100%;
+						}
+
 						input {
 							background-color: var(--code-bg);
 							border-radius: 0.5rem;
@@ -174,9 +203,29 @@ var InputComponent = (props: InputProps) => {
 							resize: none;
 							color: var(--text-h);
 						}
+
 						label {
 							text-align: left;
 							margin-left: 3px;
+						}
+
+						.toggle-password-btn {
+							position: absolute;
+							right: 0.5rem;
+							background: transparent;
+							border: none;
+							color: var(--text-h);
+							cursor: pointer;
+							display: flex;
+							align-items: center;
+							justify-content: center;
+							padding: 0.25rem;
+							opacity: 0.7;
+							transition: opacity 0.2s ease;
+						}
+
+						.toggle-password-btn:hover {
+							opacity: 1;
 						}
 					`}</style>
 				</div>
