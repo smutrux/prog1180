@@ -44,7 +44,7 @@ function App() {
         <Input type={Input.PARAGRAPH} name="paragraph" label="Paragraph" aria="Paragraph input" />
         <Input type={Input.PASSWORD} name="password" label="Password" aria="Password input" />
         <Input type={Input.RADIO} name="radio" label="Radio" aria="Radio input" groupName="group" />
-        <Input type={Input.RADIO} name="radio" label="Radio" aria="Radio input" groupName="group" />
+        <Input type={Input.RADIO} name="radio2" label="Radio" aria="Radio input" groupName="group" />
         <Input type={Input.TEXT} name="text" label="Text" aria="Text input" />
         <Input type={Input.URL} name="url" label="URL" aria="URL input" />
       </section>

@@ -1,3 +1,5 @@
+import { LuEye, LuEyeOff  } from "react-icons/lu";
+
 const InputType = {
 	DATE: "date",
 	DROPDOWN: "dropdown",
@@ -48,66 +50,109 @@ interface StandardInputProps extends BaseInputProps {
 type InputProps = StandardInputProps | RadioInputProps | DropdownInputProps;
 
 var InputComponent = (props: InputProps) => {
-	if (props.type === InputType.DROPDOWN) {
-		var { items, value, onChange, name } = props;
-		return (
-			<div>
-				<select name={name} value={value} onChange={onChange}>
-					{items.map((item) => (
-						<option key={item} value={item}>
-							{item}
-						</option>
-					))}
-				</select>
-				<label htmlFor={name}>{props.label}</label>
-			</div>
-		);
-	}
+	switch (props.type) {
+		case InputType.DROPDOWN:
+			var { items, value, onChange, name } = props;
+			return (
+				<div className="input-wrapper">
+					<select name={name} value={value} onChange={onChange}>
+						<option disabled selected>Select an option</option>
+            {items.map((item) => (
+							<option key={item} value={item}>
+								{item}
+							</option>
+						))}
+					</select>
+					<label htmlFor={name}>{props.label}</label>
+					<style jsx>{`
+            select {
+              background-color: var(--code-bg);
+              border-radius: 0.5rem;
+              border: 1px solid var(--border);
+              padding: 0.5rem;
+              color: var(--text-h);
+            }
+					`}</style>
+				</div>
+			);
 
-	if (props.type === InputType.RADIO) {
-		var { groupName, name, value, onChange } = props;
-		return (
-			<div>
-				<input
-					type="radio"
-					name={groupName}
-					id={name}
-					value={value}
-					onChange={onChange}
-				/>
-				<label htmlFor={name}>{props.label}</label>
-			</div>
-		);
-	}
+		case InputType.RADIO:
+			var { groupName, name, value, onChange } = props;
+			return (
+				<div className="radio-wrapper">
+					<input
+						type="radio"
+						name={groupName}
+						id={name}
+						value={value}
+						onChange={onChange}
+					/>
+					<label htmlFor={name}>{props.label}</label>
+					<style jsx>{`
+						.radio-wrapper {
+							display: flex;
+							flex-direction: row;
+						}
+					`}</style>
+				</div>
+			);
 
-	if (props.type === InputType.PARAGRAPH) {
-		var { name, placeholder, value, onChange } = props;
-		return (
-			<div>
-				<textarea
-					name={name}
-					placeholder={placeholder}
-					value={value}
-					onChange={onChange}
-				/>
-				<label htmlFor={name}>{props.label}</label>
-			</div>
-		);
-	}
+		case InputType.PARAGRAPH:
+			var { name, placeholder, value, onChange } = props;
+			return (
+				<div className="input-wrapper">
+					<textarea
+						name={name}
+						placeholder={placeholder}
+						value={value}
+						onChange={onChange}
+					/>
+					<label htmlFor={name}>{props.label}</label>
+					<style jsx>{`
+						textarea {
+							background-color: var(--code-bg);
+							border-radius: 0.5rem;
+							border: 1px solid var(--border);
+							padding: 0.5rem;
+              color: var(--text-h);
+						}
+					`}</style>
+				</div>
+			);
 
-	var { type, name, placeholder, value, onChange } = props;
-	return (
-		<div>
-			<input
-				type={type}
-				name={name}
-				placeholder={placeholder}
-				value={value}
-				onChange={onChange}
-			/>
-			<label htmlFor={name}>{props.label}</label>
-		</div>
-	);
+		default:
+			var { name, placeholder, value, onChange } = props;
+			return (
+				<div className="input-wrapper">
+					<input
+						type={props.type}
+						name={name}
+						placeholder={placeholder}
+						value={value}
+						onChange={onChange}
+					/>
+					<label htmlFor={name}>{props.label}</label>
+					<style jsx>{`
+						.input-wrapper {
+							display: flex;
+							flex-direction: column-reverse;
+						}
+						input {
+							background-color: var(--code-bg);
+							border-radius: 0.5rem;
+							border: 1px solid var(--border);
+							padding: 0.5rem;
+							resize: none;
+              color: var(--text-h);
+						}
+						label {
+							text-align: left;
+							margin-left: 3px;
+						}
+					`}</style>
+				</div>
+			);
+	}
 };
 
 export var Input = Object.assign(InputComponent, InputType);
