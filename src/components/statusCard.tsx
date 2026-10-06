@@ -22,9 +22,7 @@ var StatusCard = (props: StatusCardProps) => {
             <p className="statusSubtext">{props.subtext}</p>
            <style>{`
   
-            .statusCard {
-             
-              
+            .statusCard { 
                 background-color: white;
                 display: flex;
                 flex-direction: column;
