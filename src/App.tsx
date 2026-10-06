@@ -6,6 +6,7 @@ import './App.css'
 import Button from './components/button'
 import StatusCard from './components/statusCard'
 import { FaPlus, FaRegTrashAlt  } from 'react-icons/fa'
+import { CgDanger } from "react-icons/cg";
 import { Md7kPlus } from 'react-icons/md'
 
 
@@ -14,7 +15,7 @@ function App() {
 
   return (
     <>
-      <StatusCard></StatusCard>
+      <StatusCard title="Open NCRS" amount={1} subtext="Requiring immediate action" icon={CgDanger} />
        
     </>
   )

@@ -9,15 +9,17 @@ interface StatusCardProps {
     status?: "normal" | "alerted";
 }
 
-var StatusCard = () => {
+var StatusCard = (props: StatusCardProps) => {
     return (
         <div className="statusCard">
             <div className="statusCardHeader">
-                <p>Open NCRS</p>
-                <p>img</p>       
+                <p>{props.title}</p>
+                <div className="statusIcon">
+                    <props.icon />
+                </div>     
             </div>
-            <p className="statusAmount">1</p>
-            <p className="statusSubtext">Requiring immediate action</p>
+            <p className="statusAmount">{props.amount}</p>
+            <p className="statusSubtext">{props.subtext}</p>
            <style>{`
   
             .statusCard {
@@ -46,7 +48,15 @@ var StatusCard = () => {
             }
 
             .statusIcon {
-              
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0.4rem;
+                border-radius: 25%;
+                background-color: #eff6ff;
+                color: red;
+                font-size: 2rem;
+                font0-weight: bold;
             }
 
             .statusAmount {
