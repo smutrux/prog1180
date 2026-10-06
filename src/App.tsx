@@ -1,22 +1,26 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
 import './App.css'
-import Button from './components/button'
-import StatusCard from './components/statusCard'
-import { FaPlus, FaRegTrashAlt  } from 'react-icons/fa'
-import { CgDanger } from "react-icons/cg";
-import { Md7kPlus } from 'react-icons/md'
+import SidebarNav from './components/sidebarnav'
+
+
+import Dashboard from './pages/Dashboard'
+import NCRs from './pages/NCRs'
+import Reports from './pages/Reports'
+import Archive from './pages/Archive'
 
 
 function App() {
-  const [count, setCount] = useState(0)
+  const path = window.location.pathname;
 
   return (
     <>
-      <StatusCard title="Open NCRS" amount={1} subtext="Requiring immediate action" icon={CgDanger} />
-       
+      <SidebarNav></SidebarNav>
+      <main>
+        {path === "/dashboard" && <Dashboard />}
+        {path === "/ncrs" && <NCRs />}
+        {path === "/reports" && <Reports />}
+        {path === "/archive" && <Archive />}
+      </main>
+      
     </>
   )
 }
