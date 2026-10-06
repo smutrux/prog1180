@@ -1,4 +1,4 @@
-import { LuEye, LuEyeOff  } from "react-icons/lu";
+import { LuEye, LuEyeOff } from "react-icons/lu";
 
 const InputType = {
 	DATE: "date",
@@ -52,32 +52,61 @@ type InputProps = StandardInputProps | RadioInputProps | DropdownInputProps;
 var InputComponent = (props: InputProps) => {
 	switch (props.type) {
 		case InputType.DROPDOWN:
-			var { items, value, onChange, name } = props;
+			var { items, value, onChange, name, label } = props;
+			const listId = `${name}-datalist`;
+			const isLargeList = items.length > 20;
+
 			return (
 				<div className="input-wrapper">
-					<select name={name} value={value} onChange={onChange}>
-						<option disabled selected>Select an option</option>
-            {items.map((item) => (
-							<option key={item} value={item}>
-								{item}
-							</option>
-						))}
-					</select>
-					<label htmlFor={name}>{props.label}</label>
+					{isLargeList ? (
+						<>
+							<input
+								type="text"
+								name={name}
+								id={name}
+								list={listId}
+								value={value}
+								onChange={onChange}
+								placeholder="Select or type an option..."
+								className="dropdown-input"
+							/>
+							<datalist id={listId}>
+								{items.map((item) => (
+									<option key={item} value={item} />
+								))}
+							</datalist>
+						</>
+					) : (
+						<>
+							<select name={name} value={value} onChange={onChange}>
+								<option disabled selected>
+									Select an option
+								</option>
+								{items.map((item) => (
+									<option key={item} value={item}>
+										{item}
+									</option>
+								))}
+							</select>
+						</>
+					)}
+
+					<label htmlFor={name}>{label}</label>
+
 					<style jsx>{`
-            select {
-              background-color: var(--code-bg);
-              border-radius: 0.5rem;
-              border: 1px solid var(--border);
-              padding: 0.5rem;
-              color: var(--text-h);
-            }
+						select {
+							background-color: var(--code-bg);
+							border-radius: 0.5rem;
+							border: 1px solid var(--border);
+							padding: 0.5rem;
+							color: var(--text-h);
+						}
 					`}</style>
 				</div>
 			);
 
 		case InputType.RADIO:
-			var { groupName, name, value, onChange } = props;
+			var { groupName, name, value, onChange, label } = props;
 			return (
 				<div className="radio-wrapper">
 					<input
@@ -87,7 +116,7 @@ var InputComponent = (props: InputProps) => {
 						value={value}
 						onChange={onChange}
 					/>
-					<label htmlFor={name}>{props.label}</label>
+					<label htmlFor={name}>{label}</label>
 					<style jsx>{`
 						.radio-wrapper {
 							display: flex;
@@ -98,7 +127,7 @@ var InputComponent = (props: InputProps) => {
 			);
 
 		case InputType.PARAGRAPH:
-			var { name, placeholder, value, onChange } = props;
+			var { name, placeholder, value, onChange, label } = props;
 			return (
 				<div className="input-wrapper">
 					<textarea
@@ -107,31 +136,31 @@ var InputComponent = (props: InputProps) => {
 						value={value}
 						onChange={onChange}
 					/>
-					<label htmlFor={name}>{props.label}</label>
+					<label htmlFor={name}>{label}</label>
 					<style jsx>{`
 						textarea {
 							background-color: var(--code-bg);
 							border-radius: 0.5rem;
 							border: 1px solid var(--border);
 							padding: 0.5rem;
-              color: var(--text-h);
+							color: var(--text-h);
 						}
 					`}</style>
 				</div>
 			);
 
 		default:
-			var { name, placeholder, value, onChange } = props;
+			var { name, placeholder, value, onChange, label, type } = props;
 			return (
 				<div className="input-wrapper">
 					<input
-						type={props.type}
+						type={type}
 						name={name}
 						placeholder={placeholder}
 						value={value}
 						onChange={onChange}
 					/>
-					<label htmlFor={name}>{props.label}</label>
+					<label htmlFor={name}>{label}</label>
 					<style jsx>{`
 						.input-wrapper {
 							display: flex;
@@ -143,7 +172,7 @@ var InputComponent = (props: InputProps) => {
 							border: 1px solid var(--border);
 							padding: 0.5rem;
 							resize: none;
-              color: var(--text-h);
+							color: var(--text-h);
 						}
 						label {
 							text-align: left;
