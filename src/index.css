@@ -11,6 +11,13 @@
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
+
+  --nav-bg: #f7f7f8;
+  --sidebar-link-hover: #eef2ff;
+  --sidebar-link-hover-clr: #4F6FED;
+  --sidebar-link-clr: #374151;
+  --sidebar-title: #111827;
+
   --sans: 'Geist', system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: 'Geist', system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
@@ -42,7 +49,13 @@
     --accent-border: rgba(37, 99, 235, 0.5);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+
+    --nav-bg: #151825;
+    --sidebar-link-hover: #1E293B;
+    --sidebar-link-hover-clr: #FFF;
+    --sidebar-link-clr: #94A3B8;
+    --sidebar-title: #FFF;
   }
 
   #social .button-icon {

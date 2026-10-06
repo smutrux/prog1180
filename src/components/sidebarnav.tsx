@@ -11,7 +11,7 @@ var SidebarNav = () => {
       display: "flex",
       flexDirection: "column",
       gap: "5rem",
-      background: "#151825",
+      background: "var(--nav-bg)",
       padding: "2rem"
     }} aria-label="Sidebar Navigation">
 
@@ -20,7 +20,7 @@ var SidebarNav = () => {
         <p style={{
           fontWeight: "bold",
           fontSize: "1.75rem",
-          color: "white"
+          color: "var(--sidebar-title)"
         }}>Crossfire</p>
       </div>
      
@@ -46,7 +46,7 @@ var SidebarNav = () => {
           <a href="/archive" aria-current={path === "/archive" ? "page" : undefined} className={path === "/archive" ? "active" : ""}><IoTrashOutline aria-hidden="true"/>Archive</a>
         </li>
       </ul>
-      <style jsx>{`
+      <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Geist:ital,wght@0,100..900;1,100..900&display=swap');
 
         * {
@@ -85,7 +85,7 @@ var SidebarNav = () => {
 
         .sidebarLink > a {
           padding: 0.9rem 1rem;
-          color: #94A3B8;
+          color: var(--sidebar-link-clr);
           font-size: 1.3rem;
           font-weight: 500;
           text-decoration: none;  
@@ -98,13 +98,13 @@ var SidebarNav = () => {
 
         .sidebarLink > a:hover,
         .sidebarLink:has(a.active) > a {
-          color: white;
+          color: var(--sidebar-link-hover-clr);
           text-decoration: underline;
         }
 
         .sidebarLink:hover,
         .sidebarLink:has(a.active) {
-          background-color: #1E293B;
+          background-color: var(--sidebar-link-hover);
         }
 
         .sidebarLink::after {
