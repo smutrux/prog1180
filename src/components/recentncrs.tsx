@@ -3,91 +3,112 @@ import { FiEdit3 } from "react-icons/fi";
 
 const RecentNcrs = () => {
     const ncrs = [
-        {
-            number: "NCR-2026-001",
-            date: "Oct 2, 2026",
-            supplier: "Random blah blah",
-            product: "Yada Yada Yada",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-002",
-            date: "Oct 2, 2026",
-            supplier: "Random blah blah",
-            product: "Yada Yada Yada",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-001",
-            date: "Oct 2, 2026",
-            supplier: "Random blah blah",
-            product: "Yada Yada Yada",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-002",
-            date: "Oct 2, 2026",
-            supplier: "Random blah blah",
-            product: "Yada Yada Yada",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-001",
-            date: "Oct 2, 2026",
-            supplier: "Random blah blah",
-            product: "Yada Yada Yada",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-002",
-            date: "Oct 2, 2026",
-            supplier: "Random blah blah",
-            product: "Yada Yada Yada",
-            status: "Closed"
-        }, 
-         {
-            number: "NCR-2026-001",
-            date: "Oct 2, 2026",
-            supplier: "Random blah blah",
-            product: "Yada Yada Yada",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-002",
-            date: "Oct 2, 2026",
-            supplier: "Random blah blah",
-            product: "Yada Yada Yada",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-001",
-            date: "Oct 2, 2026",
-            supplier: "Random blah blah",
-            product: "Yada Yada Yada",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-002",
-            date: "Oct 2, 2026",
-            supplier: "Random blah blah",
-            product: "Yada Yada Yada",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-001",
-            date: "Oct 2, 2026",
-            supplier: "Random blah blah",
-            product: "Yada Yada Yada",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-002",
-            date: "Oct 2, 2026",
-            supplier: "Random blah blah",
-            product: "Yada Yada Yada",
-            status: "Closed"
-        }
-    ];
+    {
+        number: "NCR-2026-001",
+        date: "Oct 2, 2026",
+        supplier: "Acme Manufacturing",
+        product: "Steel Bracket 42A",
+        status: "Open"
+    },
+    {
+        number: "NCR-2026-002",
+        date: "Oct 1, 2026",
+        supplier: "Northern Components",
+        product: "Aluminum Housing",
+        status: "Closed"
+    },
+    {
+        number: "NCR-2026-003",
+        date: "Sep 29, 2026",
+        supplier: "Precision Parts Ltd.",
+        product: "Drive Shaft Assembly",
+        status: "Open"
+    },
+    {
+        number: "NCR-2026-004",
+        date: "Sep 27, 2026",
+        supplier: "Maple Industrial",
+        product: "Mounting Plate",
+        status: "Closed"
+    },
+    {
+        number: "NCR-2026-005",
+        date: "Sep 25, 2026",
+        supplier: "Ontario Fabrication",
+        product: "Control Panel Cover",
+        status: "Open"
+    },
+    {
+        number: "NCR-2026-006",
+        date: "Sep 23, 2026",
+        supplier: "Great Lakes Supply",
+        product: "Hydraulic Valve",
+        status: "Closed"
+    },
+    {
+        number: "NCR-2026-007",
+        date: "Sep 21, 2026",
+        supplier: "Acme Manufacturing",
+        product: "Steel Support Arm",
+        status: "Open"
+    },
+    {
+        number: "NCR-2026-008",
+        date: "Sep 18, 2026",
+        supplier: "Northern Components",
+        product: "Electrical Enclosure",
+        status: "Closed"
+    },
+    {
+        number: "NCR-2026-009",
+        date: "Sep 16, 2026",
+        supplier: "Precision Parts Ltd.",
+        product: "Bearing Housing",
+        status: "Open"
+    },
+    {
+        number: "NCR-2026-010",
+        date: "Sep 14, 2026",
+        supplier: "Maple Industrial",
+        product: "Stainless Steel Frame",
+        status: "Closed"
+    },
+    {
+        number: "NCR-2026-011",
+        date: "Sep 12, 2026",
+        supplier: "Ontario Fabrication",
+        product: "Motor Mount",
+        status: "Open"
+    },
+    {
+        number: "NCR-2026-012",
+        date: "Sep 10, 2026",
+        supplier: "Great Lakes Supply",
+        product: "Pressure Regulator",
+        status: "Closed"
+    },
+    {
+    number: "NCR-2026-013",
+    date: "Sep 8, 2026",
+    supplier: "Acme Manufacturing",
+    product: "Gear Assembly",
+    status: "Open"
+    },
+    {
+    number: "NCR-2026-014",
+    date: "Sep 6, 2026",
+    supplier: "Northern Components",
+    product: "Cooling Fan Housing",
+        status: "Closed"
+    },
+    {
+    number: "NCR-2026-015",
+    date: "Sep 4, 2026",
+    supplier: "Precision Parts Ltd.",
+    product: "Steel Retaining Ring",
+    status: "Open"
+    }
+];
 
     const [currentPage, setCurrentPage] = useState(1);
     const ncrsPerPage = 4;
@@ -114,7 +135,7 @@ const RecentNcrs = () => {
 
     return (
         <div className="recentNcrs">
-            <p className="recentNcrsTitle">RECENT NCR'S</p>
+            <p className="recentNcrsTitle">Recent NCR Table</p>
 
             <table>
                 <thead>
@@ -189,7 +210,7 @@ const RecentNcrs = () => {
                 }
 
                 .recentNcrsTitle {
-                    margin-left: 1.5rem;
+                    {/* margin-left: 1.5rem; */}
                     font-size: 1.5rem;
                     color: black;
                     font-weight: 700;
@@ -242,7 +263,10 @@ const RecentNcrs = () => {
                 .status {
                     display: inline-flex;
                     align-items: center;
+                    justify-content: center;
                     gap: 0.4rem;
+                    width: 5.5rem;
+                    box-sizing: border-box;
                     padding: 0.3rem 0.6rem;
                     border-radius: 6px;
                     font-size: 0.75rem;

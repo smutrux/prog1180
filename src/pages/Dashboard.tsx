@@ -3,7 +3,7 @@ import { TbCircleCheck } from "react-icons/tb";
 import { LuArchive } from "react-icons/lu";
 import { FiAlertCircle } from "react-icons/fi";
 import { FaRegClock } from "react-icons/fa6";
-
+import RecentNcrs from "../components/recentncrs";
 const Dashboard = () => {
   return (<div>
     <h1>Quality Control Dashboard</h1>
@@ -14,6 +14,8 @@ const Dashboard = () => {
       <StatusCard title="total NCRs" amount={2} subtext="All logged occurrences" icon={LuArchive} colour="blue"/>
       <StatusCard title="awaiting review" amount={0} subtext="Pending QA coordination sign-off" icon={FaRegClock} colour="orange"/>
     </div>
+    <p>recent-ncrs</p>
+    <RecentNcrs />
     <style jsx>{`
       h1 {color: black; font-size: 2rem; font-weight: bold; margin-bottom: 2rem;}
 
@@ -21,6 +23,7 @@ const Dashboard = () => {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 1rem;
+        margin-bottom: 3rem;
       }
 
       @media (max-width: 1200px) {
