@@ -17,11 +17,12 @@ var SidebarNav = () => {
 
       <div style={{display: "flex", gap: "1rem", alignItems: "center"}}>
         <img src={crossfireLogo} style={{width: "40px"}} alt="" />
-        <p style={{
+        <a style={{
           fontWeight: "bold",
           fontSize: "1.75rem",
-          color: "var(--sidebar-title)"
-        }}>Crossfire</p>
+          color: "var(--sidebar-title)",
+          textDecoration: "none"
+        }} href="/dashboard">Crossfire</a>
       </div>
      
       <ul style={{
@@ -33,7 +34,7 @@ var SidebarNav = () => {
       }}>
         <li className="sidebarLink">  
           
-          <a href="/dashboard" aria-current={path === "/dashboard" ? "page" : undefined} className={path === "/dashboard" ? "active" : ""}><LuLayoutDashboard aria-hidden="true"/>Dashboard</a>
+          <a href="/dashboard" aria-current={path === "/dashboard" ? "page" : undefined} className={path === "/dashboard" || path === "/" ? "active" : ""}><LuLayoutDashboard aria-hidden="true"/>Dashboard</a>
         </li>
         <li className="sidebarLink">  
       
