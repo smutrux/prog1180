@@ -625,8 +625,8 @@ const RecentNcrs = () => {
                     gap: 0.4rem;
                     width: 5.5rem;
                     box-sizing: border-box;
-                    padding: 0.3rem 0.6rem;
-                    border-radius: 6px;
+                    padding: 0.1rem;
+                    border-radius: 1000em;
                     font-size: 0.75rem;
                     font-weight: 600;
                 }
