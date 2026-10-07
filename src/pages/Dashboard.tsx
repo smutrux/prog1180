@@ -14,7 +14,6 @@ const Dashboard = () => {
       <StatusCard title="closed ncrs" amount={1} subtext="Resolved this quarter" icon={TbCircleCheck} colour="green"/>
       <StatusCard title="total NCRs" amount={2} subtext="All logged occurrences" icon={LuArchive} colour="blue"/>
     </div>
-    <p>recent-ncrs</p>
     <RecentNcrs />
     <style jsx>{`
       h1 {color: black; font-size: 2rem; font-weight: bold; margin-bottom: 2rem;}
