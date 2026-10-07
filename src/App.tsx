@@ -15,6 +15,7 @@ function App() {
     <>
       <SidebarNav></SidebarNav>
       <main>
+        {path === "/" && <Dashboard />}
         {path === "/dashboard" && <Dashboard />}
         {path === "/ncrs" && <NCRs />}
         {path === "/reports" && <Reports />}
