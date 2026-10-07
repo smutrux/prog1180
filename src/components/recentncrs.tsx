@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FiEdit3, FiX } from "react-icons/fi";
 
 const RecentNcrs = () => {
@@ -114,6 +113,10 @@ const RecentNcrs = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [editingNcr, setEditingNcr] = useState<any>(null);
 
+    const editButtonRef = useRef<HTMLButtonElement | null>(null);
+    const modalRef = useRef<HTMLDivElement | null>(null);
+    const firstInputRef = useRef<HTMLInputElement | null>(null);
+
     const ncrsPerPage = 4;
 
     const totalPages = Math.ceil(ncrs.length / ncrsPerPage);
@@ -137,7 +140,10 @@ const RecentNcrs = () => {
         }
     };
 
-    const openEdit = (ncr: any) => {
+    const openEdit = (
+        ncr: any,
+        button: HTMLButtonElement
+    ) => {
         const date = new Date(ncr.date);
 
         const formattedDate =
@@ -151,14 +157,81 @@ const RecentNcrs = () => {
             ...ncr,
             date: formattedDate
         });
+
+        editButtonRef.current = button;
     };
 
     const closeEdit = () => {
         setEditingNcr(null);
+
+        setTimeout(() => {
+            editButtonRef.current?.focus();
+        }, 0);
     };
 
+    useEffect(() => {
+        if (!editingNcr) {
+            return;
+        }
+
+        setTimeout(() => {
+            firstInputRef.current?.focus();
+        }, 0);
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                closeEdit();
+                return;
+            }
+
+            if (e.key !== "Tab" || !modalRef.current) {
+                return;
+            }
+
+            const focusableElements =
+                modalRef.current.querySelectorAll<HTMLElement>(
+                    "button, input, select, textarea, [tabindex]:not([tabindex='-1'])"
+                );
+
+            if (focusableElements.length === 0) {
+                return;
+            }
+
+            const firstElement = focusableElements[0];
+            const lastElement =
+                focusableElements[focusableElements.length - 1];
+
+            if (
+                e.shiftKey &&
+                document.activeElement === firstElement
+            ) {
+                e.preventDefault();
+                lastElement.focus();
+            }
+
+            if (
+                !e.shiftKey &&
+                document.activeElement === lastElement
+            ) {
+                e.preventDefault();
+                firstElement.focus();
+            }
+        };
+
+        document.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+            document.removeEventListener(
+                "keydown",
+                handleKeyDown
+            );
+        };
+    }, [editingNcr]);
+
     const handleChange = (
-        e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+        e: React.ChangeEvent<
+            HTMLInputElement | HTMLSelectElement
+        >
     ) => {
         const { name, value } = e.target;
 
@@ -190,7 +263,7 @@ const RecentNcrs = () => {
             )
         );
 
-        setEditingNcr(null);
+        closeEdit();
     };
 
     const openCalendar = (
@@ -220,12 +293,12 @@ const RecentNcrs = () => {
             <table>
                 <thead>
                     <tr>
-                        <th>NCR NUMBER</th>
-                        <th>DATE</th>
-                        <th>SUPPLIER</th>
-                        <th>PRODUCT</th>
-                        <th>STATUS</th>
-                        <th>EDIT</th>
+                        <th scope="col">NCR NUMBER</th>
+                        <th scope="col">DATE</th>
+                        <th scope="col">SUPPLIER</th>
+                        <th scope="col">PRODUCT</th>
+                        <th scope="col">STATUS</th>
+                        <th scope="col">EDIT</th>
                     </tr>
                 </thead>
 
@@ -246,7 +319,10 @@ const RecentNcrs = () => {
                                 <span
                                     className={`status ${ncr.status.toLowerCase()}`}
                                 >
-                                    <span className="statusDot"></span>
+                                    <span
+                                        className="statusDot"
+                                        aria-hidden="true"
+                                    ></span>
 
                                     {ncr.status}
                                 </span>
@@ -255,11 +331,16 @@ const RecentNcrs = () => {
                             <td>
                                 <button
                                     className="editButton"
-                                    onClick={() =>
-                                        openEdit(ncr)
+                                    type="button"
+                                    aria-label={`Edit ${ncr.number}`}
+                                    onClick={(e) =>
+                                        openEdit(
+                                            ncr,
+                                            e.currentTarget
+                                        )
                                     }
                                 >
-                                    <FiEdit3 />
+                                    <FiEdit3 aria-hidden="true" />
                                 </button>
                             </td>
                         </tr>
@@ -269,21 +350,23 @@ const RecentNcrs = () => {
 
             <div className="pagination">
                 <button
+                    type="button"
                     onClick={previousPage}
                     disabled={currentPage === 1}
+                    aria-label="Go to previous page"
                 >
                     Previous
                 </button>
 
-                <span>
+                <span aria-live="polite">
                     Page {currentPage} of {totalPages}
                 </span>
 
                 <button
+                    type="button"
                     onClick={nextPage}
-                    disabled={
-                        currentPage === totalPages
-                    }
+                    disabled={currentPage === totalPages}
+                    aria-label="Go to next page"
                 >
                     Next
                 </button>
@@ -295,14 +378,20 @@ const RecentNcrs = () => {
                     onClick={closeEdit}
                 >
                     <div
+                        ref={modalRef}
                         className="editModal"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="edit-ncr-title"
                         onClick={(e) =>
                             e.stopPropagation()
                         }
                     >
                         <div className="modalHeader">
                             <div>
-                                <h2>Edit NCR</h2>
+                                <h2 id="edit-ncr-title">
+                                    Edit NCR
+                                </h2>
 
                                 <p>
                                     {editingNcr.number}
@@ -311,9 +400,11 @@ const RecentNcrs = () => {
 
                             <button
                                 className="closeButton"
+                                type="button"
+                                aria-label="Close edit NCR"
                                 onClick={closeEdit}
                             >
-                                <FiX />
+                                <FiX aria-hidden="true" />
                             </button>
                         </div>
 
@@ -349,8 +440,7 @@ const RecentNcrs = () => {
 
                                         if (
                                             input &&
-                                            "showPicker" in
-                                                input
+                                            "showPicker" in input
                                         ) {
                                             try {
                                                 (
@@ -365,6 +455,7 @@ const RecentNcrs = () => {
                                     }}
                                 >
                                     <input
+                                        ref={firstInputRef}
                                         id="ncr-date"
                                         type="date"
                                         name="date"
@@ -446,6 +537,7 @@ const RecentNcrs = () => {
                         <div className="modalActions">
                             <button
                                 className="cancelButton"
+                                type="button"
                                 onClick={closeEdit}
                             >
                                 Cancel
@@ -453,6 +545,7 @@ const RecentNcrs = () => {
 
                             <button
                                 className="saveButton"
+                                type="button"
                                 onClick={saveEdit}
                             >
                                 Save Changes
@@ -608,8 +701,6 @@ const RecentNcrs = () => {
                     cursor: not-allowed;
                 }
 
-                /* EDIT MODAL */
-
                 .modalOverlay {
                     position: fixed;
                     inset: 0;
@@ -724,6 +815,28 @@ const RecentNcrs = () => {
                         );
                 }
 
+        
+                .editButton:focus-visible,
+                .closeButton:focus-visible,
+                .pagination button:focus-visible,
+                .cancelButton:focus-visible,
+                .saveButton:focus-visible {
+                    outline: 2px solid #2563eb;
+                    outline-offset: 2px;
+                }
+
+                .formGroup input:focus-visible,
+                .formGroup select:focus-visible {
+                    border-color: #2563eb;
+                    box-shadow: 0 0 0 3px
+                        rgba(
+                            37,
+                            99,
+                            235,
+                            0.2
+                        );
+                }
+
                 .formGroup input:disabled {
                     background-color: #f8fafc;
                     color: #64748b;
@@ -830,4 +943,3 @@ const RecentNcrs = () => {
 };
 
 export default RecentNcrs;
-

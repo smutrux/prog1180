@@ -1,4 +1,4 @@
-import StatusCard from "../components/statuscard";
+import StatusCard from "../components/statusCard";
 import { TbCircleCheck } from "react-icons/tb";
 import { LuArchive } from "react-icons/lu";
 import { FiAlertCircle } from "react-icons/fi";
