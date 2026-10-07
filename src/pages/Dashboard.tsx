@@ -1,3 +1,4 @@
+import { useState } from "react";
 import StatusCard from "../components/statusCard";
 import { TbCircleCheck } from "react-icons/tb";
 import { LuArchive } from "react-icons/lu";
@@ -6,11 +7,17 @@ import { FaRegClock, FaPlus } from "react-icons/fa6";
 import { TiPlus } from "react-icons/ti";
 import RecentNcrs from "../components/recentncrs";
 import Button from "../components/button";
+import { NcrModal } from "../components/NcrModal";
+
 
 const Dashboard = () => {
+	const [open, setOpen] = useState(false);
 	return (<div>
 		<h1>Quality Control Dashboard</h1>
-		<div><Button text="New NCR" icon={TiPlus} onClick={() => {}} aria="Button to create new NCR" size="1.75rem" bold /></div>
+		<div>
+			<Button text="New NCR" icon={TiPlus} onClick={() => setOpen(true)} aria="Button to create new NCR" size="1.75rem" bold />
+			<NcrModal open={open} onClose={() => setOpen(false)} />
+		</div>
 		<div className="stats-row">
 			<StatusCard title="Open NCRs" amount={1} subtext="Requiring immediate action" icon={FiAlertCircle} colour="red" />
 			<StatusCard title="awaiting review" amount={0} subtext="Pending QA coordination sign-off" icon={FaRegClock} colour="orange" />

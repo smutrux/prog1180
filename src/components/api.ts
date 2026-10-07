@@ -62,7 +62,7 @@ export class ApiError extends Error {
 type Query = Record<string, string | number | undefined>;
 
 async function request<T>(
-	method: "GET" | "POST" | "DELETE",
+	method: "GET" | "POST" | "PATCH" | "DELETE",
 	table: TableName,
 	suffix: string,
 	opts: { query?: Query; body?: unknown } = {},
@@ -120,19 +120,17 @@ export async function listAll<F extends object>(
 	table: TableName,
 	opts: { where?: string; fields?: string[] } = {},
 ): Promise<NcRecord<F>[]> {
-	const pageSize = 1;
-	// const pageSize = 25;
 	const seen = new Set<string>();
 	const out: NcRecord<F>[] = [];
-	for (let page = 1; page <= 100; page++) {
+	// for (let page = 1; page <= 100; page++) {
 		const data = await request<{ records?: NcRecord<F>[] }>("GET", table, "records", {
-			query: { where: opts.where, fields: opts.fields?.join(",") },
+			query: { where: opts.where, fields: opts.fields?.join(",")},
 		});
 		const fresh = (data.records ?? []).filter((r) => !seen.has(String(r.id)));
-		if (fresh.length === 0) break;
+		// if (fresh.length === 0) break;
 		fresh.forEach((r) => seen.add(String(r.id)));
 		out.push(...fresh);
-	}
+	// }
 	return out;
 }
 
@@ -165,3 +163,36 @@ export async function deleteRecord(table: TableName, id: number | string): Promi
 /** NocoDB DateTime format, in UTC: 2026-10-07 04:00:00+00:00 */
 export const ncDateTime = (d: Date = new Date()) =>
 	`${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 19)}+00:00`;
+
+/** One record by its record id. */
+export async function readRecord<F extends object>(
+	table: TableName,
+	id: number | string,
+): Promise<NcRecord<F> | null> {
+	try {
+		const data = await request<NcRecord<F> | { records?: NcRecord<F>[] }>("GET", table, `records/${id}`);
+		if (data && "fields" in data) return data;
+		return (data as { records?: NcRecord<F>[] }).records?.[0] ?? null;
+	} catch (err) {
+		if (err instanceof ApiError && err.status === 404) return null;
+		throw err;
+	}
+}
+
+/** The record a foreign key value points at (see FK_MODE). */
+export async function getByRef<F extends object>(
+	table: TableName,
+	ref: number | null | undefined,
+): Promise<NcRecord<F> | null> {
+	if (ref === null || ref === undefined) return null;
+	if (FK_MODE === "recordId") return readRecord<F>(table, ref);
+	return findFirst<F>(table, where([`${table}Id`, "eq", ref]));
+}
+
+export async function updateRecord(
+	table: TableName,
+	id: number | string,
+	fields: Record<string, unknown>,
+): Promise<void> {
+	await request("PATCH", table, "records", { body: { id, fields } });
+}

@@ -1,15 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Input from "./input";
+import type { NcRecord } from "./api";
 import {
 	DuplicateNcrNumberError,
+	PROCESS_LABELS,
 	SubmitError,
 	loadFormLookups,
+	loadNcrForEdit,
 	nextNcrNumber,
 	submitNcr,
+	updateNcr,
 	type FormLookups,
 	type InspectorOption,
+	type NcrEditData,
+	type NcrFields,
 	type NcrSubmission,
 } from "./ncrService";
+
+export interface NcrFormProps {
+	/** Edit an existing NCR instead of creating one. Needs `data`. */
+	edit?: boolean;
+	/** The NCR row exactly as the NocoDB list or read endpoint returns it. */
+	data?: NcRecord<NcrFields>;
+	/** Called by the Close button on the done screen. */
+	onClose?: () => void;
+	/** Called once after a create or update succeeds, so a list can refresh. */
+	onSaved?: (ncrNumber: string) => void;
+	/** Reports whether there are edits that are not saved to a section draft yet. */
+	onDirtyChange?: (dirty: boolean) => void;
+}
 
 const ADD_SUPPLIER = "Not listed: add a new supplier";
 const ADD_INSPECTOR = "Not listed: add a new inspector";
@@ -86,41 +105,86 @@ function sanitize(v: FormValues, l: FormLookups): FormValues {
 	};
 }
 
+const processTypeOf = (label: string): ProcessType =>
+	label === PROCESS_LABELS.supplier ? "supplier" : label === PROCESS_LABELS.wip ? "wip" : "";
+
+/* Edit mode: turn the loaded NCR into form values. */
+function toFormValues(ed: NcrEditData): FormValues {
+	return {
+		process: {
+			ncrNumber: ed.ncrNumber,
+			processType: processTypeOf(ed.processApplicable),
+			supplier: ed.supplier ?? "",
+			newSupplierName: "",
+			poNumber: ed.purchaseOrderNumber,
+			salesOrderNumber: ed.salesOrderNumber,
+		},
+		item: { itemName: ed.item.name, itemSapNumber: ed.item.sapNumber, itemDescription: ed.item.description },
+		defect: {
+			qtyReceived: ed.quantityReceived === null ? "" : String(ed.quantityReceived),
+			qtyDefective: ed.quantityDefective === null ? "" : String(ed.quantityDefective),
+			problemTypeIds: ed.problemTypeIds.map(String),
+			defectDescription: ed.defectDescription,
+			isNonconforming: ed.isNonconforming === null ? "" : ed.isNonconforming ? "yes" : "no",
+		},
+		evidence: { links: ed.links.length ? ed.links : [""], fileNames: [] },
+		inspector: { inspector: fullName(ed.inspector), newFirstName: "", newMiddleName: "", newLastName: "" },
+	};
+}
+
+/* Edit mode: the NCR's current supplier and inspector must be choosable even
+   if they are not in the normal lists (for example an inspector without the Quality role). */
+function addEditOptions(l: FormLookups, ed: NcrEditData | null): FormLookups {
+	if (!ed) return l;
+	const suppliers =
+		ed.supplier && !l.suppliers.some((s) => s.name === ed.supplier)
+			? [...l.suppliers, { id: 0, name: ed.supplier }]
+			: l.suppliers;
+	const label = fullName(ed.inspector);
+	const inspectors =
+		label && !l.inspectors.some((i) => fullName(i) === label)
+			? [...l.inspectors, { personId: ed.inspector.personId, rolePersonId: 0, first: ed.inspector.first, middle: ed.inspector.middle, last: ed.inspector.last }]
+			: l.inspectors;
+	return { ...l, suppliers, inspectors };
+}
+
 /* ------------------------------------------------------------------ */
 /* Draft storage (localStorage, one key per section)                   */
 /* ------------------------------------------------------------------ */
-const sectionKey = (id: SectionId) => `ncr-draft-v2:${id}`;
+const CREATE_PREFIX = "ncr-draft-v2";
+const sectionKey = (prefix: string, id: SectionId) => `${prefix}:${id}`;
 
-function readSection(id: SectionId): unknown {
+function readSection(prefix: string, id: SectionId): unknown {
 	try {
-		const raw = window.localStorage.getItem(sectionKey(id));
+		const raw = window.localStorage.getItem(sectionKey(prefix, id));
 		return raw ? JSON.parse(raw) : null;
 	} catch {
 		return null;
 	}
 }
-function writeSection(id: SectionId, data: unknown): boolean {
+function writeSection(prefix: string, id: SectionId, data: unknown): boolean {
 	try {
-		window.localStorage.setItem(sectionKey(id), JSON.stringify(data));
+		window.localStorage.setItem(sectionKey(prefix, id), JSON.stringify(data));
 		return true;
 	} catch {
 		return false;
 	}
 }
-function clearDrafts() {
+function clearDrafts(prefix: string) {
 	try {
-		SAVED_IDS.forEach((id) => window.localStorage.removeItem(sectionKey(id)));
+		SAVED_IDS.forEach((id) => window.localStorage.removeItem(sectionKey(prefix, id)));
 	} catch {
 		/* storage unavailable */
 	}
 }
 
-function loadDrafts() {
-	const values = makeDefaults("");
+/* Start from `base` (blank form, or the NCR being edited) and lay saved sections on top. */
+function loadDrafts(prefix: string, base: FormValues) {
+	const values: FormValues = JSON.parse(JSON.stringify(base));
 	const saved = Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>;
 	let any = false;
 	for (const id of SAVED_IDS) {
-		const stored = readSection(id);
+		const stored = readSection(prefix, id);
 		if (stored && typeof stored === "object") {
 			(values as Record<SectionId, unknown>)[id] = { ...values[id], ...stored };
 			saved[id] = true;
@@ -264,13 +328,13 @@ function ChoiceGroup(props: {
 /* ------------------------------------------------------------------ */
 /* The form                                                            */
 /* ------------------------------------------------------------------ */
-export default function NcrForm() {
-	const [hydrated, setHydrated] = useState(false);
+export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyChange }: NcrFormProps) {
 	const [values, setValues] = useState<FormValues>(() => makeDefaults(""));
 	const [saved, setSaved] = useState<Record<SectionId, boolean>>(
 		() => Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>,
 	);
 	const [hasDraft, setHasDraft] = useState(false);
+	const [dirtyIds, setDirtyIds] = useState<Set<SectionId>>(() => new Set());
 	const [step, setStep] = useState(0);
 	const [errors, setErrors] = useState<Errors>({});
 	const [files, setFiles] = useState<File[]>([]);
@@ -282,6 +346,7 @@ export default function NcrForm() {
 	const [lookups, setLookups] = useState<FormLookups>({ suppliers: [], problemTypes: [], inspectors: [] });
 	const [lookupState, setLookupState] = useState<"loading" | "ready" | "error">("loading");
 	const [lookupError, setLookupError] = useState("");
+	const [editData, setEditData] = useState<NcrEditData | null>(null);
 
 	const headingRef = useRef<HTMLHeadingElement>(null);
 	const summaryRef = useRef<HTMLElement>(null);
@@ -290,40 +355,68 @@ export default function NcrForm() {
 	const focusSummary = useRef(false);
 	const focusSubmitError = useRef(false);
 	const pendingFocus = useRef<string | null>(null);
+	const dataRef = useRef(data);
+	dataRef.current = data;
+	const editRef = useRef<NcrEditData | null>(null);
+	const baseRef = useRef<FormValues>(makeDefaults(""));
 
-	/* Database data: dropdown options and the next NCR number. */
-	const loadLookups = useCallback(async (silent = false) => {
-		if (!silent) {
-			setLookupState("loading");
-			setLookupError("");
-		}
+	/* Edits use their own drafts, so they never mix with a new NCR's drafts. */
+	const prefix = edit && data ? `${CREATE_PREFIX}-edit-${data.id}` : CREATE_PREFIX;
+
+	/* Load everything the form needs: dropdown data, the next NCR number (new)
+	   or the NCR's related rows (edit), then saved drafts on top. */
+	const init = useCallback(async () => {
+		setLookupState("loading");
+		setLookupError("");
 		try {
-			const [l, next] = await Promise.all([loadFormLookups(), nextNcrNumber()]);
-			setLookups(l);
-			setValues((prev) => {
-				const clean = sanitize(prev, l);
-				return clean.process.ncrNumber ? clean : { ...clean, process: { ...clean.process, ncrNumber: next } };
-			});
+			if (edit && !dataRef.current) throw new Error("No NCR was given to edit.");
+			const [l, next, ed] = await Promise.all([
+				loadFormLookups(),
+				edit ? Promise.resolve("") : nextNcrNumber(),
+				edit ? loadNcrForEdit(dataRef.current as NcRecord<NcrFields>) : Promise.resolve(null),
+			]);
+			const withExtras = addEditOptions(l, ed);
+			const base = ed ? toFormValues(ed) : makeDefaults(next);
+			const d = loadDrafts(prefix, base);
+			baseRef.current = base;
+			editRef.current = ed;
+			setEditData(ed);
+			setLookups(withExtras);
+			setValues(sanitize(d.values, withExtras));
+			setSaved(d.saved);
+			setHasDraft(d.any);
+			setDirtyIds(new Set());
+			setStep(d.step);
+			if (d.any) setStatus("Your saved sections were restored. You are on the first section that is not saved yet.");
 			setLookupState("ready");
 		} catch (err) {
-			if (!silent) {
-				setLookupError(messageOf(err));
-				setLookupState("error");
-			}
+			setLookupError(messageOf(err));
+			setLookupState("error");
 		}
-	}, []);
+	}, [edit, prefix]);
 
-	/* On first render in the browser: restore saved sections, then load database data. */
 	useEffect(() => {
-		const d = loadDrafts();
-		setValues(d.values);
-		setSaved(d.saved);
-		setHasDraft(d.any);
-		setStep(d.step);
-		if (d.any) setStatus("Your saved sections were restored. You are on the first section that is not saved yet.");
-		setHydrated(true);
-		void loadLookups();
-	}, [loadLookups]);
+		void init();
+	}, [init]);
+
+	/* Quiet refresh after a submit or a reset: new suppliers and people, and the next NCR number. */
+	const refreshLookups = useCallback(async () => {
+		try {
+			const [l, next] = await Promise.all([loadFormLookups(), edit ? Promise.resolve("") : nextNcrNumber()]);
+			const withExtras = addEditOptions(l, editRef.current);
+			setLookups(withExtras);
+			setValues((prev) => {
+				const clean = sanitize(prev, withExtras);
+				return clean.process.ncrNumber ? clean : { ...clean, process: { ...clean.process, ncrNumber: next } };
+			});
+		} catch {
+			/* keep what is on screen */
+		}
+	}, [edit]);
+
+	useEffect(() => {
+		onDirtyChange?.(dirtyIds.size > 0);
+	}, [dirtyIds, onDirtyChange]);
 
 	useEffect(() => {
 		if (focusHeading.current) {
@@ -363,6 +456,7 @@ export default function NcrForm() {
 	function update<K extends SectionId>(section: K, patch: Partial<FormValues[K]>) {
 		setValues((prev) => ({ ...prev, [section]: { ...prev[section], ...patch } }));
 		setSaved((prev) => ({ ...prev, [section]: false }));
+		setDirtyIds((prev) => new Set(prev).add(section));
 		setErrors((prev) => {
 			const next = { ...prev };
 			for (const key of Object.keys(patch)) {
@@ -390,8 +484,13 @@ export default function NcrForm() {
 		const id = SECTIONS[step].id as SectionId;
 		const found = validate(id, values, files, false);
 		if (Object.keys(found).length) return showErrors(found);
-		const ok = writeSection(id, values[id]);
+		const ok = writeSection(prefix, id, values[id]);
 		setSaved((prev) => ({ ...prev, [id]: ok }));
+		setDirtyIds((prev) => {
+			const next = new Set(prev);
+			next.delete(id);
+			return next;
+		});
 		setHasDraft((prev) => prev || ok);
 		goTo(step + 1);
 		setStatus(
@@ -414,13 +513,18 @@ export default function NcrForm() {
 		setSubmitting(true);
 		setSubmitError("");
 		try {
-			const result = await submitNcr(buildSubmission(values, files, lookups), setStatus);
-			clearDrafts();
+			const submission = buildSubmission(values, files, lookups);
+			const result = edit && editData
+				? await updateNcr(editData, submission, setStatus)
+				: await submitNcr(submission, setStatus);
+			clearDrafts(prefix);
 			setHasDraft(false);
+			setDirtyIds(new Set());
 			setSubmitted(result.ncrNumber);
 			focusHeading.current = true;
-			setStatus(`NCR ${result.ncrNumber} submitted.`);
-			void loadLookups(true);
+			setStatus(`NCR ${result.ncrNumber} ${edit ? "updated" : "submitted"}.`);
+			onSaved?.(result.ncrNumber);
+			void refreshLookups();
 		} catch (err) {
 			if (err instanceof DuplicateNcrNumberError) {
 				const next = await nextNcrNumber().catch(() => "");
@@ -435,31 +539,34 @@ export default function NcrForm() {
 				setSubmitError(`${messageOf(err)}${left} Your answers are kept. Try again.`);
 			}
 			focusSubmitError.current = true;
-			setStatus("The NCR was not submitted.");
+			setStatus(edit ? "The changes were not saved." : "The NCR was not submitted.");
 		} finally {
 			setSubmitting(false);
 		}
 	}
 
 	function resetForm(message: string) {
-		setValues(makeDefaults(""));
+		const base = edit ? baseRef.current : makeDefaults("");
+		setValues(sanitize(JSON.parse(JSON.stringify(base)), lookups));
 		setSaved(Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>);
+		setDirtyIds(new Set());
 		setFiles([]);
 		setFileInputKey((k) => k + 1);
 		goTo(0);
 		setStatus(message);
-		void loadLookups(true);
+		void refreshLookups();
 	}
 
 	function restoreSaved() {
-		const d = loadDrafts();
+		const d = loadDrafts(prefix, baseRef.current);
 		setValues(sanitize(d.values, lookups));
 		setSaved(d.saved);
+		setDirtyIds(new Set());
 		setFiles([]);
 		setFileInputKey((k) => k + 1);
 		goTo(d.step);
 		setStatus("Your saved sections were restored.");
-		void loadLookups(true);
+		void refreshLookups();
 	}
 
 	/* --- derived values --- */
@@ -470,7 +577,7 @@ export default function NcrForm() {
 	const errorKeys = Object.keys(errors);
 	const selectedProblems = values.defect.problemTypeIds;
 
-	if (!hydrated || lookupState === "loading") return <p role="status">Loading form...</p>;
+	if (lookupState === "loading") return <p role="status">Loading form...</p>;
 
 	if (lookupState === "error") {
 		return (
@@ -481,7 +588,7 @@ export default function NcrForm() {
 					<p>{lookupError}</p>
 				</section>
 				<p>
-					<button type="button" className="ncr-btn ncr-btn-primary" onClick={() => void loadLookups()}>
+					<button type="button" className="ncr-btn ncr-btn-primary" onClick={() => void init()}>
 						Try again
 					</button>
 				</p>
@@ -493,11 +600,20 @@ export default function NcrForm() {
 	if (submitted) {
 		return (
 			<div className="ncr-form">
-				<h1 ref={headingRef} tabIndex={-1}>NCR {submitted} submitted</h1>
-				<p>The report was saved to the database.</p>
-				<button type="button" className="ncr-btn ncr-btn-primary" onClick={() => { setSubmitted(null); resetForm("Started a new NCR."); }}>
-					Start a new NCR
-				</button>
+				<h1 ref={headingRef} tabIndex={-1}>NCR {submitted} {edit ? "updated" : "submitted"}</h1>
+				<p>{edit ? "The changes were saved to the database." : "The report was saved to the database."}</p>
+				<div className="ncr-actions">
+					{!edit && (
+						<button type="button" className="ncr-btn ncr-btn-primary" onClick={() => { setSubmitted(null); resetForm("Started a new NCR."); }}>
+							Start a new NCR
+						</button>
+					)}
+					{onClose && (
+						<button type="button" className="ncr-btn" onClick={onClose}>
+							Close
+						</button>
+					)}
+				</div>
 				<p role="status" className="ncr-status">{status}</p>
 				<FormStyles />
 			</div>
@@ -515,7 +631,7 @@ export default function NcrForm() {
 				else saveAndContinue();
 			}}
 		>
-			<h1 id="ncr-title">Non-conformance report (NCR)</h1>
+			<h1 id="ncr-title">{edit ? `Edit NCR ${p.ncrNumber}` : "Non-conformance report (NCR)"}</h1>
 
 			<nav aria-label="Form sections" className="ncr-steps">
 				<ol>
@@ -586,7 +702,7 @@ export default function NcrForm() {
 					<>
 						<Input type={Input.TEXT} name="ncrNumber" label="NCR number" value={p.ncrNumber} readOnly
 							placeholder="Looking up the next number..." error={errors.ncrNumber}
-							helpText="The next number in the sequence. It is checked again when you submit." />
+							helpText={edit ? "This number cannot be changed." : "The next number in the sequence. It is checked again when you submit."} />
 						<ChoiceGroup id="processType" legend="Which process does this report cover?" required
 							helpText="Choose Supplier or receiving inspection for purchased items. Choose Work in progress for items made in-house."
 							error={errors.processType}>
@@ -688,6 +804,11 @@ export default function NcrForm() {
 								setFiles(list);
 								update("evidence", { fileNames: list.map((f) => f.name) });
 							}} />
+						{edit && editData && editData.existingFiles.length > 0 && (
+							<div className="ncr-note">
+								<p>Already attached: {editData.existingFiles.join(", ")}. These stay attached. Files you choose above are added.</p>
+							</div>
+						)}
 						{files.length > 0 && (
 							<ul className="ncr-file-list" aria-label="Chosen files">
 								{files.map((f) => (
@@ -763,8 +884,8 @@ export default function NcrForm() {
 								<p>{submitError}</p>
 							</section>
 						)}
-						<p>Check each part. Choose Change to fix something, then save that section again. The time of submission is recorded as the NCR's creation time.</p>
-						{reviewGroups(values, files, lookups).map((g) => (
+						<p>Check each part. Choose Change to fix something, then save that section again. {edit ? "The time you save is recorded as the update time." : "The time of submission is recorded as the NCR's creation time."}</p>
+						{reviewGroups(values, files, lookups, editData?.existingFiles ?? []).map((g) => (
 							<section key={g.id} className="ncr-review-group" aria-labelledby={`review-${g.id}`}>
 								<div className="ncr-review-head">
 									<h3 id={`review-${g.id}`}>{g.title}</h3>
@@ -795,7 +916,11 @@ export default function NcrForm() {
 						</button>
 					)}
 					<button type="submit" className="ncr-btn ncr-btn-primary" aria-disabled={submitting || undefined}>
-						{step === REVIEW_STEP ? (submitting ? "Submitting..." : "Submit NCR") : "Save and continue"}
+						{step === REVIEW_STEP
+							? submitting
+								? edit ? "Saving..." : "Submitting..."
+								: edit ? "Save changes" : "Submit NCR"
+							: "Save and continue"}
 					</button>
 				</div>
 			</div>
@@ -809,12 +934,11 @@ export default function NcrForm() {
 /* ------------------------------------------------------------------ */
 const supplierOf = (p: FormValues["process"]) =>
 	p.supplier === ADD_SUPPLIER ? p.newSupplierName.trim() : p.supplier.trim();
-const processLabel = (t: ProcessType) =>
-	t === "supplier" ? "Supplier or Rec-Insp" : t === "wip" ? "WIP (Production Order)" : "";
+const processLabel = (t: ProcessType) => (t ? PROCESS_LABELS[t] : "");
 
-function reviewGroups(v: FormValues, files: File[], l: FormLookups) {
+function reviewGroups(v: FormValues, files: File[], l: FormLookups, existingFiles: string[]) {
 	const yesNo = v.defect.isNonconforming === "yes" ? "Yes" : v.defect.isNonconforming === "no" ? "No" : "";
-	const fileNames = files.length ? files.map((f) => f.name) : v.evidence.fileNames;
+	const fileNames = [...existingFiles, ...(files.length ? files.map((f) => f.name) : v.evidence.fileNames)];
 	const problems = l.problemTypes.filter((t) => v.defect.problemTypeIds.includes(String(t.id))).map((t) => t.label);
 	const inspector = v.inspector.inspector === ADD_INSPECTOR
 		? fullName({ first: v.inspector.newFirstName.trim(), middle: v.inspector.newMiddleName.trim(), last: v.inspector.newLastName.trim() })
@@ -890,15 +1014,15 @@ function FormStyles() {
 				.ncr-form { --error: #ffb4bf; }
 			}
 			.ncr-form h1 { font-size: 1.75rem; margin: 0 0 1rem; }
-			.ncr-form h2 { font-size: 1.4rem; margin: 0; }
+			.ncr-form h2 { font-size: 1.6rem; margin: 0; font-weight: 600; color: var(--text-h); }
 			.ncr-form h3 { font-size: 1.1rem; margin: 0; }
-			.ncr-form :focus-visible { outline: 3px solid var(--text-h); outline-offset: 2px; }
+			.ncr-form :focus-visible { outline: 3px solid var(--border); outline-offset: 2px; }
 			.ncr-steps ol { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0; margin: 0 0 1rem; }
 			.ncr-step-btn, .ncr-btn {
 				min-height: 2.75rem;
 				min-width: 2.75rem;
 				padding: 0.5rem 1rem;
-				border: 2px solid var(--text-h);
+				border: 2px solid var(--border);
 				border-radius: 0.5rem;
 				background: transparent;
 				color: var(--text-h);
@@ -906,19 +1030,19 @@ function FormStyles() {
 				cursor: pointer;
 			}
 			.ncr-step-btn { text-align: left; padding: 0.5rem 0.75rem; }
-			.ncr-step-btn[aria-current="step"] { border-width: 4px; font-weight: 700; }
+			.ncr-step-btn[aria-current="step"] { border-width: 4px; font-weight: 700; border-color: var(--accent); }
 			.ncr-step-state { display: block; font-size: 0.9rem; font-weight: 400; }
-			.ncr-btn-primary { background: var(--text-h); color: var(--bg, Canvas); font-weight: 600; }
+			.ncr-btn-primary { background: var(--accent); color: var(--text-h, Canvas); font-weight: 600; }
 			.ncr-btn[aria-disabled="true"] { cursor: progress; }
 			.ncr-tools, .ncr-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
 			.ncr-actions { margin-top: 0.5rem; }
 			.ncr-status { min-height: 1.5rem; margin: 0.75rem 0; }
-			.ncr-progress { margin: 0; font-size: 0.95rem; }
-			.ncr-section { display: flex; flex-direction: column; gap: 1.25rem; }
+			.ncr-progress { margin: 2rem 0 0 0 ; font-size: 0.95rem; }
+			.ncr-section { display: flex; flex-direction: column; gap: .75rem; }
 			.ncr-help { margin: 0; font-size: 0.95rem; }
 			.ncr-error { margin: 0.5rem 0 0; color: var(--error); }
 			.ncr-req { font-weight: 400; }
-			.ncr-fieldset { border: 1px solid var(--text-h); border-radius: 0.5rem; padding: 0.75rem 1rem 1rem; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+			.ncr-fieldset { border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem 1rem 1rem; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 			.ncr-fieldset legend { font-weight: 600; padding: 0 0.25rem; }
 			.ncr-error-summary { border: 3px solid var(--error); border-radius: 0.5rem; padding: 1rem; }
 			.ncr-error-summary p { margin: 0.5rem 0 0; }
@@ -926,11 +1050,11 @@ function FormStyles() {
 			.ncr-error-summary li { margin: 0; }
 			.ncr-error-summary a { display: inline-block; padding: 0.5rem 0; color: var(--text-h); text-decoration: underline; }
 			.ncr-file-list { margin: 0; padding-left: 1.25rem; }
-			.ncr-note { border: 1px dashed var(--text-h); border-radius: 0.5rem; padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+			.ncr-note { border: 1px dashed var(--border); border-radius: 0.5rem; padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
 			.ncr-note p { margin: 0; }
 			.ncr-link-row { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
 			.ncr-link-row .fld { width: 100%; }
-			.ncr-review-group { border: 1px solid var(--text-h); border-radius: 0.5rem; padding: 0.75rem 1rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+			.ncr-review-group { border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem 1rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
 			.ncr-review-head { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: space-between; align-items: center; }
 			.ncr-review-group dl { margin: 0; }
 			.ncr-review-row { display: grid; grid-template-columns: minmax(8rem, 1fr) 2fr; gap: 0.5rem; padding: 0.25rem 0; }
