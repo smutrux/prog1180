@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react";
 import { FiEdit3, FiX } from "react-icons/fi";
 
@@ -112,10 +113,12 @@ const RecentNcrs = () => {
 
     const [currentPage, setCurrentPage] = useState(1);
     const [editingNcr, setEditingNcr] = useState<any>(null);
+    const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
 
     const editButtonRef = useRef<HTMLButtonElement | null>(null);
     const modalRef = useRef<HTMLDivElement | null>(null);
     const firstInputRef = useRef<HTMLInputElement | null>(null);
+    const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
 
     const ncrsPerPage = 4;
 
@@ -162,6 +165,7 @@ const RecentNcrs = () => {
     };
 
     const closeEdit = () => {
+        setShowSaveConfirmation(false);
         setEditingNcr(null);
 
         setTimeout(() => {
@@ -175,16 +179,28 @@ const RecentNcrs = () => {
         }
 
         setTimeout(() => {
-            firstInputRef.current?.focus();
+            if (showSaveConfirmation) {
+                confirmButtonRef.current?.focus();
+            } else {
+                firstInputRef.current?.focus();
+            }
         }, 0);
 
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
-                closeEdit();
+                if (showSaveConfirmation) {
+                    setShowSaveConfirmation(false);
+                } else {
+                    closeEdit();
+                }
+
                 return;
             }
 
-            if (e.key !== "Tab" || !modalRef.current) {
+            if (
+                e.key !== "Tab" ||
+                !modalRef.current
+            ) {
                 return;
             }
 
@@ -197,9 +213,13 @@ const RecentNcrs = () => {
                 return;
             }
 
-            const firstElement = focusableElements[0];
+            const firstElement =
+                focusableElements[0];
+
             const lastElement =
-                focusableElements[focusableElements.length - 1];
+                focusableElements[
+                    focusableElements.length - 1
+                ];
 
             if (
                 e.shiftKey &&
@@ -218,7 +238,10 @@ const RecentNcrs = () => {
             }
         };
 
-        document.addEventListener("keydown", handleKeyDown);
+        document.addEventListener(
+            "keydown",
+            handleKeyDown
+        );
 
         return () => {
             document.removeEventListener(
@@ -226,7 +249,7 @@ const RecentNcrs = () => {
                 handleKeyDown
             );
         };
-    }, [editingNcr]);
+    }, [editingNcr, showSaveConfirmation]);
 
     const handleChange = (
         e: React.ChangeEvent<
@@ -241,7 +264,13 @@ const RecentNcrs = () => {
         });
     };
 
+    // Opens the confirmation dialog
     const saveEdit = () => {
+        setShowSaveConfirmation(true);
+    };
+
+    // Actually saves the changes
+    const confirmSave = () => {
         const formattedDate = new Date(
             editingNcr.date + "T00:00:00"
         ).toLocaleDateString("en-US", {
@@ -263,7 +292,16 @@ const RecentNcrs = () => {
             )
         );
 
+        setShowSaveConfirmation(false);
         closeEdit();
+    };
+
+    const cancelSave = () => {
+        setShowSaveConfirmation(false);
+
+        setTimeout(() => {
+            firstInputRef.current?.focus();
+        }, 0);
     };
 
     const openCalendar = (
@@ -279,7 +317,7 @@ const RecentNcrs = () => {
                     }
                 ).showPicker();
             } catch {
-                // Browser may prevent showPicker in some situations.
+                // Browser may prevent showPicker.
             }
         }
     };
@@ -304,7 +342,9 @@ const RecentNcrs = () => {
 
                 <tbody>
                     {currentNcrs.map((ncr, index) => (
-                        <tr key={`${ncr.number}-${index}`}>
+                        <tr
+                            key={`${ncr.number}-${index}`}
+                        >
                             <td className="ncrNumber">
                                 {ncr.number}
                             </td>
@@ -375,182 +415,246 @@ const RecentNcrs = () => {
             {editingNcr && (
                 <div
                     className="modalOverlay"
-                    onClick={closeEdit}
+                    onClick={() => {
+                        if (!showSaveConfirmation) {
+                            closeEdit();
+                        }
+                    }}
                 >
                     <div
                         ref={modalRef}
-                        className="editModal"
+                        className={
+                            showSaveConfirmation
+                                ? "confirmationModal"
+                                : "editModal"
+                        }
                         role="dialog"
                         aria-modal="true"
-                        aria-labelledby="edit-ncr-title"
+                        aria-labelledby={
+                            showSaveConfirmation
+                                ? "confirm-save-title"
+                                : "edit-ncr-title"
+                        }
                         onClick={(e) =>
                             e.stopPropagation()
                         }
                     >
-                        <div className="modalHeader">
-                            <div>
-                                <h2 id="edit-ncr-title">
-                                    Edit NCR
-                                </h2>
+                        {!showSaveConfirmation ? (
+                            <>
+                                <div className="modalHeader">
+                                    <div>
+                                        <h2 id="edit-ncr-title">
+                                            Edit NCR
+                                        </h2>
 
-                                <p>
-                                    {editingNcr.number}
-                                </p>
-                            </div>
+                                        <p>
+                                            {editingNcr.number}
+                                        </p>
+                                    </div>
 
-                            <button
-                                className="closeButton"
-                                type="button"
-                                aria-label="Close edit NCR"
-                                onClick={closeEdit}
-                            >
-                                <FiX aria-hidden="true" />
-                            </button>
-                        </div>
-
-                        <div className="form">
-                            <div className="formGroup fullWidth">
-                                <label htmlFor="ncr-number">
-                                    NCR Number
-                                </label>
-
-                                <input
-                                    id="ncr-number"
-                                    type="text"
-                                    name="number"
-                                    value={
-                                        editingNcr.number
-                                    }
-                                    disabled
-                                />
-                            </div>
-
-                            <div className="formGroup">
-                                <label htmlFor="ncr-date">
-                                    Date
-                                </label>
-
-                                <div
-                                    className="dateInputWrapper"
-                                    onClick={(e) => {
-                                        const input =
-                                            e.currentTarget.querySelector(
-                                                "input"
-                                            ) as HTMLInputElement;
-
-                                        if (
-                                            input &&
-                                            "showPicker" in input
-                                        ) {
-                                            try {
-                                                (
-                                                    input as HTMLInputElement & {
-                                                        showPicker: () => void;
-                                                    }
-                                                ).showPicker();
-                                            } catch {
-                                                // Native picker fallback
-                                            }
-                                        }
-                                    }}
-                                >
-                                    <input
-                                        ref={firstInputRef}
-                                        id="ncr-date"
-                                        type="date"
-                                        name="date"
-                                        value={
-                                            editingNcr.date
-                                        }
-                                        onChange={
-                                            handleChange
-                                        }
-                                        onClick={
-                                            openCalendar
-                                        }
-                                    />
+                                    <button
+                                        className="closeButton"
+                                        type="button"
+                                        aria-label="Close edit NCR"
+                                        onClick={closeEdit}
+                                    >
+                                        <FiX aria-hidden="true" />
+                                    </button>
                                 </div>
-                            </div>
 
-                            <div className="formGroup">
-                                <label htmlFor="ncr-status">
-                                    Status
-                                </label>
+                                <div className="form">
+                                    <div className="formGroup fullWidth">
+                                        <label htmlFor="ncr-number">
+                                            NCR Number
+                                        </label>
 
-                                <select
-                                    id="ncr-status"
-                                    name="status"
-                                    value={
-                                        editingNcr.status
-                                    }
-                                    onChange={
-                                        handleChange
-                                    }
-                                >
-                                    <option value="Open">
-                                        Open
-                                    </option>
+                                        <input
+                                            id="ncr-number"
+                                            type="text"
+                                            name="number"
+                                            value={
+                                                editingNcr.number
+                                            }
+                                            disabled
+                                        />
+                                    </div>
 
-                                    <option value="Closed">
-                                        Closed
-                                    </option>
-                                </select>
-                            </div>
+                                    <div className="formGroup">
+                                        <label htmlFor="ncr-date">
+                                            Date
+                                        </label>
 
-                            <div className="formGroup fullWidth">
-                                <label htmlFor="ncr-supplier">
-                                    Supplier
-                                </label>
+                                        <div
+                                            className="dateInputWrapper"
+                                            onClick={(e) => {
+                                                const input =
+                                                    e.currentTarget.querySelector(
+                                                        "input"
+                                                    ) as HTMLInputElement;
 
-                                <input
-                                    id="ncr-supplier"
-                                    type="text"
-                                    name="supplier"
-                                    value={
-                                        editingNcr.supplier
-                                    }
-                                    onChange={
-                                        handleChange
-                                    }
-                                />
-                            </div>
+                                                if (
+                                                    input &&
+                                                    "showPicker" in
+                                                        input
+                                                ) {
+                                                    try {
+                                                        (
+                                                            input as HTMLInputElement & {
+                                                                showPicker: () => void;
+                                                            }
+                                                        ).showPicker();
+                                                    } catch {
+                                                        // Native picker fallback
+                                                    }
+                                                }
+                                            }}
+                                        >
+                                            <input
+                                                ref={
+                                                    firstInputRef
+                                                }
+                                                id="ncr-date"
+                                                type="date"
+                                                name="date"
+                                                value={
+                                                    editingNcr.date
+                                                }
+                                                onChange={
+                                                    handleChange
+                                                }
+                                                onClick={
+                                                    openCalendar
+                                                }
+                                            />
+                                        </div>
+                                    </div>
 
-                            <div className="formGroup fullWidth">
-                                <label htmlFor="ncr-product">
-                                    Product
-                                </label>
+                                    <div className="formGroup">
+                                        <label htmlFor="ncr-status">
+                                            Status
+                                        </label>
 
-                                <input
-                                    id="ncr-product"
-                                    type="text"
-                                    name="product"
-                                    value={
-                                        editingNcr.product
-                                    }
-                                    onChange={
-                                        handleChange
-                                    }
-                                />
-                            </div>
-                        </div>
+                                        <select
+                                            id="ncr-status"
+                                            name="status"
+                                            value={
+                                                editingNcr.status
+                                            }
+                                            onChange={
+                                                handleChange
+                                            }
+                                        >
+                                            <option value="Open">
+                                                Open
+                                            </option>
 
-                        <div className="modalActions">
-                            <button
-                                className="cancelButton"
-                                type="button"
-                                onClick={closeEdit}
-                            >
-                                Cancel
-                            </button>
+                                            <option value="Closed">
+                                                Closed
+                                            </option>
+                                        </select>
+                                    </div>
 
-                            <button
-                                className="saveButton"
-                                type="button"
-                                onClick={saveEdit}
-                            >
-                                Save Changes
-                            </button>
-                        </div>
+                                    <div className="formGroup fullWidth">
+                                        <label htmlFor="ncr-supplier">
+                                            Supplier
+                                        </label>
+
+                                        <input
+                                            id="ncr-supplier"
+                                            type="text"
+                                            name="supplier"
+                                            value={
+                                                editingNcr.supplier
+                                            }
+                                            onChange={
+                                                handleChange
+                                            }
+                                        />
+                                    </div>
+
+                                    <div className="formGroup fullWidth">
+                                        <label htmlFor="ncr-product">
+                                            Product
+                                        </label>
+
+                                        <input
+                                            id="ncr-product"
+                                            type="text"
+                                            name="product"
+                                            value={
+                                                editingNcr.product
+                                            }
+                                            onChange={
+                                                handleChange
+                                            }
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="modalActions">
+                                    <button
+                                        className="cancelButton"
+                                        type="button"
+                                        onClick={closeEdit}
+                                    >
+                                        Cancel
+                                    </button>
+
+                                    <button
+                                        className="saveButton"
+                                        type="button"
+                                        onClick={saveEdit}
+                                    >
+                                        Save Changes
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="confirmationContent">
+                                    <div className="confirmationIcon">
+                                        ?
+                                    </div>
+
+                                    <h2 id="confirm-save-title">
+                                        Save changes?
+                                    </h2>
+
+                                    <p>
+                                        Are you sure you want
+                                        to save the changes
+                                        made to{" "}
+                                        <strong>
+                                            {
+                                                editingNcr.number
+                                            }
+                                        </strong>
+                                        ?
+                                    </p>
+                                </div>
+
+                                <div className="confirmationActions">
+                                    <button
+                                        className="cancelButton"
+                                        type="button"
+                                        onClick={cancelSave}
+                                    >
+                                        Go Back
+                                    </button>
+
+                                    <button
+                                        ref={
+                                            confirmButtonRef
+                                        }
+                                        className="saveButton"
+                                        type="button"
+                                        onClick={confirmSave}
+                                    >
+                                        Confirm Save
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
@@ -727,6 +831,56 @@ const RecentNcrs = () => {
                     overflow: hidden;
                 }
 
+                .confirmationModal {
+                    width: 100%;
+                    max-width: 420px;
+                    background-color: white;
+                    border-radius: 14px;
+                    box-shadow: 0 20px 50px
+                        rgba(0, 0, 0, 0.2);
+                    overflow: hidden;
+                }
+
+                .confirmationContent {
+                    padding: 2rem;
+                    text-align: center;
+                }
+
+                .confirmationIcon {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 48px;
+                    height: 48px;
+                    margin: 0 auto 1rem;
+                    border-radius: 50%;
+                    background-color: #eff6ff;
+                    color: #2563eb;
+                    font-size: 1.3rem;
+                    font-weight: 700;
+                }
+
+                .confirmationContent h2 {
+                    margin: 0;
+                    color: #111827;
+                    font-size: 1.25rem;
+                }
+
+                .confirmationContent p {
+                    margin: 0.75rem 0 0;
+                    color: #64748b;
+                    font-size: 0.9rem;
+                    line-height: 1.5;
+                }
+
+                .confirmationActions {
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: 0.75rem;
+                    padding: 1rem 1.5rem 1.5rem;
+                    border-top: 1px solid #e5e7eb;
+                }
+
                 .modalHeader {
                     display: flex;
                     align-items: flex-start;
@@ -815,7 +969,6 @@ const RecentNcrs = () => {
                         );
                 }
 
-        
                 .editButton:focus-visible,
                 .closeButton:focus-visible,
                 .pagination button:focus-visible,
@@ -843,8 +996,6 @@ const RecentNcrs = () => {
                     cursor: not-allowed;
                 }
 
-                /* DATE PICKER */
-
                 .dateInputWrapper {
                     width: 100%;
                     cursor: pointer;
@@ -854,13 +1005,15 @@ const RecentNcrs = () => {
                     cursor: pointer;
                 }
 
-                .dateInputWrapper input[type="date"]::-webkit-calendar-picker-indicator {
+                .dateInputWrapper
+                    input[type="date"]::-webkit-calendar-picker-indicator {
                     cursor: pointer;
                     opacity: 0.8;
                     padding: 0.2rem;
                 }
 
-                .dateInputWrapper input[type="date"]::-webkit-calendar-picker-indicator:hover {
+                .dateInputWrapper
+                    input[type="date"]::-webkit-calendar-picker-indicator:hover {
                     opacity: 1;
                 }
 
@@ -928,7 +1081,8 @@ const RecentNcrs = () => {
                         grid-column: span 1;
                     }
 
-                    .modalActions {
+                    .modalActions,
+                    .confirmationActions {
                         flex-direction: column-reverse;
                     }
 
@@ -943,3 +1097,4 @@ const RecentNcrs = () => {
 };
 
 export default RecentNcrs;
+
