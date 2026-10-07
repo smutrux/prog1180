@@ -2,6 +2,7 @@ import { useState } from "react";
 import { LuEye, LuEyeOff } from "react-icons/lu";
 
 const InputType = {
+	CHECKBOX: "checkbox",
 	DATE: "date",
 	DATETIME: "datetime-local",
 	DROPDOWN: "dropdown",
@@ -57,6 +58,10 @@ interface RadioInputProps extends BaseInputProps {
 	groupName: string;
 }
 
+interface CheckboxInputProps extends BaseInputProps {
+	type: typeof InputType.CHECKBOX;
+}
+
 interface DropdownInputProps extends BaseInputProps {
 	type: typeof InputType.DROPDOWN;
 	items: string[];
@@ -65,11 +70,17 @@ interface DropdownInputProps extends BaseInputProps {
 interface StandardInputProps extends BaseInputProps {
 	type: Exclude<
 		InputTypeKey,
-		typeof InputType.RADIO | typeof InputType.DROPDOWN
+		| typeof InputType.RADIO
+		| typeof InputType.CHECKBOX
+		| typeof InputType.DROPDOWN
 	>;
 }
 
-type InputProps = StandardInputProps | RadioInputProps | DropdownInputProps;
+type InputProps =
+	| StandardInputProps
+	| RadioInputProps
+	| CheckboxInputProps
+	| DropdownInputProps;
 
 const describedBy = (
 	id: string,
@@ -181,14 +192,17 @@ const DropdownField = (props: DropdownInputProps) => {
 	);
 };
 
-const RadioField = (props: RadioInputProps) => {
-	const { groupName, name, value, onChange, label, checked, required, disabled } =
+/* Radio and checkbox share one component. A checkbox is its own group, so it
+   uses `name`; a radio uses `groupName`. helpText is shown under the label. */
+const ChoiceField = (props: RadioInputProps | CheckboxInputProps) => {
+	const { name, value, onChange, label, checked, required, disabled, helpText } =
 		props;
 	const id = props.id ?? name;
+	const groupName = props.type === InputType.RADIO ? props.groupName : name;
 	return (
 		<div className="fld-radio">
 			<input
-				type="radio"
+				type={props.type}
 				id={id}
 				name={groupName}
 				value={value}
@@ -198,12 +212,19 @@ const RadioField = (props: RadioInputProps) => {
 				disabled={disabled}
 				aria-describedby={describedBy(id, props)}
 			/>
-			<label htmlFor={id}>{label}</label>
-			{props.aria && (
-				<span id={`${id}-aria`} className="fld-sr">
-					{props.aria}
-				</span>
-			)}
+			<div className="fld-radio-text">
+				<label htmlFor={id}>{label}</label>
+				{helpText && (
+					<span id={`${id}-help`} className="fld-help">
+						{helpText}
+					</span>
+				)}
+				{props.aria && (
+					<span id={`${id}-aria`} className="fld-sr">
+						{props.aria}
+					</span>
+				)}
+			</div>
 		</div>
 	);
 };
@@ -291,7 +312,8 @@ const InputComponent = (props: InputProps) => {
 			content = <DropdownField {...props} />;
 			break;
 		case InputType.RADIO:
-			content = <RadioField {...props} />;
+		case InputType.CHECKBOX:
+			content = <ChoiceField {...props} />;
 			break;
 		case InputType.PARAGRAPH:
 			content = <ParagraphField {...props} />;
@@ -377,7 +399,7 @@ const InputComponent = (props: InputProps) => {
 				}
 				.fld-radio {
 					display: flex;
-					align-items: center;
+					align-items: flex-start;
 					gap: 0.75rem;
 					min-height: 2.75rem;
 					font-family: var(--sans);
@@ -386,11 +408,16 @@ const InputComponent = (props: InputProps) => {
 				.fld-radio input {
 					width: 1.5rem;
 					height: 1.5rem;
-					margin: 0;
+					margin: 0.625rem 0 0;
 					flex: none;
 				}
-				.fld-radio label {
+				.fld-radio-text {
+					display: flex;
+					flex-direction: column;
 					flex: 1;
+					padding-bottom: 0.5rem;
+				}
+				.fld-radio label {
 					display: flex;
 					align-items: center;
 					min-height: 2.75rem;

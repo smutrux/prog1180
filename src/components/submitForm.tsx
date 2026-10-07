@@ -1,36 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Input from "./input";
+import {
+	DuplicateNcrNumberError,
+	SubmitError,
+	loadFormLookups,
+	nextNcrNumber,
+	submitNcr,
+	type FormLookups,
+	type InspectorOption,
+	type NcrSubmission,
+} from "./ncrService";
 
-/* ------------------------------------------------------------------ */
-/* Placeholder lookup data. Replace with API data once a backend exists. */
-/* ------------------------------------------------------------------ */
-const SUPPLIERS = [
-	"Acme Fasteners Ltd.",
-	"Northern Steel Supply",
-	"Precision Castings Inc.",
-];
 const ADD_SUPPLIER = "Not listed: add a new supplier";
-
-const PROBLEM_TYPES = [
-	{ label: "Dimension out of tolerance", description: "A measurement is outside the tolerance on the drawing." },
-	{ label: "Wrong material", description: "The material does not match the order or the drawing." },
-	{ label: "Surface finish or coating", description: "Scratches, rust, poor plating, paint or coating faults." },
-	{ label: "Damaged in shipping", description: "The item was damaged on the way to us." },
-	{ label: "Wrong item or quantity", description: "We received a different item, or a different amount than ordered." },
-	{ label: "Missing paperwork or certificates", description: "Material certificates or other required documents are missing." },
-	{ label: "Other", description: "Anything not covered above. Explain it in the defect description." },
-];
-
-interface InspectorRecord { first: string; middle: string; last: string }
-const INSPECTORS: InspectorRecord[] = [
-	{ first: "Jordan", middle: "", last: "Smith" },
-	{ first: "Priya", middle: "R.", last: "Nair" },
-	{ first: "Marc", middle: "", last: "Tremblay" },
-];
-const CURRENT_USER = INSPECTORS[0]; // TODO: replace with the signed-in user
 const ADD_INSPECTOR = "Not listed: add a new inspector";
 const fullName = (i: { first: string; middle?: string; last: string }) =>
 	[i.first, i.middle, i.last].filter(Boolean).join(" ");
+const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /* ------------------------------------------------------------------ */
 /* Types and defaults                                                  */
@@ -54,7 +39,7 @@ interface FormValues {
 	defect: {
 		qtyReceived: string;
 		qtyDefective: string;
-		problemType: string;
+		problemTypeIds: string[];
 		defectDescription: string;
 		isNonconforming: YesNo;
 	};
@@ -83,16 +68,28 @@ const REVIEW_STEP = SECTIONS.length - 1;
 const makeDefaults = (ncrNumber: string): FormValues => ({
 	process: { ncrNumber, processType: "", supplier: "", newSupplierName: "", poNumber: "", salesOrderNumber: "" },
 	item: { itemName: "", itemSapNumber: "", itemDescription: "" },
-	defect: { qtyReceived: "", qtyDefective: "", problemType: "", defectDescription: "", isNonconforming: "" },
+	defect: { qtyReceived: "", qtyDefective: "", problemTypeIds: [], defectDescription: "", isNonconforming: "" },
 	evidence: { links: [""], fileNames: [] },
-	inspector: { inspector: fullName(CURRENT_USER), newFirstName: "", newMiddleName: "", newLastName: "" },
+	inspector: { inspector: "", newFirstName: "", newMiddleName: "", newLastName: "" },
 });
 
+/* Fill in values that depend on database data: drop stale choices and
+   default the inspector to the first person. */
+function sanitize(v: FormValues, l: FormLookups): FormValues {
+	const validIds = new Set(l.problemTypes.map((t) => String(t.id)));
+	const names = l.inspectors.map(fullName);
+	const keep = v.inspector.inspector === ADD_INSPECTOR || names.includes(v.inspector.inspector);
+	return {
+		...v,
+		defect: { ...v.defect, problemTypeIds: v.defect.problemTypeIds.filter((id) => validIds.has(id)) },
+		inspector: keep ? v.inspector : { ...v.inspector, inspector: names[0] ?? "" },
+	};
+}
+
 /* ------------------------------------------------------------------ */
-/* Storage (localStorage, one key per section)                         */
+/* Draft storage (localStorage, one key per section)                   */
 /* ------------------------------------------------------------------ */
-const sectionKey = (id: SectionId) => `ncr-draft:${id}`;
-const LAST_NUMBER_KEY = "ncr-last-number";
+const sectionKey = (id: SectionId) => `ncr-draft-v2:${id}`;
 
 function readSection(id: SectionId): unknown {
 	try {
@@ -117,21 +114,9 @@ function clearDrafts() {
 		/* storage unavailable */
 	}
 }
-/* Stand-in for the NCR log: next number in the sequence, format YYYY-NNN. */
-function nextNcrNumber(): string {
-	const year = new Date().getFullYear();
-	let seq = 0;
-	try {
-		const m = window.localStorage.getItem(LAST_NUMBER_KEY)?.match(/^(\d{4})-(\d{3})$/);
-		if (m && Number(m[1]) === year) seq = Number(m[2]);
-	} catch {
-		/* storage unavailable */
-	}
-	return `${year}-${String(seq + 1).padStart(3, "0")}`;
-}
 
 function loadDrafts() {
-	const values = makeDefaults(nextNcrNumber());
+	const values = makeDefaults("");
 	const saved = Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>;
 	let any = false;
 	for (const id of SAVED_IDS) {
@@ -142,19 +127,20 @@ function loadDrafts() {
 			any = true;
 		}
 	}
-	if (!Array.isArray(values.evidence.links) || values.evidence.links.length === 0) {
-		values.evidence.links = [""];
-	}
+	if (!Array.isArray(values.evidence.links) || values.evidence.links.length === 0) values.evidence.links = [""];
+	if (!Array.isArray(values.defect.problemTypeIds)) values.defect.problemTypeIds = [];
 	const firstUnsaved = SAVED_IDS.findIndex((id) => !saved[id]);
 	return { values, saved, any, step: firstUnsaved === -1 ? REVIEW_STEP : firstUnsaved };
 }
 
 /* ------------------------------------------------------------------ */
-/* Validation                                                          */
+/* Validation (limits match the database column sizes)                 */
 /* ------------------------------------------------------------------ */
-const DIGITS = /^\d{1,18}$/; // BIGINT-safe
-const POSITIVE_INT = /^[1-9]\d{0,8}$/; // fits a 32-bit INT
+const DIGITS = /^\d{1,18}$/;
+const POSITIVE_INT = /^[1-9]\d{0,8}$/;
+const NCR_NUMBER = /^\d{4}-\d{3,}$/;
 const blank = (s: string) => !s.trim();
+const DIGIT_MSG = "Use digits only, up to 18. Remove spaces, dashes and letters.";
 
 function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolean): Errors {
 	const e: Errors = {};
@@ -162,28 +148,26 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 		case "process": {
 			const p = v.process;
 			const isSupplier = p.processType === "supplier";
+			if (!NCR_NUMBER.test(p.ncrNumber)) e.ncrNumber = "The NCR number is missing. Reload the form to get the next number.";
 			if (!p.processType) e.processType = "Choose which process this report covers.";
 			if (isSupplier && !p.supplier) e.supplier = "Choose a supplier from the list.";
 			if (p.supplier === ADD_SUPPLIER) {
 				if (blank(p.newSupplierName)) e.newSupplierName = "Enter the supplier's name.";
-				else if (p.newSupplierName.trim().length > 75) e.newSupplierName = "Use 75 characters or fewer.";
+				else if (p.newSupplierName.trim().length > 200) e.newSupplierName = "Use 200 characters or fewer.";
 			}
-			if (blank(p.poNumber)) {
-				if (isSupplier) e.poNumber = "Enter the purchase order number.";
-			} else if (!DIGITS.test(p.poNumber.trim())) {
-				e.poNumber = "Use digits only, up to 18. Remove spaces, dashes and letters.";
-			}
-			if (!blank(p.salesOrderNumber) && !DIGITS.test(p.salesOrderNumber.trim())) {
-				e.salesOrderNumber = "Use digits only, up to 18. Remove spaces, dashes and letters.";
-			}
+			if (blank(p.poNumber)) e.poNumber = isSupplier ? "Enter the purchase order number." : "Enter the production order number.";
+			else if (!DIGITS.test(p.poNumber.trim())) e.poNumber = DIGIT_MSG;
+			if (blank(p.salesOrderNumber)) e.salesOrderNumber = "Enter the sales order number.";
+			else if (!DIGITS.test(p.salesOrderNumber.trim())) e.salesOrderNumber = DIGIT_MSG;
 			break;
 		}
 		case "item": {
 			const i = v.item;
 			if (blank(i.itemName)) e.itemName = "Enter the item name.";
-			else if (i.itemName.trim().length > 100) e.itemName = "Use 100 characters or fewer.";
+			else if (i.itemName.trim().length > 200) e.itemName = "Use 200 characters or fewer.";
 			if (blank(i.itemSapNumber)) e.itemSapNumber = "Enter the SAP number.";
 			else if (i.itemSapNumber.trim().length > 20) e.itemSapNumber = "Use 20 characters or fewer.";
+			if (i.itemDescription.trim().length > 300) e.itemDescription = "Use 300 characters or fewer.";
 			break;
 		}
 		case "defect": {
@@ -195,8 +179,9 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 			else if (POSITIVE_INT.test(received) && Number(defective) > Number(received)) {
 				e.qtyDefective = "This cannot be more than the quantity received.";
 			}
-			if (!d.problemType) e.problemType = "Choose the problem type that fits best.";
+			if (d.problemTypeIds.length === 0) e.problemTypeIds = "Tick at least one problem type.";
 			if (blank(d.defectDescription)) e.defectDescription = "Describe the defect.";
+			else if (d.defectDescription.trim().length > 400) e.defectDescription = "Use 400 characters or fewer.";
 			if (!d.isNonconforming) e.isNonconforming = "Choose Yes or No.";
 			break;
 		}
@@ -215,7 +200,9 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 				}
 			});
 			const bad = files.find((f) => !(f.type.startsWith("image/") || f.type === "application/pdf"));
-			if (bad) e.files = `"${bad.name}" is not a picture or PDF. Remove it and choose the files again.`;
+			const long = files.find((f) => f.name.length > 300);
+			if (bad) e.files = `"${bad.name}" is not a picture or PDF. Choose the files again without it.`;
+			else if (long) e.files = "A file name is longer than 300 characters. Rename it and choose it again.";
 			else if (forSubmit && v.evidence.fileNames.length > 0 && files.length === 0) {
 				e.files = "Your saved draft lists files, but the browser does not keep files after a reload. Choose them again, or remove the saved file names.";
 			}
@@ -226,10 +213,10 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 			if (!n.inspector) e.inspector = "Choose the inspector.";
 			if (n.inspector === ADD_INSPECTOR) {
 				if (blank(n.newFirstName)) e.newFirstName = "Enter a first name.";
-				else if (n.newFirstName.trim().length > 20) e.newFirstName = "Use 20 characters or fewer.";
-				if (n.newMiddleName.trim().length > 20) e.newMiddleName = "Use 20 characters or fewer.";
+				else if (n.newFirstName.trim().length > 75) e.newFirstName = "Use 75 characters or fewer.";
+				if (n.newMiddleName.trim().length > 75) e.newMiddleName = "Use 75 characters or fewer.";
 				if (blank(n.newLastName)) e.newLastName = "Enter a last name.";
-				else if (n.newLastName.trim().length > 20) e.newLastName = "Use 20 characters or fewer.";
+				else if (n.newLastName.trim().length > 75) e.newLastName = "Use 75 characters or fewer.";
 			}
 			break;
 		}
@@ -240,16 +227,13 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 const focusIdFor = (key: string) =>
 	key === "processType" ? "processType-supplier" : key === "isNonconforming" ? "isNonconforming-yes" : key;
 
-const pad = (n: number) => String(n).padStart(2, "0");
-const toLocalInput = (d: Date) =>
-	`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const formatSize = (bytes: number) =>
 	bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 /* ------------------------------------------------------------------ */
-/* Small presentational helpers                                        */
+/* Small presentational helper                                         */
 /* ------------------------------------------------------------------ */
-function RadioGroup(props: {
+function ChoiceGroup(props: {
 	id: string;
 	legend: string;
 	required?: boolean;
@@ -291,17 +275,45 @@ export default function NcrForm() {
 	const [errors, setErrors] = useState<Errors>({});
 	const [files, setFiles] = useState<File[]>([]);
 	const [fileInputKey, setFileInputKey] = useState(0);
-	const [signedAt, setSignedAt] = useState("");
 	const [status, setStatus] = useState("");
 	const [submitted, setSubmitted] = useState<string | null>(null);
+	const [submitting, setSubmitting] = useState(false);
+	const [submitError, setSubmitError] = useState("");
+	const [lookups, setLookups] = useState<FormLookups>({ suppliers: [], problemTypes: [], inspectors: [] });
+	const [lookupState, setLookupState] = useState<"loading" | "ready" | "error">("loading");
+	const [lookupError, setLookupError] = useState("");
 
 	const headingRef = useRef<HTMLHeadingElement>(null);
 	const summaryRef = useRef<HTMLElement>(null);
+	const submitErrorRef = useRef<HTMLElement>(null);
 	const focusHeading = useRef(false);
 	const focusSummary = useRef(false);
+	const focusSubmitError = useRef(false);
 	const pendingFocus = useRef<string | null>(null);
 
-	/* Load saved sections on first render in the browser. */
+	/* Database data: dropdown options and the next NCR number. */
+	const loadLookups = useCallback(async (silent = false) => {
+		if (!silent) {
+			setLookupState("loading");
+			setLookupError("");
+		}
+		try {
+			const [l, next] = await Promise.all([loadFormLookups(), nextNcrNumber()]);
+			setLookups(l);
+			setValues((prev) => {
+				const clean = sanitize(prev, l);
+				return clean.process.ncrNumber ? clean : { ...clean, process: { ...clean.process, ncrNumber: next } };
+			});
+			setLookupState("ready");
+		} catch (err) {
+			if (!silent) {
+				setLookupError(messageOf(err));
+				setLookupState("error");
+			}
+		}
+	}, []);
+
+	/* On first render in the browser: restore saved sections, then load database data. */
 	useEffect(() => {
 		const d = loadDrafts();
 		setValues(d.values);
@@ -310,10 +322,10 @@ export default function NcrForm() {
 		setStep(d.step);
 		if (d.any) setStatus("Your saved sections were restored. You are on the first section that is not saved yet.");
 		setHydrated(true);
-	}, []);
+		void loadLookups();
+	}, [loadLookups]);
 
 	useEffect(() => {
-		if (step >= SAVED_IDS.indexOf("inspector")) setSignedAt(toLocalInput(new Date()));
 		if (focusHeading.current) {
 			headingRef.current?.focus();
 			focusHeading.current = false;
@@ -328,6 +340,13 @@ export default function NcrForm() {
 	}, [errors]);
 
 	useEffect(() => {
+		if (focusSubmitError.current && submitErrorRef.current) {
+			submitErrorRef.current.focus();
+			focusSubmitError.current = false;
+		}
+	}, [submitError]);
+
+	useEffect(() => {
 		if (pendingFocus.current) {
 			document.getElementById(pendingFocus.current)?.focus();
 			pendingFocus.current = null;
@@ -337,6 +356,7 @@ export default function NcrForm() {
 	function goTo(i: number) {
 		setStep(i);
 		setErrors({});
+		setSubmitError("");
 		focusHeading.current = true;
 	}
 
@@ -381,7 +401,8 @@ export default function NcrForm() {
 		);
 	}
 
-	function submit() {
+	async function submit() {
+		if (submitting) return;
 		for (let i = 0; i < SAVED_IDS.length; i++) {
 			const found = validate(SAVED_IDS[i], values, files, true);
 			if (Object.keys(found).length) {
@@ -390,55 +411,90 @@ export default function NcrForm() {
 				return;
 			}
 		}
-		const payload = buildPayload(values, files);
-		console.log("NCR submission", payload);
-		console.log("Files to upload", files);
+		setSubmitting(true);
+		setSubmitError("");
 		try {
-			window.localStorage.setItem(LAST_NUMBER_KEY, values.process.ncrNumber);
-		} catch {
-			/* storage unavailable */
+			const result = await submitNcr(buildSubmission(values, files, lookups), setStatus);
+			clearDrafts();
+			setHasDraft(false);
+			setSubmitted(result.ncrNumber);
+			focusHeading.current = true;
+			setStatus(`NCR ${result.ncrNumber} submitted.`);
+			void loadLookups(true);
+		} catch (err) {
+			if (err instanceof DuplicateNcrNumberError) {
+				const next = await nextNcrNumber().catch(() => "");
+				if (next) update("process", { ncrNumber: next });
+				setSubmitError(
+					`NCR number ${err.ncrNumber} was already used by another report. ${next ? `Your NCR number is now ${next}. Check it, then submit again.` : "Reload the form to get a new number."}`,
+				);
+			} else {
+				const left = err instanceof SubmitError && err.leftovers.length
+					? ` Some records could not be removed and need cleaning up by hand: ${err.leftovers.join(", ")}.`
+					: "";
+				setSubmitError(`${messageOf(err)}${left} Your answers are kept. Try again.`);
+			}
+			focusSubmitError.current = true;
+			setStatus("The NCR was not submitted.");
+		} finally {
+			setSubmitting(false);
 		}
-		clearDrafts();
-		setHasDraft(false);
-		setSubmitted(values.process.ncrNumber);
-		focusHeading.current = true;
-		setStatus(`NCR ${values.process.ncrNumber} submitted.`);
 	}
 
 	function resetForm(message: string) {
-		setValues(makeDefaults(nextNcrNumber()));
+		setValues(makeDefaults(""));
 		setSaved(Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>);
 		setFiles([]);
 		setFileInputKey((k) => k + 1);
 		goTo(0);
 		setStatus(message);
+		void loadLookups(true);
 	}
 
 	function restoreSaved() {
 		const d = loadDrafts();
-		setValues(d.values);
+		setValues(sanitize(d.values, lookups));
 		setSaved(d.saved);
 		setFiles([]);
 		setFileInputKey((k) => k + 1);
 		goTo(d.step);
 		setStatus("Your saved sections were restored.");
+		void loadLookups(true);
 	}
 
 	/* --- derived values --- */
 	const p = values.process;
 	const isSupplierProcess = p.processType === "supplier";
-	const problem = PROBLEM_TYPES.find((t) => t.label === values.defect.problemType);
 	const links = values.evidence.links;
 	const current = SECTIONS[step];
 	const errorKeys = Object.keys(errors);
+	const selectedProblems = values.defect.problemTypeIds;
 
-	if (!hydrated) return <p role="status">Loading form...</p>;
+	if (!hydrated || lookupState === "loading") return <p role="status">Loading form...</p>;
+
+	if (lookupState === "error") {
+		return (
+			<div className="ncr-form">
+				<h1>Non-conformance report (NCR)</h1>
+				<section className="ncr-error-summary" role="alert">
+					<h2>The form could not load</h2>
+					<p>{lookupError}</p>
+				</section>
+				<p>
+					<button type="button" className="ncr-btn ncr-btn-primary" onClick={() => void loadLookups()}>
+						Try again
+					</button>
+				</p>
+				<FormStyles />
+			</div>
+		);
+	}
 
 	if (submitted) {
 		return (
 			<div className="ncr-form">
 				<h1 ref={headingRef} tabIndex={-1}>NCR {submitted} submitted</h1>
-				<p>The report was written to the browser console. Nothing was sent to a server.</p>
+				<p>The report was saved to the database.</p>
 				<button type="button" className="ncr-btn ncr-btn-primary" onClick={() => { setSubmitted(null); resetForm("Started a new NCR."); }}>
 					Start a new NCR
 				</button>
@@ -455,7 +511,7 @@ export default function NcrForm() {
 			aria-labelledby="ncr-title"
 			onSubmit={(e) => {
 				e.preventDefault();
-				if (step === REVIEW_STEP) submit();
+				if (step === REVIEW_STEP) void submit();
 				else saveAndContinue();
 			}}
 		>
@@ -464,16 +520,10 @@ export default function NcrForm() {
 			<nav aria-label="Form sections" className="ncr-steps">
 				<ol>
 					{SECTIONS.map((s, i) => {
-						const state =
-							s.id === "review" ? "" : saved[s.id as SectionId] ? "Saved" : "Not saved";
+						const state = s.id === "review" ? "" : saved[s.id as SectionId] ? "Saved" : "Not saved";
 						return (
 							<li key={s.id}>
-								<button
-									type="button"
-									className="ncr-step-btn"
-									aria-current={i === step ? "step" : undefined}
-									onClick={() => goTo(i)}
-								>
+								<button type="button" className="ncr-step-btn" aria-current={i === step ? "step" : undefined} onClick={() => goTo(i)}>
 									{i + 1}. {s.title}
 									{state && <span className="ncr-step-state">{state}</span>}
 								</button>
@@ -535,8 +585,9 @@ export default function NcrForm() {
 				{current.id === "process" && (
 					<>
 						<Input type={Input.TEXT} name="ncrNumber" label="NCR number" value={p.ncrNumber} readOnly
-							helpText="Assigned for you in the format year-number. You cannot change it." />
-						<RadioGroup id="processType" legend="Which process does this report cover?" required
+							placeholder="Looking up the next number..." error={errors.ncrNumber}
+							helpText="The next number in the sequence. It is checked again when you submit." />
+						<ChoiceGroup id="processType" legend="Which process does this report cover?" required
 							helpText="Choose Supplier or receiving inspection for purchased items. Choose Work in progress for items made in-house."
 							error={errors.processType}>
 							<Input type={Input.RADIO} name="processType-supplier" groupName="processType" value="supplier"
@@ -545,24 +596,24 @@ export default function NcrForm() {
 							<Input type={Input.RADIO} name="processType-wip" groupName="processType" value="wip"
 								label="Work in progress (production order)" checked={p.processType === "wip"} required
 								onChange={() => update("process", { processType: "wip" })} />
-						</RadioGroup>
+						</ChoiceGroup>
 						<Input type={Input.DROPDOWN} name="supplier" label={isSupplierProcess ? "Supplier" : "Supplier (optional)"}
-							items={[...SUPPLIERS, ADD_SUPPLIER]} value={p.supplier} required={isSupplierProcess}
+							items={[...lookups.suppliers.map((s) => s.name), ADD_SUPPLIER]} value={p.supplier} required={isSupplierProcess}
 							onChange={text("process", "supplier")} error={errors.supplier}
-							helpText="Pick the supplier that sent the item." />
+							helpText={isSupplierProcess ? "Pick the supplier that sent the item." : "Leave empty for in-house production."} />
 						{p.supplier === ADD_SUPPLIER && (
 							<Input type={Input.TEXT} name="newSupplierName" label="New supplier name" value={p.newSupplierName}
-								required maxLength={75} placeholder="e.g. Lakeshore Tooling Co." autoComplete="off"
+								required maxLength={200} placeholder="e.g. Lakeshore Tooling Co." autoComplete="off"
 								onChange={text("process", "newSupplierName")} error={errors.newSupplierName} />
 						)}
 						<Input type={Input.TEXT} name="poNumber"
-							label={isSupplierProcess ? "Purchase order number" : "Production order number (optional)"}
-							value={p.poNumber} required={isSupplierProcess} inputMode="numeric" maxLength={18} autoComplete="off"
+							label={p.processType === "wip" ? "Production order number" : "Purchase order number"}
+							value={p.poNumber} required inputMode="numeric" maxLength={18} autoComplete="off"
 							placeholder="e.g. 4500123456" helpText="Type it exactly as it appears on the paperwork. Digits only."
 							onChange={text("process", "poNumber")} error={errors.poNumber} />
-						<Input type={Input.TEXT} name="salesOrderNumber" label="Sales order number (optional)"
-							value={p.salesOrderNumber} inputMode="numeric" maxLength={18} autoComplete="off"
-							placeholder="e.g. 1012345" helpText="Digits only. Leave empty if there is none."
+						<Input type={Input.TEXT} name="salesOrderNumber" label="Sales order number"
+							value={p.salesOrderNumber} required inputMode="numeric" maxLength={18} autoComplete="off"
+							placeholder="e.g. 1012345" helpText="Digits only."
 							onChange={text("process", "salesOrderNumber")} error={errors.salesOrderNumber} />
 					</>
 				)}
@@ -570,15 +621,15 @@ export default function NcrForm() {
 				{current.id === "item" && (
 					<>
 						<Input type={Input.TEXT} name="itemName" label="Item name" value={values.item.itemName} required
-							maxLength={100} autoComplete="off" placeholder="e.g. Hydraulic fitting, 1/2 in"
+							maxLength={200} autoComplete="off" placeholder="e.g. Hydraulic fitting, 1/2 in"
 							onChange={text("item", "itemName")} error={errors.itemName} />
 						<Input type={Input.TEXT} name="itemSapNumber" label="SAP number" value={values.item.itemSapNumber} required
 							maxLength={20} autoComplete="off" placeholder="e.g. 100234567"
 							onChange={text("item", "itemSapNumber")} error={errors.itemSapNumber} />
 						<Input type={Input.PARAGRAPH} name="itemDescription" label="Item description (optional)"
-							value={values.item.itemDescription} placeholder="e.g. Stainless steel, drawing rev C, lot 24-0815"
-							helpText="Add anything that helps identify the item, such as material, revision or lot."
-							onChange={text("item", "itemDescription")} />
+							value={values.item.itemDescription} maxLength={300} placeholder="e.g. Stainless steel, drawing rev C, lot 24-0815"
+							helpText={`Material, revision or lot help identify the item. Up to 300 characters. ${values.item.itemDescription.length} used.`}
+							onChange={text("item", "itemDescription")} error={errors.itemDescription} />
 					</>
 				)}
 
@@ -591,15 +642,31 @@ export default function NcrForm() {
 							required min={1} max={values.defect.qtyReceived || undefined} step={1} inputMode="numeric" placeholder="e.g. 3"
 							helpText="Count only the items that do not meet requirements."
 							onChange={text("defect", "qtyDefective")} error={errors.qtyDefective} />
-						<Input type={Input.DROPDOWN} name="problemType" label="Problem type" items={PROBLEM_TYPES.map((t) => t.label)}
-							value={values.defect.problemType} required
-							helpText={problem ? problem.description : "Pick the closest match. A short description appears here."}
-							onChange={text("defect", "problemType")} error={errors.problemType} />
+						<ChoiceGroup id="problemTypeIds" legend="Problem types" required
+							helpText="Tick every problem that applies." error={errors.problemTypeIds}>
+							{lookups.problemTypes.length === 0 && (
+								<p className="ncr-help">No problem types are set up in the database yet.</p>
+							)}
+							{lookups.problemTypes.map((t, idx) => {
+								const idStr = String(t.id);
+								return (
+									<Input key={t.id} type={Input.CHECKBOX} id={idx === 0 ? "problemTypeIds" : undefined}
+										name={`problemType-${t.id}`} value={idStr} label={t.label} helpText={t.description || undefined}
+										checked={selectedProblems.includes(idStr)}
+										onChange={() => update("defect", {
+											problemTypeIds: selectedProblems.includes(idStr)
+												? selectedProblems.filter((x) => x !== idStr)
+												: [...selectedProblems, idStr],
+										})} />
+								);
+							})}
+						</ChoiceGroup>
 						<Input type={Input.PARAGRAPH} name="defectDescription" label="Description of defect"
-							value={values.defect.defectDescription} required
+							value={values.defect.defectDescription} required maxLength={400}
 							placeholder="Say what is wrong, where on the item, and how you found it. Include measurements if you have them."
+							helpText={`Up to 400 characters. ${values.defect.defectDescription.length} used.`}
 							onChange={text("defect", "defectDescription")} error={errors.defectDescription} />
-						<RadioGroup id="isNonconforming" legend="Is the item marked as nonconforming?" required
+						<ChoiceGroup id="isNonconforming" legend="Is the item marked as nonconforming?" required
 							helpText="Choose Yes if the item has been tagged or marked as nonconforming." error={errors.isNonconforming}>
 							<Input type={Input.RADIO} name="isNonconforming-yes" groupName="isNonconforming" value="yes" label="Yes"
 								checked={values.defect.isNonconforming === "yes"} required
@@ -607,7 +674,7 @@ export default function NcrForm() {
 							<Input type={Input.RADIO} name="isNonconforming-no" groupName="isNonconforming" value="no" label="No"
 								checked={values.defect.isNonconforming === "no"} required
 								onChange={() => update("defect", { isNonconforming: "no" })} />
-						</RadioGroup>
+						</ChoiceGroup>
 					</>
 				)}
 
@@ -615,7 +682,7 @@ export default function NcrForm() {
 					<>
 						<Input key={fileInputKey} type={Input.FILE} name="files" label="Pictures, screenshots and PDFs (optional)"
 							accept="image/*,application/pdf" multiple error={errors.files}
-							helpText="You can choose more than one file. To change your choice, choose the files again."
+							helpText="You can choose more than one file. File upload is not connected yet: only the file names are recorded, the files themselves are not stored."
 							onChange={(e) => {
 								const list = Array.from((e.target as HTMLInputElement).files ?? []);
 								setFiles(list);
@@ -672,28 +739,32 @@ export default function NcrForm() {
 				{current.id === "inspector" && (
 					<>
 						<Input type={Input.DROPDOWN} name="inspector" label="Inspector name"
-							items={[...INSPECTORS.map(fullName), ADD_INSPECTOR]} value={values.inspector.inspector} required
-							helpText="Filled in with your name. Change it if someone else did the inspection."
+							items={[...lookups.inspectors.map(fullName), ADD_INSPECTOR]} value={values.inspector.inspector} required
+							helpText="Filled in with the first inspector on the list. Change it if someone else did the inspection."
 							onChange={text("inspector", "inspector")} error={errors.inspector} />
 						{values.inspector.inspector === ADD_INSPECTOR && (
 							<>
 								<Input type={Input.TEXT} name="newFirstName" label="First name" value={values.inspector.newFirstName}
-									required maxLength={20} autoComplete="off" onChange={text("inspector", "newFirstName")} error={errors.newFirstName} />
+									required maxLength={75} autoComplete="off" onChange={text("inspector", "newFirstName")} error={errors.newFirstName} />
 								<Input type={Input.TEXT} name="newMiddleName" label="Middle name (optional)" value={values.inspector.newMiddleName}
-									maxLength={20} autoComplete="off" onChange={text("inspector", "newMiddleName")} error={errors.newMiddleName} />
+									maxLength={75} autoComplete="off" onChange={text("inspector", "newMiddleName")} error={errors.newMiddleName} />
 								<Input type={Input.TEXT} name="newLastName" label="Last name" value={values.inspector.newLastName}
-									required maxLength={20} autoComplete="off" onChange={text("inspector", "newLastName")} error={errors.newLastName} />
+									required maxLength={75} autoComplete="off" onChange={text("inspector", "newLastName")} error={errors.newLastName} />
 							</>
 						)}
-						<Input type={Input.DATETIME} name="signedAt" label="Signed date and time" value={signedAt} readOnly
-							helpText="Set to the exact time when you submit the report." />
 					</>
 				)}
 
 				{current.id === "review" && (
 					<>
-						<p>Check each part. Choose Change to fix something, then save that section again.</p>
-						{reviewGroups(values, files).map((g) => (
+						{submitError && (
+							<section ref={submitErrorRef} tabIndex={-1} className="ncr-error-summary" aria-labelledby="ncr-submit-error-title">
+								<h3 id="ncr-submit-error-title">The NCR was not submitted</h3>
+								<p>{submitError}</p>
+							</section>
+						)}
+						<p>Check each part. Choose Change to fix something, then save that section again. The time of submission is recorded as the NCR's creation time.</p>
+						{reviewGroups(values, files, lookups).map((g) => (
 							<section key={g.id} className="ncr-review-group" aria-labelledby={`review-${g.id}`}>
 								<div className="ncr-review-head">
 									<h3 id={`review-${g.id}`}>{g.title}</h3>
@@ -723,8 +794,8 @@ export default function NcrForm() {
 							Back
 						</button>
 					)}
-					<button type="submit" className="ncr-btn ncr-btn-primary">
-						{step === REVIEW_STEP ? "Submit NCR" : "Save and continue"}
+					<button type="submit" className="ncr-btn ncr-btn-primary" aria-disabled={submitting || undefined}>
+						{step === REVIEW_STEP ? (submitting ? "Submitting..." : "Submit NCR") : "Save and continue"}
 					</button>
 				</div>
 			</div>
@@ -734,72 +805,68 @@ export default function NcrForm() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Review summary and payload (shaped like the data model)             */
+/* Review summary and submission                                       */
 /* ------------------------------------------------------------------ */
 const supplierOf = (p: FormValues["process"]) =>
-	p.supplier === ADD_SUPPLIER ? p.newSupplierName.trim() : p.supplier;
+	p.supplier === ADD_SUPPLIER ? p.newSupplierName.trim() : p.supplier.trim();
 const processLabel = (t: ProcessType) =>
 	t === "supplier" ? "Supplier or Rec-Insp" : t === "wip" ? "WIP (Production Order)" : "";
-const inspectorOf = (n: FormValues["inspector"]) =>
-	n.inspector === ADD_INSPECTOR
-		? { first: n.newFirstName.trim(), middle: n.newMiddleName.trim(), last: n.newLastName.trim() }
-		: INSPECTORS.find((i) => fullName(i) === n.inspector) ?? { first: n.inspector, middle: "", last: "" };
 
-function reviewGroups(v: FormValues, files: File[]) {
+function reviewGroups(v: FormValues, files: File[], l: FormLookups) {
 	const yesNo = v.defect.isNonconforming === "yes" ? "Yes" : v.defect.isNonconforming === "no" ? "No" : "";
 	const fileNames = files.length ? files.map((f) => f.name) : v.evidence.fileNames;
+	const problems = l.problemTypes.filter((t) => v.defect.problemTypeIds.includes(String(t.id))).map((t) => t.label);
+	const inspector = v.inspector.inspector === ADD_INSPECTOR
+		? fullName({ first: v.inspector.newFirstName.trim(), middle: v.inspector.newMiddleName.trim(), last: v.inspector.newLastName.trim() })
+		: v.inspector.inspector;
 	return [
 		{ id: "process" as SectionId, title: "Process and source", rows: [
 			["NCR number", v.process.ncrNumber], ["Process", processLabel(v.process.processType)],
-			["Supplier", supplierOf(v.process)], ["Purchase or production order", v.process.poNumber],
+			["Supplier", supplierOf(v.process) || "In-house production"],
+			[v.process.processType === "wip" ? "Production order" : "Purchase order", v.process.poNumber],
 			["Sales order", v.process.salesOrderNumber]] },
 		{ id: "item" as SectionId, title: "Item", rows: [
 			["Item name", v.item.itemName], ["SAP number", v.item.itemSapNumber], ["Description", v.item.itemDescription]] },
 		{ id: "defect" as SectionId, title: "Defect details", rows: [
 			["Quantity received", v.defect.qtyReceived], ["Quantity defective", v.defect.qtyDefective],
-			["Problem type", v.defect.problemType], ["Description of defect", v.defect.defectDescription],
+			["Problem types", problems.join(", ")], ["Description of defect", v.defect.defectDescription],
 			["Marked nonconforming", yesNo]] },
 		{ id: "evidence" as SectionId, title: "Pictures and links", rows: [
-			["Files", fileNames.join(", ")], ["Links", v.evidence.links.filter((l) => l.trim()).join(", ")]] },
-		{ id: "inspector" as SectionId, title: "Inspector", rows: [["Inspector", fullName(inspectorOf(v.inspector))]] },
+			["Files", fileNames.join(", ")], ["Links", v.evidence.links.filter((x) => x.trim()).join(", ")]] },
+		{ id: "inspector" as SectionId, title: "Inspector", rows: [["Inspector", inspector]] },
 	] as { id: SectionId; title: string; rows: [string, string][] }[];
 }
 
-function buildPayload(v: FormValues, files: File[]) {
-	const supplierName = supplierOf(v.process);
-	const inspector = inspectorOf(v.inspector);
+function buildSubmission(v: FormValues, files: File[], l: FormLookups): NcrSubmission {
+	const p = v.process;
+	let inspector: NcrSubmission["inspector"];
+	if (v.inspector.inspector === ADD_INSPECTOR) {
+		inspector = {
+			kind: "new",
+			first: v.inspector.newFirstName.trim(),
+			middle: v.inspector.newMiddleName.trim(),
+			last: v.inspector.newLastName.trim(),
+		};
+	} else {
+		const known: InspectorOption | undefined = l.inspectors.find((i) => fullName(i) === v.inspector.inspector);
+		if (!known) throw new Error("The chosen inspector is no longer in the database. Go back and choose the inspector again.");
+		inspector = { kind: "existing", personId: known.personId, rolePersonId: known.rolePersonId };
+	}
 	return {
-		ncr: {
-			ncrNumber: v.process.ncrNumber,
-			ncrProcessType: processLabel(v.process.processType),
-			ncrDefectDescription: v.defect.defectDescription.trim(),
-			ncrQuantityReceived: Number(v.defect.qtyReceived),
-			ncrQuantityDefective: Number(v.defect.qtyDefective),
-			ncrIsNonconforming: v.defect.isNonconforming === "yes",
-			ncrSignedAt: new Date().toISOString(),
-		},
-		problemType: v.defect.problemType, // backend resolves ProblemTypeId
-		inspector: { inspectorFirstName: inspector.first, inspectorMiddleName: inspector.middle, inspectorLastName: inspector.last },
-		supplier: supplierName ? { supplierName, isNew: v.process.supplier === ADD_SUPPLIER } : null,
-		// BIGINT values stay strings: JS numbers lose precision above 2^53.
-		purchaseOrder: v.process.poNumber.trim() ? { purchaseOrderNumber: v.process.poNumber.trim() } : null,
-		salesOrder: v.process.salesOrderNumber.trim() ? { salesOrderNumber: v.process.salesOrderNumber.trim() } : null,
-		item: {
-			itemName: v.item.itemName.trim(),
-			itemDescription: v.item.itemDescription.trim() || null,
-			itemSAPNumber: v.item.itemSapNumber.trim(),
-		},
-		attachments: [
-			...files.map((f) => ({
-				attachmentType: f.type.startsWith("image/") ? "Image" : "Document",
-				attachmentFileName: f.name,
-			})),
-			...v.evidence.links.filter((l) => l.trim()).map((l) => ({
-				attachmentType: "Link",
-				attachmentFileName: new URL(l.trim()).hostname,
-				attachmentFilePath: l.trim(),
-			})),
-		],
+		ncrNumber: p.ncrNumber,
+		processApplicable: processLabel(p.processType),
+		supplier: supplierOf(p) || null,
+		purchaseOrderNumber: p.poNumber.trim(),
+		salesOrderNumber: p.salesOrderNumber.trim(),
+		item: { name: v.item.itemName.trim(), description: v.item.itemDescription.trim(), sapNumber: v.item.itemSapNumber.trim() },
+		quantityReceived: Number(v.defect.qtyReceived),
+		quantityDefective: Number(v.defect.qtyDefective),
+		problemTypeIds: v.defect.problemTypeIds.map(Number),
+		defectDescription: v.defect.defectDescription.trim(),
+		isNonconforming: v.defect.isNonconforming === "yes",
+		inspector,
+		files,
+		links: v.evidence.links.map((x) => x.trim()).filter(Boolean),
 	};
 }
 
@@ -842,6 +909,7 @@ function FormStyles() {
 			.ncr-step-btn[aria-current="step"] { border-width: 4px; font-weight: 700; }
 			.ncr-step-state { display: block; font-size: 0.9rem; font-weight: 400; }
 			.ncr-btn-primary { background: var(--text-h); color: var(--bg, Canvas); font-weight: 600; }
+			.ncr-btn[aria-disabled="true"] { cursor: progress; }
 			.ncr-tools, .ncr-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
 			.ncr-actions { margin-top: 0.5rem; }
 			.ncr-status { min-height: 1.5rem; margin: 0.75rem 0; }
@@ -853,6 +921,7 @@ function FormStyles() {
 			.ncr-fieldset { border: 1px solid var(--text-h); border-radius: 0.5rem; padding: 0.75rem 1rem 1rem; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 			.ncr-fieldset legend { font-weight: 600; padding: 0 0.25rem; }
 			.ncr-error-summary { border: 3px solid var(--error); border-radius: 0.5rem; padding: 1rem; }
+			.ncr-error-summary p { margin: 0.5rem 0 0; }
 			.ncr-error-summary ul { margin: 0.5rem 0 0; padding-left: 1.25rem; }
 			.ncr-error-summary li { margin: 0; }
 			.ncr-error-summary a { display: inline-block; padding: 0.5rem 0; color: var(--text-h); text-decoration: underline; }
