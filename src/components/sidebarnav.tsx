@@ -34,7 +34,7 @@ var SidebarNav = () => {
       }}>
         <li className="sidebarLink">  
           
-          <a href="/dashboard" aria-current={path === "/dashboard" ? "page" : undefined} className={path === "/dashboard" ? "active" : ""}><LuLayoutDashboard aria-hidden="true"/>Dashboard</a>
+          <a href="/dashboard" aria-current={path === "/dashboard" ? "page" : undefined} className={path === "/dashboard" || path === "/" ? "active" : ""}><LuLayoutDashboard aria-hidden="true"/>Dashboard</a>
         </li>
         <li className="sidebarLink">  
       
