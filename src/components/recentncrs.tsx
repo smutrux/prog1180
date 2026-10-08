@@ -1,1100 +1,1100 @@
 
-import { useEffect, useRef, useState } from "react";
-import { FiEdit3, FiX } from "react-icons/fi";
+    import { useEffect, useRef, useState } from "react";
+    import { FiEdit3, FiX } from "react-icons/fi";
 
-const RecentNcrs = () => {
-    const [ncrs, setNcrs] = useState([
-        {
-            number: "NCR-2026-001",
-            date: "Oct 2, 2026",
-            supplier: "Acme Manufacturing",
-            product: "Steel Bracket 42A",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-002",
-            date: "Oct 1, 2026",
-            supplier: "Northern Components",
-            product: "Aluminum Housing",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-003",
-            date: "Sep 29, 2026",
-            supplier: "Precision Parts Ltd.",
-            product: "Drive Shaft Assembly",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-004",
-            date: "Sep 27, 2026",
-            supplier: "Maple Industrial",
-            product: "Mounting Plate",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-005",
-            date: "Sep 25, 2026",
-            supplier: "Ontario Fabrication",
-            product: "Control Panel Cover",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-006",
-            date: "Sep 23, 2026",
-            supplier: "Great Lakes Supply",
-            product: "Hydraulic Valve",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-007",
-            date: "Sep 21, 2026",
-            supplier: "Acme Manufacturing",
-            product: "Steel Support Arm",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-008",
-            date: "Sep 18, 2026",
-            supplier: "Northern Components",
-            product: "Electrical Enclosure",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-009",
-            date: "Sep 16, 2026",
-            supplier: "Precision Parts Ltd.",
-            product: "Bearing Housing",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-010",
-            date: "Sep 14, 2026",
-            supplier: "Maple Industrial",
-            product: "Stainless Steel Frame",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-011",
-            date: "Sep 12, 2026",
-            supplier: "Ontario Fabrication",
-            product: "Motor Mount",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-012",
-            date: "Sep 10, 2026",
-            supplier: "Great Lakes Supply",
-            product: "Pressure Regulator",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-013",
-            date: "Sep 8, 2026",
-            supplier: "Acme Manufacturing",
-            product: "Gear Assembly",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-014",
-            date: "Sep 6, 2026",
-            supplier: "Northern Components",
-            product: "Cooling Fan Housing",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-015",
-            date: "Sep 4, 2026",
-            supplier: "Precision Parts Ltd.",
-            product: "Steel Retaining Ring",
-            status: "Open"
-        }
-    ]);
-
-    const [currentPage, setCurrentPage] = useState(1);
-    const [editingNcr, setEditingNcr] = useState<any>(null);
-    const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
-
-    const editButtonRef = useRef<HTMLButtonElement | null>(null);
-    const modalRef = useRef<HTMLDivElement | null>(null);
-    const firstInputRef = useRef<HTMLInputElement | null>(null);
-    const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
-
-    const ncrsPerPage = 4;
-
-    const totalPages = Math.ceil(ncrs.length / ncrsPerPage);
-
-    const startIndex = (currentPage - 1) * ncrsPerPage;
-
-    const currentNcrs = ncrs.slice(
-        startIndex,
-        startIndex + ncrsPerPage
-    );
-
-    const previousPage = () => {
-        if (currentPage > 1) {
-            setCurrentPage(currentPage - 1);
-        }
-    };
-
-    const nextPage = () => {
-        if (currentPage < totalPages) {
-            setCurrentPage(currentPage + 1);
-        }
-    };
-
-    const openEdit = (
-        ncr: any,
-        button: HTMLButtonElement
-    ) => {
-        const date = new Date(ncr.date);
-
-        const formattedDate =
-            date.getFullYear() +
-            "-" +
-            String(date.getMonth() + 1).padStart(2, "0") +
-            "-" +
-            String(date.getDate()).padStart(2, "0");
-
-        setEditingNcr({
-            ...ncr,
-            date: formattedDate
-        });
-
-        editButtonRef.current = button;
-    };
-
-    const closeEdit = () => {
-        setShowSaveConfirmation(false);
-        setEditingNcr(null);
-
-        setTimeout(() => {
-            editButtonRef.current?.focus();
-        }, 0);
-    };
-
-    useEffect(() => {
-        if (!editingNcr) {
-            return;
-        }
-
-        setTimeout(() => {
-            if (showSaveConfirmation) {
-                confirmButtonRef.current?.focus();
-            } else {
-                firstInputRef.current?.focus();
+    const RecentNcrs = () => {
+        const [ncrs, setNcrs] = useState([
+            {
+                number: "NCR-2026-001",
+                date: "Oct 2, 2026",
+                supplier: "Acme Manufacturing",
+                product: "Steel Bracket 42A",
+                status: "Open"
+            },
+            {
+                number: "NCR-2026-002",
+                date: "Oct 1, 2026",
+                supplier: "Northern Components",
+                product: "Aluminum Housing",
+                status: "Closed"
+            },
+            {
+                number: "NCR-2026-003",
+                date: "Sep 29, 2026",
+                supplier: "Precision Parts Ltd.",
+                product: "Drive Shaft Assembly",
+                status: "Open"
+            },
+            {
+                number: "NCR-2026-004",
+                date: "Sep 27, 2026",
+                supplier: "Maple Industrial",
+                product: "Mounting Plate",
+                status: "Closed"
+            },
+            {
+                number: "NCR-2026-005",
+                date: "Sep 25, 2026",
+                supplier: "Ontario Fabrication",
+                product: "Control Panel Cover",
+                status: "Open"
+            },
+            {
+                number: "NCR-2026-006",
+                date: "Sep 23, 2026",
+                supplier: "Great Lakes Supply",
+                product: "Hydraulic Valve",
+                status: "Closed"
+            },
+            {
+                number: "NCR-2026-007",
+                date: "Sep 21, 2026",
+                supplier: "Acme Manufacturing",
+                product: "Steel Support Arm",
+                status: "Open"
+            },
+            {
+                number: "NCR-2026-008",
+                date: "Sep 18, 2026",
+                supplier: "Northern Components",
+                product: "Electrical Enclosure",
+                status: "Closed"
+            },
+            {
+                number: "NCR-2026-009",
+                date: "Sep 16, 2026",
+                supplier: "Precision Parts Ltd.",
+                product: "Bearing Housing",
+                status: "Open"
+            },
+            {
+                number: "NCR-2026-010",
+                date: "Sep 14, 2026",
+                supplier: "Maple Industrial",
+                product: "Stainless Steel Frame",
+                status: "Closed"
+            },
+            {
+                number: "NCR-2026-011",
+                date: "Sep 12, 2026",
+                supplier: "Ontario Fabrication",
+                product: "Motor Mount",
+                status: "Open"
+            },
+            {
+                number: "NCR-2026-012",
+                date: "Sep 10, 2026",
+                supplier: "Great Lakes Supply",
+                product: "Pressure Regulator",
+                status: "Closed"
+            },
+            {
+                number: "NCR-2026-013",
+                date: "Sep 8, 2026",
+                supplier: "Acme Manufacturing",
+                product: "Gear Assembly",
+                status: "Open"
+            },
+            {
+                number: "NCR-2026-014",
+                date: "Sep 6, 2026",
+                supplier: "Northern Components",
+                product: "Cooling Fan Housing",
+                status: "Closed"
+            },
+            {
+                number: "NCR-2026-015",
+                date: "Sep 4, 2026",
+                supplier: "Precision Parts Ltd.",
+                product: "Steel Retaining Ring",
+                status: "Open"
             }
-        }, 0);
+        ]);
 
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                if (showSaveConfirmation) {
-                    setShowSaveConfirmation(false);
-                } else {
-                    closeEdit();
-                }
+        const [currentPage, setCurrentPage] = useState(1);
+        const [editingNcr, setEditingNcr] = useState<any>(null);
+        const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
 
-                return;
-            }
+        const editButtonRef = useRef<HTMLButtonElement | null>(null);
+        const modalRef = useRef<HTMLDivElement | null>(null);
+        const firstInputRef = useRef<HTMLInputElement | null>(null);
+        const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
 
-            if (
-                e.key !== "Tab" ||
-                !modalRef.current
-            ) {
-                return;
-            }
+        const ncrsPerPage = 4;
 
-            const focusableElements =
-                modalRef.current.querySelectorAll<HTMLElement>(
-                    "button, input, select, textarea, [tabindex]:not([tabindex='-1'])"
-                );
+        const totalPages = Math.ceil(ncrs.length / ncrsPerPage);
 
-            if (focusableElements.length === 0) {
-                return;
-            }
+        const startIndex = (currentPage - 1) * ncrsPerPage;
 
-            const firstElement =
-                focusableElements[0];
+        const currentNcrs = ncrs.slice(
+            startIndex,
+            startIndex + ncrsPerPage
+        );
 
-            const lastElement =
-                focusableElements[
-                    focusableElements.length - 1
-                ];
-
-            if (
-                e.shiftKey &&
-                document.activeElement === firstElement
-            ) {
-                e.preventDefault();
-                lastElement.focus();
-            }
-
-            if (
-                !e.shiftKey &&
-                document.activeElement === lastElement
-            ) {
-                e.preventDefault();
-                firstElement.focus();
+        const previousPage = () => {
+            if (currentPage > 1) {
+                setCurrentPage(currentPage - 1);
             }
         };
 
-        document.addEventListener(
-            "keydown",
-            handleKeyDown
-        );
+        const nextPage = () => {
+            if (currentPage < totalPages) {
+                setCurrentPage(currentPage + 1);
+            }
+        };
 
-        return () => {
-            document.removeEventListener(
+        const openEdit = (
+            ncr: any,
+            button: HTMLButtonElement
+        ) => {
+            const date = new Date(ncr.date);
+
+            const formattedDate =
+                date.getFullYear() +
+                "-" +
+                String(date.getMonth() + 1).padStart(2, "0") +
+                "-" +
+                String(date.getDate()).padStart(2, "0");
+
+            setEditingNcr({
+                ...ncr,
+                date: formattedDate
+            });
+
+            editButtonRef.current = button;
+        };
+
+        const closeEdit = () => {
+            setShowSaveConfirmation(false);
+            setEditingNcr(null);
+
+            setTimeout(() => {
+                editButtonRef.current?.focus();
+            }, 0);
+        };
+
+        useEffect(() => {
+            if (!editingNcr) {
+                return;
+            }
+
+            setTimeout(() => {
+                if (showSaveConfirmation) {
+                    confirmButtonRef.current?.focus();
+                } else {
+                    firstInputRef.current?.focus();
+                }
+            }, 0);
+
+            const handleKeyDown = (e: KeyboardEvent) => {
+                if (e.key === "Escape") {
+                    if (showSaveConfirmation) {
+                        setShowSaveConfirmation(false);
+                    } else {
+                        closeEdit();
+                    }
+
+                    return;
+                }
+
+                if (
+                    e.key !== "Tab" ||
+                    !modalRef.current
+                ) {
+                    return;
+                }
+
+                const focusableElements =
+                    modalRef.current.querySelectorAll<HTMLElement>(
+                        "button, input, select, textarea, [tabindex]:not([tabindex='-1'])"
+                    );
+
+                if (focusableElements.length === 0) {
+                    return;
+                }
+
+                const firstElement =
+                    focusableElements[0];
+
+                const lastElement =
+                    focusableElements[
+                        focusableElements.length - 1
+                    ];
+
+                if (
+                    e.shiftKey &&
+                    document.activeElement === firstElement
+                ) {
+                    e.preventDefault();
+                    lastElement.focus();
+                }
+
+                if (
+                    !e.shiftKey &&
+                    document.activeElement === lastElement
+                ) {
+                    e.preventDefault();
+                    firstElement.focus();
+                }
+            };
+
+            document.addEventListener(
                 "keydown",
                 handleKeyDown
             );
-        };
-    }, [editingNcr, showSaveConfirmation]);
 
-    const handleChange = (
-        e: React.ChangeEvent<
-            HTMLInputElement | HTMLSelectElement
-        >
-    ) => {
-        const { name, value } = e.target;
+            return () => {
+                document.removeEventListener(
+                    "keydown",
+                    handleKeyDown
+                );
+            };
+        }, [editingNcr, showSaveConfirmation]);
 
-        setEditingNcr({
-            ...editingNcr,
-            [name]: value
-        });
-    };
+        const handleChange = (
+            e: React.ChangeEvent<
+                HTMLInputElement | HTMLSelectElement
+            >
+        ) => {
+            const { name, value } = e.target;
 
-    // Opens the confirmation dialog
-    const saveEdit = () => {
-        setShowSaveConfirmation(true);
-    };
-
-    // Actually saves the changes
-    const confirmSave = () => {
-        const formattedDate = new Date(
-            editingNcr.date + "T00:00:00"
-        ).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric"
-        });
-
-        const updatedNcr = {
-            ...editingNcr,
-            date: formattedDate
+            setEditingNcr({
+                ...editingNcr,
+                [name]: value
+            });
         };
 
-        setNcrs((currentNcrs) =>
-            currentNcrs.map((ncr) =>
-                ncr.number === editingNcr.number
-                    ? updatedNcr
-                    : ncr
-            )
-        );
+        // Opens the confirmation dialog
+        const saveEdit = () => {
+            setShowSaveConfirmation(true);
+        };
 
-        setShowSaveConfirmation(false);
-        closeEdit();
-    };
+        // Actually saves the changes
+        const confirmSave = () => {
+            const formattedDate = new Date(
+                editingNcr.date + "T00:00:00"
+            ).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric"
+            });
 
-    const cancelSave = () => {
-        setShowSaveConfirmation(false);
+            const updatedNcr = {
+                ...editingNcr,
+                date: formattedDate
+            };
 
-        setTimeout(() => {
-            firstInputRef.current?.focus();
-        }, 0);
-    };
+            setNcrs((currentNcrs) =>
+                currentNcrs.map((ncr) =>
+                    ncr.number === editingNcr.number
+                        ? updatedNcr
+                        : ncr
+                )
+            );
 
-    const openCalendar = (
-        e: React.MouseEvent<HTMLInputElement>
-    ) => {
-        const input = e.currentTarget;
+            setShowSaveConfirmation(false);
+            closeEdit();
+        };
 
-        if ("showPicker" in input) {
-            try {
-                (
-                    input as HTMLInputElement & {
-                        showPicker: () => void;
-                    }
-                ).showPicker();
-            } catch {
-                // Browser may prevent showPicker.
+        const cancelSave = () => {
+            setShowSaveConfirmation(false);
+
+            setTimeout(() => {
+                firstInputRef.current?.focus();
+            }, 0);
+        };
+
+        const openCalendar = (
+            e: React.MouseEvent<HTMLInputElement>
+        ) => {
+            const input = e.currentTarget;
+
+            if ("showPicker" in input) {
+                try {
+                    (
+                        input as HTMLInputElement & {
+                            showPicker: () => void;
+                        }
+                    ).showPicker();
+                } catch {
+                    // Browser may prevent showPicker.
+                }
             }
-        }
-    };
+        };
 
-    return (
-        <div className="recentNcrs">
-            <p className="recentNcrsTitle">
-                Recent NCR Table
-            </p>
+        return (
+            <div className="recentNcrs">
+                <p className="recentNcrsTitle">
+                    Recent NCR Table
+                </p>
 
-            <table>
-                <thead>
-                    <tr>
-                        <th scope="col">NCR NUMBER</th>
-                        <th scope="col">DATE</th>
-                        <th scope="col">SUPPLIER</th>
-                        <th scope="col">PRODUCT</th>
-                        <th scope="col">STATUS</th>
-                        <th scope="col">EDIT</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    {currentNcrs.map((ncr, index) => (
-                        <tr
-                            key={`${ncr.number}-${index}`}
-                        >
-                            <td className="ncrNumber">
-                                {ncr.number}
-                            </td>
-
-                            <td>{ncr.date}</td>
-
-                            <td>{ncr.supplier}</td>
-
-                            <td>{ncr.product}</td>
-
-                            <td>
-                                <span
-                                    className={`status ${ncr.status.toLowerCase()}`}
-                                >
-                                    <span
-                                        className="statusDot"
-                                        aria-hidden="true"
-                                    ></span>
-
-                                    {ncr.status}
-                                </span>
-                            </td>
-
-                            <td>
-                                <button
-                                    className="editButton"
-                                    type="button"
-                                    aria-label={`Edit ${ncr.number}`}
-                                    onClick={(e) =>
-                                        openEdit(
-                                            ncr,
-                                            e.currentTarget
-                                        )
-                                    }
-                                >
-                                    <FiEdit3 aria-hidden="true" />
-                                </button>
-                            </td>
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">NCR NUMBER</th>
+                            <th scope="col">DATE</th>
+                            <th scope="col">SUPPLIER</th>
+                            <th scope="col">PRODUCT</th>
+                            <th scope="col">STATUS</th>
+                            <th scope="col">EDIT</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
 
-            <div className="pagination">
-                <button
-                    type="button"
-                    onClick={previousPage}
-                    disabled={currentPage === 1}
-                    aria-label="Go to previous page"
-                >
-                    Previous
-                </button>
+                    <tbody>
+                        {currentNcrs.map((ncr, index) => (
+                            <tr
+                                key={`${ncr.number}-${index}`}
+                            >
+                                <td className="ncrNumber">
+                                    {ncr.number}
+                                </td>
 
-                <span aria-live="polite">
-                    Page {currentPage} of {totalPages}
-                </span>
+                                <td>{ncr.date}</td>
 
-                <button
-                    type="button"
-                    onClick={nextPage}
-                    disabled={currentPage === totalPages}
-                    aria-label="Go to next page"
-                >
-                    Next
-                </button>
-            </div>
+                                <td>{ncr.supplier}</td>
 
-            {editingNcr && (
-                <div
-                    className="modalOverlay"
-                    onClick={() => {
-                        if (!showSaveConfirmation) {
-                            closeEdit();
-                        }
-                    }}
-                >
-                    <div
-                        ref={modalRef}
-                        className={
-                            showSaveConfirmation
-                                ? "confirmationModal"
-                                : "editModal"
-                        }
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby={
-                            showSaveConfirmation
-                                ? "confirm-save-title"
-                                : "edit-ncr-title"
-                        }
-                        onClick={(e) =>
-                            e.stopPropagation()
-                        }
-                    >
-                        {!showSaveConfirmation ? (
-                            <>
-                                <div className="modalHeader">
-                                    <div>
-                                        <h2 id="edit-ncr-title">
-                                            Edit NCR
-                                        </h2>
+                                <td>{ncr.product}</td>
 
-                                        <p>
-                                            {editingNcr.number}
-                                        </p>
-                                    </div>
-
-                                    <button
-                                        className="closeButton"
-                                        type="button"
-                                        aria-label="Close edit NCR"
-                                        onClick={closeEdit}
+                                <td>
+                                    <span
+                                        className={`status ${ncr.status.toLowerCase()}`}
                                     >
-                                        <FiX aria-hidden="true" />
+                                        <span
+                                            className="statusDot"
+                                            aria-hidden="true"
+                                        ></span>
+
+                                        {ncr.status}
+                                    </span>
+                                </td>
+
+                                <td>
+                                    <button
+                                        className="editButton"
+                                        type="button"
+                                        aria-label={`Edit ${ncr.number}`}
+                                        onClick={(e) =>
+                                            openEdit(
+                                                ncr,
+                                                e.currentTarget
+                                            )
+                                        }
+                                    >
+                                        <FiEdit3 aria-hidden="true" />
                                     </button>
-                                </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
 
-                                <div className="form">
-                                    <div className="formGroup fullWidth">
-                                        <label htmlFor="ncr-number">
-                                            NCR Number
-                                        </label>
+                <div className="pagination">
+                    <button
+                        type="button"
+                        onClick={previousPage}
+                        disabled={currentPage === 1}
+                        aria-label="Go to previous page"
+                    >
+                        Previous
+                    </button>
 
-                                        <input
-                                            id="ncr-number"
-                                            type="text"
-                                            name="number"
-                                            value={
-                                                editingNcr.number
-                                            }
-                                            disabled
-                                        />
+                    <span aria-live="polite">
+                        Page {currentPage} of {totalPages}
+                    </span>
+
+                    <button
+                        type="button"
+                        onClick={nextPage}
+                        disabled={currentPage === totalPages}
+                        aria-label="Go to next page"
+                    >
+                        Next
+                    </button>
+                </div>
+
+                {editingNcr && (
+                    <div
+                        className="modalOverlay"
+                        onClick={() => {
+                            if (!showSaveConfirmation) {
+                                closeEdit();
+                            }
+                        }}
+                    >
+                        <div
+                            ref={modalRef}
+                            className={
+                                showSaveConfirmation
+                                    ? "confirmationModal"
+                                    : "editModal"
+                            }
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby={
+                                showSaveConfirmation
+                                    ? "confirm-save-title"
+                                    : "edit-ncr-title"
+                            }
+                            onClick={(e) =>
+                                e.stopPropagation()
+                            }
+                        >
+                            {!showSaveConfirmation ? (
+                                <>
+                                    <div className="modalHeader">
+                                        <div>
+                                            <h2 id="edit-ncr-title">
+                                                Edit NCR
+                                            </h2>
+
+                                            <p>
+                                                {editingNcr.number}
+                                            </p>
+                                        </div>
+
+                                        <button
+                                            className="closeButton"
+                                            type="button"
+                                            aria-label="Close edit NCR"
+                                            onClick={closeEdit}
+                                        >
+                                            <FiX aria-hidden="true" />
+                                        </button>
                                     </div>
 
-                                    <div className="formGroup">
-                                        <label htmlFor="ncr-date">
-                                            Date
-                                        </label>
+                                    <div className="form">
+                                        <div className="formGroup fullWidth">
+                                            <label htmlFor="ncr-number">
+                                                NCR Number
+                                            </label>
 
-                                        <div
-                                            className="dateInputWrapper"
-                                            onClick={(e) => {
-                                                const input =
-                                                    e.currentTarget.querySelector(
-                                                        "input"
-                                                    ) as HTMLInputElement;
-
-                                                if (
-                                                    input &&
-                                                    "showPicker" in
-                                                        input
-                                                ) {
-                                                    try {
-                                                        (
-                                                            input as HTMLInputElement & {
-                                                                showPicker: () => void;
-                                                            }
-                                                        ).showPicker();
-                                                    } catch {
-                                                        // Native picker fallback
-                                                    }
-                                                }
-                                            }}
-                                        >
                                             <input
-                                                ref={
-                                                    firstInputRef
-                                                }
-                                                id="ncr-date"
-                                                type="date"
-                                                name="date"
+                                                id="ncr-number"
+                                                type="text"
+                                                name="number"
                                                 value={
-                                                    editingNcr.date
+                                                    editingNcr.number
+                                                }
+                                                disabled
+                                            />
+                                        </div>
+
+                                        <div className="formGroup">
+                                            <label htmlFor="ncr-date">
+                                                Date
+                                            </label>
+
+                                            <div
+                                                className="dateInputWrapper"
+                                                onClick={(e) => {
+                                                    const input =
+                                                        e.currentTarget.querySelector(
+                                                            "input"
+                                                        ) as HTMLInputElement;
+
+                                                    if (
+                                                        input &&
+                                                        "showPicker" in
+                                                            input
+                                                    ) {
+                                                        try {
+                                                            (
+                                                                input as HTMLInputElement & {
+                                                                    showPicker: () => void;
+                                                                }
+                                                            ).showPicker();
+                                                        } catch {
+                                                            // Native picker fallback
+                                                        }
+                                                    }
+                                                }}
+                                            >
+                                                <input
+                                                    ref={
+                                                        firstInputRef
+                                                    }
+                                                    id="ncr-date"
+                                                    type="date"
+                                                    name="date"
+                                                    value={
+                                                        editingNcr.date
+                                                    }
+                                                    onChange={
+                                                        handleChange
+                                                    }
+                                                    onClick={
+                                                        openCalendar
+                                                    }
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="formGroup">
+                                            <label htmlFor="ncr-status">
+                                                Status
+                                            </label>
+
+                                            <select
+                                                id="ncr-status"
+                                                name="status"
+                                                value={
+                                                    editingNcr.status
                                                 }
                                                 onChange={
                                                     handleChange
                                                 }
-                                                onClick={
-                                                    openCalendar
+                                            >
+                                                <option value="Open">
+                                                    Open
+                                                </option>
+
+                                                <option value="Closed">
+                                                    Closed
+                                                </option>
+                                            </select>
+                                        </div>
+
+                                        <div className="formGroup fullWidth">
+                                            <label htmlFor="ncr-supplier">
+                                                Supplier
+                                            </label>
+
+                                            <input
+                                                id="ncr-supplier"
+                                                type="text"
+                                                name="supplier"
+                                                value={
+                                                    editingNcr.supplier
+                                                }
+                                                onChange={
+                                                    handleChange
+                                                }
+                                            />
+                                        </div>
+
+                                        <div className="formGroup fullWidth">
+                                            <label htmlFor="ncr-product">
+                                                Product
+                                            </label>
+
+                                            <input
+                                                id="ncr-product"
+                                                type="text"
+                                                name="product"
+                                                value={
+                                                    editingNcr.product
+                                                }
+                                                onChange={
+                                                    handleChange
                                                 }
                                             />
                                         </div>
                                     </div>
 
-                                    <div className="formGroup">
-                                        <label htmlFor="ncr-status">
-                                            Status
-                                        </label>
-
-                                        <select
-                                            id="ncr-status"
-                                            name="status"
-                                            value={
-                                                editingNcr.status
-                                            }
-                                            onChange={
-                                                handleChange
-                                            }
+                                    <div className="modalActions">
+                                        <button
+                                            className="cancelButton"
+                                            type="button"
+                                            onClick={closeEdit}
                                         >
-                                            <option value="Open">
-                                                Open
-                                            </option>
+                                            Cancel
+                                        </button>
 
-                                            <option value="Closed">
-                                                Closed
-                                            </option>
-                                        </select>
+                                        <button
+                                            className="saveButton"
+                                            type="button"
+                                            onClick={saveEdit}
+                                        >
+                                            Save Changes
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="confirmationContent">
+                                        <div className="confirmationIcon">
+                                            ?
+                                        </div>
+
+                                        <h2 id="confirm-save-title">
+                                            Save changes?
+                                        </h2>
+
+                                        <p>
+                                            Are you sure you want
+                                            to save the changes
+                                            made to{" "}
+                                            <strong>
+                                                {
+                                                    editingNcr.number
+                                                }
+                                            </strong>
+                                            ?
+                                        </p>
                                     </div>
 
-                                    <div className="formGroup fullWidth">
-                                        <label htmlFor="ncr-supplier">
-                                            Supplier
-                                        </label>
+                                    <div className="confirmationActions">
+                                        <button
+                                            className="cancelButton"
+                                            type="button"
+                                            onClick={cancelSave}
+                                        >
+                                            Go Back
+                                        </button>
 
-                                        <input
-                                            id="ncr-supplier"
-                                            type="text"
-                                            name="supplier"
-                                            value={
-                                                editingNcr.supplier
+                                        <button
+                                            ref={
+                                                confirmButtonRef
                                             }
-                                            onChange={
-                                                handleChange
-                                            }
-                                        />
+                                            className="saveButton"
+                                            type="button"
+                                            onClick={confirmSave}
+                                        >
+                                            Confirm Save
+                                        </button>
                                     </div>
-
-                                    <div className="formGroup fullWidth">
-                                        <label htmlFor="ncr-product">
-                                            Product
-                                        </label>
-
-                                        <input
-                                            id="ncr-product"
-                                            type="text"
-                                            name="product"
-                                            value={
-                                                editingNcr.product
-                                            }
-                                            onChange={
-                                                handleChange
-                                            }
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="modalActions">
-                                    <button
-                                        className="cancelButton"
-                                        type="button"
-                                        onClick={closeEdit}
-                                    >
-                                        Cancel
-                                    </button>
-
-                                    <button
-                                        className="saveButton"
-                                        type="button"
-                                        onClick={saveEdit}
-                                    >
-                                        Save Changes
-                                    </button>
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <div className="confirmationContent">
-                                    <div className="confirmationIcon">
-                                        ?
-                                    </div>
-
-                                    <h2 id="confirm-save-title">
-                                        Save changes?
-                                    </h2>
-
-                                    <p>
-                                        Are you sure you want
-                                        to save the changes
-                                        made to{" "}
-                                        <strong>
-                                            {
-                                                editingNcr.number
-                                            }
-                                        </strong>
-                                        ?
-                                    </p>
-                                </div>
-
-                                <div className="confirmationActions">
-                                    <button
-                                        className="cancelButton"
-                                        type="button"
-                                        onClick={cancelSave}
-                                    >
-                                        Go Back
-                                    </button>
-
-                                    <button
-                                        ref={
-                                            confirmButtonRef
-                                        }
-                                        className="saveButton"
-                                        type="button"
-                                        onClick={confirmSave}
-                                    >
-                                        Confirm Save
-                                    </button>
-                                </div>
-                            </>
-                        )}
+                                </>
+                            )}
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
 
-            <style jsx>{`
-                @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:ital,wght@0,100..900;1,100..900&display=swap');
+                <style jsx>{`
+                    @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:ital,wght@0,100..900;1,100..900&display=swap');
 
-                .recentNcrs {
-                    position: relative;
-                    width: 100%;
-                    height: 620px;
-                    background-color: #e4e4e4;
-                    padding: 2rem;
-                    border-radius: 12px;
-                    box-sizing: border-box;
-                }
-
-                .recentNcrsTitle {
-                    font-size: 1.5rem;
-                    color: black;
-                    font-weight: 700;
-                }
-
-                table {
-                    width: 100%;
-                    border-collapse: separate;
-                    border-spacing: 0 1rem;
-                }
-
-                th {
-                    text-align: left;
-                    padding: 0.75rem 1.5rem;
-                    background-color: #f8fafc;
-                    color: #64748b;
-                    font-size: 0.75rem;
-                    font-weight: 600;
-                }
-
-                th:first-child {
-                    border-radius: 10px 0 0 10px;
-                }
-
-                th:last-child {
-                    border-radius: 0 10px 10px 0;
-                }
-
-                td {
-                    padding: 1rem 1.5rem;
-                    background-color: white;
-                    color: #1e293b;
-                    font-size: 0.9rem;
-                }
-
-                td:first-child {
-                    border-radius: 10px 0 0 10px;
-                }
-
-                td:last-child {
-                    border-radius: 0 10px 10px 0;
-                }
-
-                .ncrNumber {
-                    font-family: "Geist Mono", monospace;
-                    color: #2563eb;
-                    font-weight: 600;
-                }
-
-                .status {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 0.4rem;
-                    width: 5.5rem;
-                    box-sizing: border-box;
-                    padding: 0.1rem;
-                    border-radius: 1000em;
-                    font-size: 0.75rem;
-                    font-weight: 600;
-                }
-
-                .statusDot {
-                    width: 6px;
-                    height: 6px;
-                    border-radius: 50%;
-                }
-
-                .open {
-                    color: #dc2626;
-                    background-color: #fef2f2;
-                    border: 1px solid #fecaca;
-                }
-
-                .open .statusDot {
-                    background-color: #dc2626;
-                }
-
-                .closed {
-                    color: #16a34a;
-                    background-color: #f0fdf4;
-                    border: 1px solid #bbf7d0;
-                }
-
-                .closed .statusDot {
-                    background-color: #16a34a;
-                }
-
-                .editButton {
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    padding: 0.4rem;
-                    background-color: white;
-                    border: 1px solid #dbe2ea;
-                    border-radius: 6px;
-                    color: #475569;
-                    cursor: pointer;
-                    font-size: 1rem;
-                }
-
-                .editButton:hover {
-                    background-color: #f8fafc;
-                }
-
-                .pagination {
-                    position: absolute;
-                    bottom: 1rem;
-                    right: 2rem;
-                    display: flex;
-                    align-items: center;
-                    gap: 2rem;
-                }
-
-                .pagination button {
-                    padding: 0.9rem 2.5rem;
-                    border: none;
-                    border-radius: 10px;
-                    background-color: #f8fafc;
-                    color: #1e293b;
-                    cursor: pointer;
-                }
-
-                .pagination button:hover {
-                    background-color: #fff;
-                }
-
-                .pagination button:disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                }
-
-                .modalOverlay {
-                    position: fixed;
-                    inset: 0;
-                    background-color: rgba(
-                        15,
-                        23,
-                        42,
-                        0.45
-                    );
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    z-index: 1000;
-                    padding: 1rem;
-                }
-
-                .editModal {
-                    width: 100%;
-                    max-width: 520px;
-                    background-color: white;
-                    border-radius: 14px;
-                    box-shadow: 0 20px 50px
-                        rgba(0, 0, 0, 0.2);
-                    overflow: hidden;
-                }
-
-                .confirmationModal {
-                    width: 100%;
-                    max-width: 420px;
-                    background-color: white;
-                    border-radius: 14px;
-                    box-shadow: 0 20px 50px
-                        rgba(0, 0, 0, 0.2);
-                    overflow: hidden;
-                }
-
-                .confirmationContent {
-                    padding: 2rem;
-                    text-align: center;
-                }
-
-                .confirmationIcon {
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    width: 48px;
-                    height: 48px;
-                    margin: 0 auto 1rem;
-                    border-radius: 50%;
-                    background-color: #eff6ff;
-                    color: #2563eb;
-                    font-size: 1.3rem;
-                    font-weight: 700;
-                }
-
-                .confirmationContent h2 {
-                    margin: 0;
-                    color: #111827;
-                    font-size: 1.25rem;
-                }
-
-                .confirmationContent p {
-                    margin: 0.75rem 0 0;
-                    color: #64748b;
-                    font-size: 0.9rem;
-                    line-height: 1.5;
-                }
-
-                .confirmationActions {
-                    display: flex;
-                    justify-content: flex-end;
-                    gap: 0.75rem;
-                    padding: 1rem 1.5rem 1.5rem;
-                    border-top: 1px solid #e5e7eb;
-                }
-
-                .modalHeader {
-                    display: flex;
-                    align-items: flex-start;
-                    justify-content: space-between;
-                    padding: 1.5rem;
-                    border-bottom: 1px solid #e5e7eb;
-                }
-
-                .modalHeader h2 {
-                    margin: 0;
-                    font-size: 1.3rem;
-                    color: #111827;
-                }
-
-                .modalHeader p {
-                    margin: 0.35rem 0 0;
-                    color: #64748b;
-                    font-family: "Geist Mono",
-                        monospace;
-                    font-size: 0.8rem;
-                }
-
-                .closeButton {
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    width: 34px;
-                    height: 34px;
-                    border: none;
-                    border-radius: 7px;
-                    background-color: transparent;
-                    color: #64748b;
-                    cursor: pointer;
-                    font-size: 1.1rem;
-                }
-
-                .closeButton:hover {
-                    background-color: #f1f5f9;
-                }
-
-                .form {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 1rem;
-                    padding: 1.5rem;
-                }
-
-                .formGroup {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 0.4rem;
-                }
-
-                .fullWidth {
-                    grid-column: span 2;
-                }
-
-                .formGroup label {
-                    font-size: 0.8rem;
-                    font-weight: 600;
-                    color: #475569;
-                }
-
-                .formGroup input,
-                .formGroup select {
-                    width: 100%;
-                    box-sizing: border-box;
-                    padding: 0.75rem;
-                    border: 1px solid #dbe2ea;
-                    border-radius: 8px;
-                    background-color: white;
-                    color: #1e293b;
-                    font-family: inherit;
-                    outline: none;
-                }
-
-                .formGroup input:focus,
-                .formGroup select:focus {
-                    border-color: #2563eb;
-                    box-shadow: 0 0 0 2px
-                        rgba(
-                            37,
-                            99,
-                            235,
-                            0.1
-                        );
-                }
-
-                .editButton:focus-visible,
-                .closeButton:focus-visible,
-                .pagination button:focus-visible,
-                .cancelButton:focus-visible,
-                .saveButton:focus-visible {
-                    outline: 2px solid #2563eb;
-                    outline-offset: 2px;
-                }
-
-                .formGroup input:focus-visible,
-                .formGroup select:focus-visible {
-                    border-color: #2563eb;
-                    box-shadow: 0 0 0 3px
-                        rgba(
-                            37,
-                            99,
-                            235,
-                            0.2
-                        );
-                }
-
-                .formGroup input:disabled {
-                    background-color: #f8fafc;
-                    color: #64748b;
-                    cursor: not-allowed;
-                }
-
-                .dateInputWrapper {
-                    width: 100%;
-                    cursor: pointer;
-                }
-
-                .dateInputWrapper input[type="date"] {
-                    cursor: pointer;
-                }
-
-                .dateInputWrapper
-                    input[type="date"]::-webkit-calendar-picker-indicator {
-                    cursor: pointer;
-                    opacity: 0.8;
-                    padding: 0.2rem;
-                }
-
-                .dateInputWrapper
-                    input[type="date"]::-webkit-calendar-picker-indicator:hover {
-                    opacity: 1;
-                }
-
-                .modalActions {
-                    display: flex;
-                    justify-content: flex-end;
-                    gap: 0.75rem;
-                    padding: 1rem 1.5rem 1.5rem;
-                }
-
-                .cancelButton,
-                .saveButton {
-                    padding: 0.75rem 1.25rem;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    font-weight: 600;
-                }
-
-                .cancelButton {
-                    border: 1px solid #dbe2ea;
-                    background-color: white;
-                    color: #475569;
-                }
-
-                .cancelButton:hover {
-                    background-color: #f8fafc;
-                }
-
-                .saveButton {
-                    border: none;
-                    background-color: #2563eb;
-                    color: white;
-                }
-
-                .saveButton:hover {
-                    background-color: #1d4ed8;
-                }
-
-                @media (max-width: 900px) {
                     .recentNcrs {
-                        overflow-x: auto;
+                        position: relative;
+                        width: 100%;
+                        height: 620px;
+                        background-color: #e4e4e4;
+                        padding: 2rem;
+                        border-radius: 12px;
+                        box-sizing: border-box;
+                    }
+
+                    .recentNcrsTitle {
+                        font-size: 1.5rem;
+                        color: black;
+                        font-weight: 700;
                     }
 
                     table {
-                        min-width: 800px;
+                        width: 100%;
+                        border-collapse: separate;
+                        border-spacing: 0 1rem;
                     }
-                }
 
-                @media (max-width: 600px) {
-                    .recentNcrs {
-                        height: 650px;
-                        padding: 1rem;
+                    th {
+                        text-align: left;
+                        padding: 0.75rem 1.5rem;
+                        background-color: #f8fafc;
+                        color: #64748b;
+                        font-size: 0.75rem;
+                        font-weight: 600;
+                    }
+
+                    th:first-child {
+                        border-radius: 10px 0 0 10px;
+                    }
+
+                    th:last-child {
+                        border-radius: 0 10px 10px 0;
+                    }
+
+                    td {
+                        padding: 1rem 1.5rem;
+                        background-color: white;
+                        color: #1e293b;
+                        font-size: 0.9rem;
+                    }
+
+                    td:first-child {
+                        border-radius: 10px 0 0 10px;
+                    }
+
+                    td:last-child {
+                        border-radius: 0 10px 10px 0;
+                    }
+
+                    .ncrNumber {
+                        font-family: "Geist Mono", monospace;
+                        color: #2563eb;
+                        font-weight: 600;
+                    }
+
+                    .status {
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 0.4rem;
+                        width: 5.5rem;
+                        box-sizing: border-box;
+                        padding: 0.1rem;
+                        border-radius: 1000em;
+                        font-size: 0.75rem;
+                        font-weight: 600;
+                    }
+
+                    .statusDot {
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 50%;
+                    }
+
+                    .open {
+                        color: #dc2626;
+                        background-color: #fef2f2;
+                        border: 1px solid #fecaca;
+                    }
+
+                    .open .statusDot {
+                        background-color: #dc2626;
+                    }
+
+                    .closed {
+                        color: #16a34a;
+                        background-color: #f0fdf4;
+                        border: 1px solid #bbf7d0;
+                    }
+
+                    .closed .statusDot {
+                        background-color: #16a34a;
+                    }
+
+                    .editButton {
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        padding: 0.4rem;
+                        background-color: white;
+                        border: 1px solid #dbe2ea;
+                        border-radius: 6px;
+                        color: #475569;
+                        cursor: pointer;
+                        font-size: 1rem;
+                    }
+
+                    .editButton:hover {
+                        background-color: #f8fafc;
                     }
 
                     .pagination {
-                        right: 1rem;
+                        position: absolute;
                         bottom: 1rem;
+                        right: 2rem;
+                        display: flex;
+                        align-items: center;
+                        gap: 2rem;
+                    }
+
+                    .pagination button {
+                        padding: 0.9rem 2.5rem;
+                        border: none;
+                        border-radius: 10px;
+                        background-color: #f8fafc;
+                        color: #1e293b;
+                        cursor: pointer;
+                    }
+
+                    .pagination button:hover {
+                        background-color: #fff;
+                    }
+
+                    .pagination button:disabled {
+                        opacity: 0.5;
+                        cursor: not-allowed;
+                    }
+
+                    .modalOverlay {
+                        position: fixed;
+                        inset: 0;
+                        background-color: rgba(
+                            15,
+                            23,
+                            42,
+                            0.45
+                        );
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        z-index: 1000;
+                        padding: 1rem;
+                    }
+
+                    .editModal {
+                        width: 100%;
+                        max-width: 520px;
+                        background-color: white;
+                        border-radius: 14px;
+                        box-shadow: 0 20px 50px
+                            rgba(0, 0, 0, 0.2);
+                        overflow: hidden;
+                    }
+
+                    .confirmationModal {
+                        width: 100%;
+                        max-width: 420px;
+                        background-color: white;
+                        border-radius: 14px;
+                        box-shadow: 0 20px 50px
+                            rgba(0, 0, 0, 0.2);
+                        overflow: hidden;
+                    }
+
+                    .confirmationContent {
+                        padding: 2rem;
+                        text-align: center;
+                    }
+
+                    .confirmationIcon {
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        width: 48px;
+                        height: 48px;
+                        margin: 0 auto 1rem;
+                        border-radius: 50%;
+                        background-color: #eff6ff;
+                        color: #2563eb;
+                        font-size: 1.3rem;
+                        font-weight: 700;
+                    }
+
+                    .confirmationContent h2 {
+                        margin: 0;
+                        color: #111827;
+                        font-size: 1.25rem;
+                    }
+
+                    .confirmationContent p {
+                        margin: 0.75rem 0 0;
+                        color: #64748b;
+                        font-size: 0.9rem;
+                        line-height: 1.5;
+                    }
+
+                    .confirmationActions {
+                        display: flex;
+                        justify-content: flex-end;
+                        gap: 0.75rem;
+                        padding: 1rem 1.5rem 1.5rem;
+                        border-top: 1px solid #e5e7eb;
+                    }
+
+                    .modalHeader {
+                        display: flex;
+                        align-items: flex-start;
+                        justify-content: space-between;
+                        padding: 1.5rem;
+                        border-bottom: 1px solid #e5e7eb;
+                    }
+
+                    .modalHeader h2 {
+                        margin: 0;
+                        font-size: 1.3rem;
+                        color: #111827;
+                    }
+
+                    .modalHeader p {
+                        margin: 0.35rem 0 0;
+                        color: #64748b;
+                        font-family: "Geist Mono",
+                            monospace;
+                        font-size: 0.8rem;
+                    }
+
+                    .closeButton {
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        width: 34px;
+                        height: 34px;
+                        border: none;
+                        border-radius: 7px;
+                        background-color: transparent;
+                        color: #64748b;
+                        cursor: pointer;
+                        font-size: 1.1rem;
+                    }
+
+                    .closeButton:hover {
+                        background-color: #f1f5f9;
                     }
 
                     .form {
-                        grid-template-columns: 1fr;
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 1rem;
+                        padding: 1.5rem;
+                    }
+
+                    .formGroup {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 0.4rem;
                     }
 
                     .fullWidth {
-                        grid-column: span 1;
+                        grid-column: span 2;
                     }
 
-                    .modalActions,
-                    .confirmationActions {
-                        flex-direction: column-reverse;
+                    .formGroup label {
+                        font-size: 0.8rem;
+                        font-weight: 600;
+                        color: #475569;
+                    }
+
+                    .formGroup input,
+                    .formGroup select {
+                        width: 100%;
+                        box-sizing: border-box;
+                        padding: 0.75rem;
+                        border: 1px solid #dbe2ea;
+                        border-radius: 8px;
+                        background-color: white;
+                        color: #1e293b;
+                        font-family: inherit;
+                        outline: none;
+                    }
+
+                    .formGroup input:focus,
+                    .formGroup select:focus {
+                        border-color: #2563eb;
+                        box-shadow: 0 0 0 2px
+                            rgba(
+                                37,
+                                99,
+                                235,
+                                0.1
+                            );
+                    }
+
+                    .editButton:focus-visible,
+                    .closeButton:focus-visible,
+                    .pagination button:focus-visible,
+                    .cancelButton:focus-visible,
+                    .saveButton:focus-visible {
+                        outline: 2px solid #2563eb;
+                        outline-offset: 2px;
+                    }
+
+                    .formGroup input:focus-visible,
+                    .formGroup select:focus-visible {
+                        border-color: #2563eb;
+                        box-shadow: 0 0 0 3px
+                            rgba(
+                                37,
+                                99,
+                                235,
+                                0.2
+                            );
+                    }
+
+                    .formGroup input:disabled {
+                        background-color: #f8fafc;
+                        color: #64748b;
+                        cursor: not-allowed;
+                    }
+
+                    .dateInputWrapper {
+                        width: 100%;
+                        cursor: pointer;
+                    }
+
+                    .dateInputWrapper input[type="date"] {
+                        cursor: pointer;
+                    }
+
+                    .dateInputWrapper
+                        input[type="date"]::-webkit-calendar-picker-indicator {
+                        cursor: pointer;
+                        opacity: 0.8;
+                        padding: 0.2rem;
+                    }
+
+                    .dateInputWrapper
+                        input[type="date"]::-webkit-calendar-picker-indicator:hover {
+                        opacity: 1;
+                    }
+
+                    .modalActions {
+                        display: flex;
+                        justify-content: flex-end;
+                        gap: 0.75rem;
+                        padding: 1rem 1.5rem 1.5rem;
                     }
 
                     .cancelButton,
                     .saveButton {
-                        width: 100%;
+                        padding: 0.75rem 1.25rem;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        font-weight: 600;
                     }
-                }
-            `}</style>
-        </div>
-    );
-};
 
-export default RecentNcrs;
+                    .cancelButton {
+                        border: 1px solid #dbe2ea;
+                        background-color: white;
+                        color: #475569;
+                    }
+
+                    .cancelButton:hover {
+                        background-color: #f8fafc;
+                    }
+
+                    .saveButton {
+                        border: none;
+                        background-color: #2563eb;
+                        color: white;
+                    }
+
+                    .saveButton:hover {
+                        background-color: #1d4ed8;
+                    }
+
+                    @media (max-width: 900px) {
+                        .recentNcrs {
+                            overflow-x: auto;
+                        }
+
+                        table {
+                            min-width: 800px;
+                        }
+                    }
+
+                    @media (max-width: 600px) {
+                        .recentNcrs {
+                            height: 650px;
+                            padding: 1rem;
+                        }
+
+                        .pagination {
+                            right: 1rem;
+                            bottom: 1rem;
+                        }
+
+                        .form {
+                            grid-template-columns: 1fr;
+                        }
+
+                        .fullWidth {
+                            grid-column: span 1;
+                        }
+
+                        .modalActions,
+                        .confirmationActions {
+                            flex-direction: column-reverse;
+                        }
+
+                        .cancelButton,
+                        .saveButton {
+                            width: 100%;
+                        }
+                    }
+                `}</style>
+            </div>
+        );
+    };
+
+    export default RecentNcrs;
 
