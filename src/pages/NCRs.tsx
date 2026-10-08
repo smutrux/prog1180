@@ -531,9 +531,6 @@ const NCRs = () => {
 					<h1>Non-Conformance Reports</h1>
 					<p>Track, inspect, and process supply chain material quality issues</p>
 				</div>
-				<button type="button" className="ncrs-edit-btn ncrs-new-btn" onClick={() => setCreating(true)}>
-					+ New NCR
-				</button>
 			</header>
 
 			{/* Search and filter bar */}
@@ -627,61 +624,66 @@ const NCRs = () => {
 				</div>
 			</div>
 
-			{/* Pagination */}
-			{loadState !== "error" && (
-				<nav className="ncrs-pager" aria-label="Pagination">
-					<p className="ncrs-pager-info" role="status">
-						Showing <strong>{firstShown}</strong> to <strong>{lastShown}</strong> of{" "}
-						<strong>{data.total}</strong> {data.total === 1 ? "report" : "reports"}
-					</p>
+			{/* Pagination and New NCR button */}
+			<div className="ncrs-footer">
+				{loadState !== "error" && (
+					<nav className="ncrs-pager" aria-label="Pagination">
+						<p className="ncrs-pager-info" role="status">
+							Showing <strong>{firstShown}</strong> to <strong>{lastShown}</strong> of{" "}
+							<strong>{data.total}</strong> {data.total === 1 ? "report" : "reports"}
+						</p>
 
-					<div className="ncrs-pager-controls">
-						<button
-							type="button"
-							className="ncrs-page-btn ncrs-page-edge"
-							disabled={page === 0}
-							onClick={() => goTo(page - 1)}
-							onMouseEnter={() => prefetch(page - 1)}
-							onFocus={() => prefetch(page - 1)}
-							onTouchStart={() => prefetch(page - 1)}
-						>
-							← Prev
-						</button>
+						<div className="ncrs-pager-controls">
+							<button
+								type="button"
+								className="ncrs-page-btn ncrs-page-edge"
+								disabled={page === 0}
+								onClick={() => goTo(page - 1)}
+								onMouseEnter={() => prefetch(page - 1)}
+								onFocus={() => prefetch(page - 1)}
+								onTouchStart={() => prefetch(page - 1)}
+							>
+								← Prev
+							</button>
 
-						{pageWindow(page, pageCount).map((p, i) =>
-							p === "…" ? (
-								<span key={`gap-${i}`} className="ncrs-page-gap" aria-hidden="true">…</span>
-							) : (
-								<button
-									key={p}
-									type="button"
-									className={`ncrs-page-btn ncrs-page-num${p === page ? " ncrs-page-active" : ""}`}
-									aria-label={`Page ${p + 1}`}
-									aria-current={p === page ? "page" : undefined}
-									onClick={() => goTo(p)}
-									onMouseEnter={() => prefetch(p)}
-									onFocus={() => prefetch(p)}
-									onTouchStart={() => prefetch(p)}
-								>
-									{p + 1}
-								</button>
-							),
-						)}
+							{pageWindow(page, pageCount).map((p, i) =>
+								p === "…" ? (
+									<span key={`gap-${i}`} className="ncrs-page-gap" aria-hidden="true">…</span>
+								) : (
+									<button
+										key={p}
+										type="button"
+										className={`ncrs-page-btn ncrs-page-num${p === page ? " ncrs-page-active" : ""}`}
+										aria-label={`Page ${p + 1}`}
+										aria-current={p === page ? "page" : undefined}
+										onClick={() => goTo(p)}
+										onMouseEnter={() => prefetch(p)}
+										onFocus={() => prefetch(p)}
+										onTouchStart={() => prefetch(p)}
+									>
+										{p + 1}
+									</button>
+								),
+							)}
 
-						<button
-							type="button"
-							className="ncrs-page-btn ncrs-page-edge"
-							disabled={page >= pageCount - 1}
-							onClick={() => goTo(page + 1)}
-							onMouseEnter={() => prefetch(page + 1)}
-							onFocus={() => prefetch(page + 1)}
-							onTouchStart={() => prefetch(page + 1)}
-						>
-							Next →
-						</button>
-					</div>
-				</nav>
-			)}
+							<button
+								type="button"
+								className="ncrs-page-btn ncrs-page-edge"
+								disabled={page >= pageCount - 1}
+								onClick={() => goTo(page + 1)}
+								onMouseEnter={() => prefetch(page + 1)}
+								onFocus={() => prefetch(page + 1)}
+								onTouchStart={() => prefetch(page + 1)}
+							>
+								Next →
+							</button>
+						</div>
+					</nav>
+				)}
+				<button type="button" className="ncrs-edit-btn ncrs-new-btn" onClick={() => setCreating(true)}>
+					+ New NCR
+				</button>
+			</div>
 
 			{/* Create / edit popup */}
 			{modalOpen && (
@@ -782,7 +784,6 @@ const css = `
 	}
 	.ncrs-heading h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); }
 	.ncrs-heading p { margin: 6px 0 0; font-size: 15px; color: var(--muted); }
-	.ncrs-new-btn { flex: none; }
 
 	/* Filter bar */
 	.ncrs-filters {
@@ -954,13 +955,22 @@ const css = `
 	}
 
 	/* Pagination */
+	.ncrs-footer {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 14px 18px;
+		margin-top: 20px;
+	}
+	.ncrs-new-btn { flex: none; margin-left: auto; }
 	.ncrs-pager {
+		flex: 1 1 360px;
+		min-width: 0;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
 		gap: 12px 16px;
-		margin-top: 20px;
 		padding: 14px 20px;
 		background: var(--surface);
 		border: 1px solid var(--line);
