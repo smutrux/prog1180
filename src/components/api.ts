@@ -122,15 +122,15 @@ export async function listAll<F extends object>(
 ): Promise<NcRecord<F>[]> {
 	const seen = new Set<string>();
 	const out: NcRecord<F>[] = [];
-	// for (let page = 1; page <= 100; page++) {
+	for (let page = 1; page <= 100; page++) {
 		const data = await request<{ records?: NcRecord<F>[] }>("GET", table, "records", {
 			query: { where: opts.where, fields: opts.fields?.join(",")},
 		});
 		const fresh = (data.records ?? []).filter((r) => !seen.has(String(r.id)));
-		// if (fresh.length === 0) break;
+		if (fresh.length === 0) break;
 		fresh.forEach((r) => seen.add(String(r.id)));
 		out.push(...fresh);
-	// }
+	}
 	return out;
 }
 
@@ -179,14 +179,28 @@ export async function readRecord<F extends object>(
 	}
 }
 
+/** A foreign key value as a plain number. NocoDB returns a plain number for a
+    Number column, but an object ({ id }) or an array ([{ id }]) for a Link column. */
+export function fkValue(v: unknown): number | null {
+	if (v === null || v === undefined || v === "") return null;
+	if (Array.isArray(v)) return fkValue(v[0]);
+	if (typeof v === "object") {
+		const o = v as Record<string, unknown>;
+		return fkValue(o.id ?? o.Id ?? (o.id_fields as Record<string, unknown> | undefined)?.Id);
+	}
+	const n = Number(v);
+	return Number.isFinite(n) ? n : null;
+}
+
 /** The record a foreign key value points at (see FK_MODE). */
 export async function getByRef<F extends object>(
 	table: TableName,
-	ref: number | null | undefined,
+	ref: unknown,
 ): Promise<NcRecord<F> | null> {
-	if (ref === null || ref === undefined) return null;
-	if (FK_MODE === "recordId") return readRecord<F>(table, ref);
-	return findFirst<F>(table, where([`${table}Id`, "eq", ref]));
+	const id = fkValue(ref);
+	if (id === null) return null;
+	if (FK_MODE === "recordId") return readRecord<F>(table, id);
+	return findFirst<F>(table, where([`${table}Id`, "eq", id]));
 }
 
 export async function updateRecord(

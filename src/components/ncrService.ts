@@ -5,6 +5,7 @@ import {
 	createRecord,
 	deleteRecord,
 	findFirst,
+	fkValue,
 	getByRef,
 	listAll,
 	ncDateTime,
@@ -124,8 +125,8 @@ export async function loadFormLookups(): Promise<FormLookups> {
 	const inspectors: InspectorOption[] = [];
 	if (quality) {
 		for (const rp of rolePersons) {
-			if (Number(rp.fields.RoleId) !== refId("Role", quality)) continue;
-			const person = people.find((p) => refId("Person", p) === Number(rp.fields.PersonId));
+			if (fkValue(rp.fields.RoleId) !== refId("Role", quality)) continue;
+			const person = people.find((p) => refId("Person", p) === fkValue(rp.fields.PersonId));
 			if (!person) continue;
 			inspectors.push({
 				personId: refId("Person", person),
@@ -221,9 +222,10 @@ export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditD
 	const linkRows = attachments
 		.filter((a) => same(a.fields.AttachmentType, "Link"))
 		.map((a) => ({ recordId: a.id, url: (a.fields.AttachmentFilePath ?? "").trim() }));
-	const problemTypeRows = problemRows
-		.filter((r) => r.fields.ProblemTypeId !== null)
-		.map((r) => ({ recordId: r.id, problemTypeId: Number(r.fields.ProblemTypeId) }));
+	const problemTypeRows = problemRows.flatMap((r) => {
+		const problemTypeId = fkValue(r.fields.ProblemTypeId);
+		return problemTypeId === null ? [] : [{ recordId: r.id, problemTypeId }];
+	});
 
 	return {
 		recordId: rec.id,
@@ -245,7 +247,7 @@ export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditD
 		defectDescription: (f.NCRDefectDescription ?? "").trim(),
 		isNonconforming: f.NCRIsNonconforming ?? null,
 		inspector: {
-			personId: person ? refId("Person", person) : Number(f.NCRRaisedByPersonId ?? 0),
+			personId: person ? refId("Person", person) : (fkValue(f.NCRRaisedByPersonId) ?? 0),
 			first: (person?.fields.PersonFirstName ?? "").trim(),
 			middle: (person?.fields.PersonMiddleName ?? "").trim(),
 			last: (person?.fields.PersonLastName ?? "").trim(),
