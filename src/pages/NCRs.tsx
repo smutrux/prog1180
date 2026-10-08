@@ -370,6 +370,12 @@ const NCRs = () => {
 				</div>
 			</section>
 
+			{loadState === "ready" && (
+				<p className="ncrs-count" role="status">
+					Showing {filtered.length} of {rows.length} {rows.length === 1 ? "NCR" : "NCRs"}
+				</p>
+			)}
+
 			{/* Table */}
 			<div className="ncrs-scroll">
 				<div className="ncrs-table" role="table" aria-label="Non-conformance reports">
@@ -517,6 +523,10 @@ const css = `
 	}
 	.ncrs-page *, .ncrs-page *::before, .ncrs-page *::after { box-sizing: border-box; }
 	.ncrs-page :focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+	/* The search box and filter pills already show a highlight on their outer
+	   wrapper, so hide the inner one to avoid a double outline. */
+	.ncrs-search input:focus-visible,
+	.ncrs-pill-select:focus-visible { outline: none; }
 
 	/* Heading */
 	.ncrs-heading h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); }
@@ -590,6 +600,8 @@ const css = `
 		cursor: pointer;
 	}
 	.ncrs-clear:hover { color: var(--ink); }
+
+	.ncrs-count { margin: 14px 4px 0; font-size: 13px; color: var(--muted); }
 
 	/* Table. The page itself never scrolls; only a very narrow window scrolls the table sideways. */
 	.ncrs-scroll { margin-top: 24px; overflow-x: auto; }
@@ -719,7 +731,7 @@ const css = `
 		padding: 8px 12px 0;
 		background: var(--bg);
 	}
-  
+
 	@media (max-width: 40rem) {
 		.ncrs-page { padding: 16px; }
 		.ncrs-search { max-width: none; }
