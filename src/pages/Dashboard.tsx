@@ -4,7 +4,6 @@ import { TbCircleCheck } from "react-icons/tb";
 import { LuArchive } from "react-icons/lu";
 import { FiAlertCircle } from "react-icons/fi";
 import { FaRegClock, FaPlus } from "react-icons/fa6";
-import { TiPlus } from "react-icons/ti";
 import RecentNcrs from "../components/recentncrs";
 import Button from "../components/button";
 import { NcrModal } from "../components/NcrModal";
@@ -14,7 +13,6 @@ import { useNcrList } from "../components/useNcrList";
 
 const Dashboard = () => {
 	const { rows, loading, error, refetch } = useNcrList();
-	const [open, setOpen] = useState(false);
 	const [creating, setCreating] = useState(false);
 	const [editing, setEditing] = useState<NcRecord<NcrFields> | null>(null);
 
