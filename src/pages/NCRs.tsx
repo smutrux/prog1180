@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fkValue, listAll, refId, type NcRecord, type TableName } from "../components/api";
 import { loadNcrForEdit, type NcrEditData, type NcrFields } from "../components/ncrService";
 /* The form that creates and edits NCRs. If your NcrForm lives in a different
@@ -12,6 +12,9 @@ import NcrForm from "../components/submitForm";
    by guessing from their names. If a column shows "-" and you know its exact
    name, type it here (for example status: "NCRStatusId"). Leave "" to guess. */
 const COLUMN_OVERRIDES = { date: "", status: "" };
+
+/* How many NCRs are shown per page. */
+const PAGE_SIZE = 10;
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -36,6 +39,38 @@ interface StatusData {
 	reviewNames: NameMap; // names from the ReviewStatus table, by record
 	history: NcRecord<AnyFields>[]; // every NCRStatus row, in case they point back at an NCR
 }
+
+interface Filters {
+	search: string;
+	status: string;
+	dateRange: string;
+	supplier: string;
+}
+
+interface PageResult {
+	rows: NcrRow[];
+	total: number;
+}
+
+/* ------------------------------------------------------------------ */
+/* Filter options and formatting                                       */
+/* ------------------------------------------------------------------ */
+const ALL_STATUSES = "All";
+const DATE_OPTIONS = [
+	{ label: "Last 7 Days", days: 7 },
+	{ label: "Last 30 Days", days: 30 },
+	{ label: "Last 90 Days", days: 90 },
+	{ label: "All Time", days: null },
+];
+const ALL_SUPPLIERS = "All Suppliers";
+const DEFAULT_DATE = "Last 30 Days";
+
+const formatDate = (d: Date | null) =>
+	d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "-";
+
+/** Which colour a status pill gets. */
+const statusTone = (s: string) =>
+	/clos|complet|resolv|approv/i.test(s) ? "closed" : /open|new|pending/i.test(s) ? "open" : "other";
 
 /* ------------------------------------------------------------------ */
 /* Loading data from the database                                      */
@@ -148,61 +183,126 @@ function toRow(record: NcRecord<NcrFields>, ed: NcrEditData | null, sd: StatusDa
 	};
 }
 
-async function loadRows(): Promise<NcrRow[]> {
-	const none = [] as NcRecord<AnyFields>[];
-	const [records, ncrStatus, reviewStatus] = await Promise.all([
-		listAll<NcrFields>("NCR"),
-		listAll<AnyFields>("NCRStatus").catch(() => none),
-		listAll<AnyFields>("ReviewStatus").catch(() => none),
-	]);
+/* ------------------------------------------------------------------ */
+/* Paged fetching                                                      */
+/*                                                                     */
+/* fetchNcrPage() is the ONE place that talks to the database for the  */
+/* table. Right now it is built on listAll(), so it works without any  */
+/* API changes: it only loads the heavy details (items, suppliers,     */
+/* quantities) for the 10 rows being shown.                            */
+/*                                                                     */
+/* Once api.ts has a real paged call (offset/limit + total count), swap */
+/* the body of fetchNcrPage for that call and pass the filters to it.  */
+/* The rest of the page does not need to change.                       */
+/* ------------------------------------------------------------------ */
 
-	const sd: StatusData = {
-		ncrNames: buildNames("NCRStatus", ncrStatus),
-		reviewNames: buildNames("ReviewStatus", reviewStatus),
-		history: ncrStatus,
-	};
-
-	/* Items, suppliers and quantities live in related tables, so fetch them
-	   the same way the edit form does. */
-	const details = await mapPool(records, 6, async (rec) => {
-		try {
-			return await loadNcrForEdit(rec);
-		} catch {
-			return null;
-		}
+/* Small lookup tables: load once and reuse for every page. */
+let lookups: Promise<StatusData> | null = null;
+function getLookups(): Promise<StatusData> {
+	const p = (lookups ??= (async () => {
+		const none = [] as NcRecord<AnyFields>[];
+		const [ncrStatus, reviewStatus] = await Promise.all([
+			listAll<AnyFields>("NCRStatus").catch(() => none),
+			listAll<AnyFields>("ReviewStatus").catch(() => none),
+		]);
+		return {
+			ncrNames: buildNames("NCRStatus", ncrStatus),
+			reviewNames: buildNames("ReviewStatus", reviewStatus),
+			history: ncrStatus,
+		};
+	})());
+	p.catch(() => {
+		if (lookups === p) lookups = null; // allow a retry after a failure
 	});
-
-	const rows = records.map((rec, i) => toRow(rec, details[i], sd));
-	if (rows.length > 0 && (rows.some((r) => !r.date) || rows.some((r) => !r.status))) {
-		console.warn("NCRs page: could not find a date or status for some rows. First rows of the tables involved:", {
-			NCR: records[0]?.fields,
-			NCRStatus: ncrStatus[0]?.fields,
-			ReviewStatus: reviewStatus[0]?.fields,
-		});
-	}
-	rows.sort((a, b) => Number(b.record.id) - Number(a.record.id)); // newest first
-	return rows;
+	return p;
 }
 
-/* ------------------------------------------------------------------ */
-/* Filter options and formatting                                       */
-/* ------------------------------------------------------------------ */
-const ALL_STATUSES = "All";
-const DATE_OPTIONS = [
-	{ label: "Last 7 Days", days: 7 },
-	{ label: "Last 30 Days", days: 30 },
-	{ label: "Last 90 Days", days: 90 },
-	{ label: "All Time", days: null },
-];
-const ALL_SUPPLIERS = "All Suppliers";
-const DEFAULT_DATE = "Last 30 Days";
+/* The plain NCR records, newest first. */
+let allNcrs: Promise<NcRecord<NcrFields>[]> | null = null;
+function getAllNcrs(): Promise<NcRecord<NcrFields>[]> {
+	const p = (allNcrs ??= listAll<NcrFields>("NCR").then((recs) =>
+		[...recs].sort((a, b) => Number(b.id) - Number(a.id)),
+	));
+	p.catch(() => {
+		if (allNcrs === p) allNcrs = null;
+	});
+	return p;
+}
 
-const formatDate = (d: Date | null) =>
-	d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "-";
+/* Rows whose details were already loaded, so no row is fetched twice. */
+const rowCache = new Map<string, NcrRow>();
 
-/** Which colour a status pill gets. */
-const statusTone = (s: string) =>
-	/clos|complet|resolv|approv/i.test(s) ? "closed" : /open|new|pending/i.test(s) ? "open" : "other";
+/** Forget everything loaded from the database (used after a save). */
+function resetLoaders() {
+	lookups = null;
+	allNcrs = null;
+	rowCache.clear();
+}
+
+/** Turn plain NCR records into table rows by loading their related details. */
+function enrich(records: NcRecord<NcrFields>[], sd: StatusData): Promise<NcrRow[]> {
+	return mapPool(records, 6, async (rec) => {
+		const key = String(rec.id);
+		const cached = rowCache.get(key);
+		if (cached) return cached;
+		let ed: NcrEditData | null = null;
+		try {
+			ed = await loadNcrForEdit(rec);
+		} catch {
+			ed = null;
+		}
+		const row = toRow(rec, ed, sd);
+		if (ed) rowCache.set(key, row); // don't remember failures
+		return row;
+	});
+}
+
+async function fetchNcrPage(page: number, filters: Filters): Promise<PageResult> {
+	const [all, sd] = await Promise.all([getAllNcrs(), getLookups()]);
+
+	/* Cheap filters first: status and date only need the NCR record itself. */
+	const days = DATE_OPTIONS.find((d) => d.label === filters.dateRange)?.days ?? null;
+	const cutoff = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+	const candidates = all.filter((rec) => {
+		if (filters.status !== ALL_STATUSES && findStatus(rec, sd) !== filters.status) return false;
+		if (cutoff) {
+			const d = findDate(rec.fields as unknown as AnyFields);
+			if (d && d < cutoff) return false;
+		}
+		return true;
+	});
+
+	const start = page * PAGE_SIZE;
+	const term = filters.search.trim().toLowerCase();
+	const needsDetails = term !== "" || filters.supplier !== ALL_SUPPLIERS;
+
+	let rows: NcrRow[];
+	let total: number;
+
+	if (needsDetails) {
+		/* Search and supplier live in related tables, so these have to look at
+		   the details of every remaining candidate (cached after the first time). */
+		const detailed = await enrich(candidates, sd);
+		const matches = detailed.filter((r) => {
+			if (filters.supplier !== ALL_SUPPLIERS && r.supplier !== filters.supplier) return false;
+			if (term) {
+				const haystack = [r.ncrNumber, r.supplier, r.product, r.defect].join(" ").toLowerCase();
+				if (!haystack.includes(term)) return false;
+			}
+			return true;
+		});
+		total = matches.length;
+		rows = matches.slice(start, start + PAGE_SIZE);
+	} else {
+		total = candidates.length;
+		rows = await enrich(candidates.slice(start, start + PAGE_SIZE), sd);
+	}
+
+	if (rows.length > 0 && (rows.some((r) => !r.date) || rows.some((r) => !r.status))) {
+		console.warn("NCRs page: could not find a date or status for some rows. First NCR record:", all[0]?.fields);
+	}
+	return { rows, total };
+}
 
 /* ------------------------------------------------------------------ */
 /* Small icons                                                         */
@@ -251,51 +351,145 @@ function FilterPill(props: {
 	);
 }
 
+/** Page numbers to show, 0-based, with "…" for gaps: 1 2 3 … 6 */
+function pageWindow(current: number, total: number): (number | "…")[] {
+	if (total <= 5) return Array.from({ length: total }, (_, i) => i);
+	if (current < 3) return [0, 1, 2, "…", total - 1];
+	if (current > total - 4) return [0, "…", total - 3, total - 2, total - 1];
+	return [0, "…", current - 1, current, current + 1, "…", total - 1];
+}
+
 /* ------------------------------------------------------------------ */
 /* The page                                                            */
 /* ------------------------------------------------------------------ */
 const NCRs = () => {
-	const [rows, setRows] = useState<NcrRow[]>([]);
+	const [data, setData] = useState<PageResult>({ rows: [], total: 0 });
 	const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
 	const [loadError, setLoadError] = useState("");
+	const [reloadKey, setReloadKey] = useState(0);
 
 	const [search, setSearch] = useState("");
+	const [debouncedSearch, setDebouncedSearch] = useState("");
 	const [status, setStatus] = useState<string>(ALL_STATUSES);
 	const [dateRange, setDateRange] = useState<string>(DEFAULT_DATE);
 	const [supplier, setSupplier] = useState<string>(ALL_SUPPLIERS);
 
 	const [editing, setEditing] = useState<NcRecord<NcrFields> | null>(null);
+	const [creating, setCreating] = useState(false);
 	const [editDirty, setEditDirty] = useState(false);
 
-	/** quiet = refresh the rows without showing the loading message. */
-	const load = useCallback(async (quiet = false) => {
-		if (!quiet) {
-			setLoadState("loading");
-			setLoadError("");
-		}
-		try {
-			setRows(await loadRows());
-			setLoadState("ready");
-		} catch (err) {
-			if (quiet) return;
-			setLoadError(err instanceof Error ? err.message : String(err));
-			setLoadState("error");
-		}
-	}, []);
+	const [statusNames, setStatusNames] = useState<string[]>([]);
+	const [knownSuppliers, setKnownSuppliers] = useState<string[]>([]);
 
+	/* Wait for a short pause in typing before searching. */
 	useEffect(() => {
-		void load();
-	}, [load]);
+		const t = window.setTimeout(() => setDebouncedSearch(search), 300);
+		return () => window.clearTimeout(t);
+	}, [search]);
+
+	const filters = useMemo<Filters>(
+		() => ({ search: debouncedSearch, status, dateRange, supplier }),
+		[debouncedSearch, status, dateRange, supplier],
+	);
+	const sig = JSON.stringify(filters);
+
+	/* The page number belongs to one set of filters. When the filters change,
+	   it is automatically back on page 1 (no extra fetch of the old page). */
+	const [pageState, setPageState] = useState({ sig: "", page: 0 });
+	const page = pageState.sig === sig ? pageState.page : 0;
+	const goTo = useCallback((p: number) => setPageState({ sig, page: p }), [sig]);
+
+	const pageCount = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+
+	/* Pages already requested (or being requested), by filters + page number. */
+	const cache = useRef(new Map<string, Promise<PageResult>>());
+
+	const getPage = useCallback(
+		(p: number) => {
+			const key = `${sig}|${p}`;
+			let hit = cache.current.get(key);
+			if (!hit) {
+				hit = fetchNcrPage(p, filters);
+				cache.current.set(key, hit);
+				const failed = hit;
+				failed.catch(() => {
+					if (cache.current.get(key) === failed) cache.current.delete(key); // don't cache failures
+				});
+			}
+			return hit;
+		},
+		[sig, filters],
+	);
+
+	/* Hover, keyboard focus or a touch on Previous/Next starts the fetch early. */
+	const prefetch = (p: number) => {
+		if (p >= 0 && p < pageCount) void getPage(p).catch(() => {});
+	};
+
+	/* Load the page being shown. A stale response is thrown away. */
+	useEffect(() => {
+		let cancelled = false;
+		setLoadState("loading");
+		setLoadError("");
+		getPage(page)
+			.then((res) => {
+				if (cancelled) return;
+				setData(res);
+				setLoadState("ready");
+				const names = res.rows.map((r) => r.supplier).filter((s) => s && s !== "-");
+				if (names.length > 0) {
+					setKnownSuppliers((prev) => Array.from(new Set([...prev, ...names])));
+				}
+			})
+			.catch((err) => {
+				if (cancelled) return;
+				setLoadError(err instanceof Error ? err.message : String(err));
+				setLoadState("error");
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [getPage, page, reloadKey]);
+
+	/* If rows were removed and the current page no longer exists, go to the last one. */
+	useEffect(() => {
+		if (loadState === "ready" && page > pageCount - 1) goTo(pageCount - 1);
+	}, [loadState, page, pageCount, goTo]);
+
+	/* Status choices come from the small status tables. */
+	useEffect(() => {
+		let cancelled = false;
+		getLookups()
+			.then((sd) => {
+				if (cancelled) return;
+				const all = [...sd.ncrNames.values(), ...sd.reviewNames.values()];
+				setStatusNames(Array.from(new Set(all)).sort());
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, [reloadKey]);
+
+	/** After a save: forget every loaded page and fetch the current one again. */
+	const refresh = useCallback(() => {
+		resetLoaders();
+		cache.current.clear();
+		setReloadKey((k) => k + 1);
+	}, []);
 
 	const closeEditor = useCallback(() => {
 		if (editDirty && !window.confirm("Some changes are not saved. Close anyway?")) return;
 		setEditing(null);
+		setCreating(false);
 		setEditDirty(false);
 	}, [editDirty]);
 
-	/* While the edit popup is open: Escape closes it and the page behind it does not scroll. */
+	const modalOpen = editing !== null || creating;
+
+	/* While the popup is open: Escape closes it and the page behind it does not scroll. */
 	useEffect(() => {
-		if (!editing) return;
+		if (!modalOpen) return;
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") closeEditor();
 		};
@@ -306,46 +500,40 @@ const NCRs = () => {
 			document.body.style.overflow = previous;
 			window.removeEventListener("keydown", onKey);
 		};
-	}, [editing, closeEditor]);
+	}, [modalOpen, closeEditor]);
 
 	const statusOptions = useMemo(
-		() => [ALL_STATUSES, ...Array.from(new Set(rows.map((r) => r.status).filter(Boolean))).sort()],
-		[rows],
+		() => [ALL_STATUSES, ...Array.from(new Set([...statusNames, ...(status !== ALL_STATUSES ? [status] : [])])).sort()],
+		[statusNames, status],
 	);
 	const supplierOptions = useMemo(
-		() => [ALL_SUPPLIERS, ...Array.from(new Set(rows.map((r) => r.supplier).filter((s) => s && s !== "-"))).sort()],
-		[rows],
+		() => [ALL_SUPPLIERS, ...Array.from(new Set([...knownSuppliers, ...(supplier !== ALL_SUPPLIERS ? [supplier] : [])])).sort()],
+		[knownSuppliers, supplier],
 	);
-
-	const filtered = useMemo(() => {
-		const term = search.trim().toLowerCase();
-		const days = DATE_OPTIONS.find((d) => d.label === dateRange)?.days ?? null;
-		const cutoff = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-
-		return rows.filter((r) => {
-			if (status !== ALL_STATUSES && r.status !== status) return false;
-			if (supplier !== ALL_SUPPLIERS && r.supplier !== supplier) return false;
-			if (cutoff && r.date && r.date < cutoff) return false;
-			if (term) {
-				const haystack = [r.ncrNumber, r.supplier, r.product, r.defect].join(" ").toLowerCase();
-				if (!haystack.includes(term)) return false;
-			}
-			return true;
-		});
-	}, [rows, search, status, dateRange, supplier]);
 
 	const clearFilters = () => {
 		setSearch("");
+		setDebouncedSearch("");
 		setStatus(ALL_STATUSES);
 		setDateRange(DEFAULT_DATE);
 		setSupplier(ALL_SUPPLIERS);
 	};
 
+	/* Keep showing the old rows (dimmed) while the next page loads. */
+	const showRows = loadState === "ready" || (loadState === "loading" && data.rows.length > 0);
+	const firstShown = data.total === 0 ? 0 : page * PAGE_SIZE + 1;
+	const lastShown = Math.min(data.total, page * PAGE_SIZE + data.rows.length);
+
 	return (
 		<main className="ncrs-page">
 			<header className="ncrs-heading">
-				<h1>Non-Conformance Reports</h1>
-				<p>Track, inspect, and process supply chain material quality issues</p>
+				<div>
+					<h1>Non-Conformance Reports</h1>
+					<p>Track, inspect, and process supply chain material quality issues</p>
+				</div>
+				<button type="button" className="ncrs-edit-btn ncrs-new-btn" onClick={() => setCreating(true)}>
+					+ New NCR
+				</button>
 			</header>
 
 			{/* Search and filter bar */}
@@ -370,15 +558,9 @@ const NCRs = () => {
 				</div>
 			</section>
 
-			{loadState === "ready" && (
-				<p className="ncrs-count" role="status">
-					Showing {filtered.length} of {rows.length} {rows.length === 1 ? "NCR" : "NCRs"}
-				</p>
-			)}
-
 			{/* Table */}
 			<div className="ncrs-scroll">
-				<div className="ncrs-table" role="table" aria-label="Non-conformance reports">
+				<div className="ncrs-table" role="table" aria-label="Non-conformance reports" aria-busy={loadState === "loading"}>
 					<div className="ncrs-row ncrs-head" role="row">
 						<span role="columnheader">NCR Number</span>
 						<span role="columnheader">Date Created</span>
@@ -391,20 +573,22 @@ const NCRs = () => {
 						<span role="columnheader" className="ncrs-edit-col">Edit</span>
 					</div>
 
-					<div className="ncrs-body">
-						{loadState === "loading" && <p className="ncrs-empty" role="status">Loading NCRs...</p>}
+					<div className={`ncrs-body${loadState === "loading" ? " ncrs-body-busy" : ""}`}>
+						{loadState === "loading" && data.rows.length === 0 && (
+							<p className="ncrs-empty" role="status">Loading NCRs...</p>
+						)}
 
 						{loadState === "error" && (
 							<div className="ncrs-empty" role="alert">
 								<p>The NCRs could not be loaded. {loadError}</p>
-								<button type="button" className="ncrs-edit-btn" onClick={() => void load()}>
+								<button type="button" className="ncrs-edit-btn" onClick={refresh}>
 									Try again
 								</button>
 							</div>
 						)}
 
-						{loadState === "ready" &&
-							filtered.map((n) => (
+						{showRows &&
+							data.rows.map((n) => (
 								<div key={String(n.record.id)} className="ncrs-row ncrs-card" role="row">
 									<span role="cell" className="ncrs-number">{n.ncrNumber}</span>
 									<span role="cell" className="ncrs-muted">{formatDate(n.date)}</span>
@@ -432,9 +616,9 @@ const NCRs = () => {
 								</div>
 							))}
 
-						{loadState === "ready" && filtered.length === 0 && (
+						{loadState === "ready" && data.rows.length === 0 && (
 							<p className="ncrs-empty">
-								{rows.length === 0
+								{data.total === 0 && search.trim() === "" && status === ALL_STATUSES && supplier === ALL_SUPPLIERS && dateRange === "All Time"
 									? "No NCRs have been submitted yet."
 									: "No NCRs match your search. Change the filters or choose Clear."}
 							</p>
@@ -443,28 +627,88 @@ const NCRs = () => {
 				</div>
 			</div>
 
-			{/* Edit popup */}
-			{editing && (
+			{/* Pagination */}
+			{loadState !== "error" && (
+				<nav className="ncrs-pager" aria-label="Pagination">
+					<p className="ncrs-pager-info" role="status">
+						Showing <strong>{firstShown}</strong> to <strong>{lastShown}</strong> of{" "}
+						<strong>{data.total}</strong> {data.total === 1 ? "report" : "reports"}
+					</p>
+
+					<div className="ncrs-pager-controls">
+						<button
+							type="button"
+							className="ncrs-page-btn ncrs-page-edge"
+							disabled={page === 0}
+							onClick={() => goTo(page - 1)}
+							onMouseEnter={() => prefetch(page - 1)}
+							onFocus={() => prefetch(page - 1)}
+							onTouchStart={() => prefetch(page - 1)}
+						>
+							← Prev
+						</button>
+
+						{pageWindow(page, pageCount).map((p, i) =>
+							p === "…" ? (
+								<span key={`gap-${i}`} className="ncrs-page-gap" aria-hidden="true">…</span>
+							) : (
+								<button
+									key={p}
+									type="button"
+									className={`ncrs-page-btn ncrs-page-num${p === page ? " ncrs-page-active" : ""}`}
+									aria-label={`Page ${p + 1}`}
+									aria-current={p === page ? "page" : undefined}
+									onClick={() => goTo(p)}
+									onMouseEnter={() => prefetch(p)}
+									onFocus={() => prefetch(p)}
+									onTouchStart={() => prefetch(p)}
+								>
+									{p + 1}
+								</button>
+							),
+						)}
+
+						<button
+							type="button"
+							className="ncrs-page-btn ncrs-page-edge"
+							disabled={page >= pageCount - 1}
+							onClick={() => goTo(page + 1)}
+							onMouseEnter={() => prefetch(page + 1)}
+							onFocus={() => prefetch(page + 1)}
+							onTouchStart={() => prefetch(page + 1)}
+						>
+							Next →
+						</button>
+					</div>
+				</nav>
+			)}
+
+			{/* Create / edit popup */}
+			{modalOpen && (
 				<div
 					className="ncrs-overlay"
 					onMouseDown={(e) => {
 						if (e.target === e.currentTarget) closeEditor();
 					}}
 				>
-					<div className="ncrs-modal" role="dialog" aria-modal="true" aria-label="Edit NCR">
+					<div className="ncrs-modal" role="dialog" aria-modal="true" aria-label={editing ? "Edit NCR" : "New NCR"}>
 						<div className="ncrs-modal-bar">
 							<button type="button" className="ncrs-clear" onClick={closeEditor}>
 								Close
 							</button>
 						</div>
-						<NcrForm
-							key={String(editing.id)}
-							edit
-							data={editing}
-							onClose={closeEditor}
-							onSaved={() => void load(true)}
-							onDirtyChange={setEditDirty}
-						/>
+						{editing ? (
+							<NcrForm
+								key={String(editing.id)}
+								edit
+								data={editing}
+								onClose={closeEditor}
+								onSaved={refresh}
+								onDirtyChange={setEditDirty}
+							/>
+						) : (
+							<NcrForm key="new" onClose={closeEditor} onSaved={refresh} onDirtyChange={setEditDirty} />
+						)}
 					</div>
 				</div>
 			)}
@@ -529,8 +773,16 @@ const css = `
 	.ncrs-pill-select:focus-visible { outline: none; }
 
 	/* Heading */
+	.ncrs-heading {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 16px;
+	}
 	.ncrs-heading h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); }
 	.ncrs-heading p { margin: 6px 0 0; font-size: 15px; color: var(--muted); }
+	.ncrs-new-btn { flex: none; }
 
 	/* Filter bar */
 	.ncrs-filters {
@@ -601,8 +853,6 @@ const css = `
 	}
 	.ncrs-clear:hover { color: var(--ink); }
 
-	.ncrs-count { margin: 14px 4px 0; font-size: 13px; color: var(--muted); }
-
 	/* Table. The page itself never scrolls; only a very narrow window scrolls the table sideways. */
 	.ncrs-scroll { margin-top: 24px; overflow-x: auto; }
 	.ncrs-table { min-width: 800px; }
@@ -625,7 +875,8 @@ const css = `
 		color: var(--muted);
 	}
 	.ncrs-head span { line-height: 1.25; overflow-wrap: anywhere; }
-	.ncrs-body { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+	.ncrs-body { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; transition: opacity 0.15s; }
+	.ncrs-body-busy { opacity: 0.55; }
 	.ncrs-card {
 		min-height: 62px;
 		padding-top: 10px;
@@ -702,7 +953,46 @@ const css = `
 		text-align: center;
 	}
 
-	/* Edit popup */
+	/* Pagination */
+	.ncrs-pager {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px 16px;
+		margin-top: 20px;
+		padding: 14px 20px;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: 14px;
+	}
+	.ncrs-pager-info { margin: 0; font-size: 13px; color: var(--muted); }
+	.ncrs-pager-info strong { color: var(--ink); font-weight: 700; }
+	.ncrs-pager-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+	.ncrs-page-btn {
+		min-width: 32px;
+		height: 32px;
+		padding: 0 10px;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		background: transparent;
+		color: var(--muted);
+		font: inherit;
+		font-size: 13px;
+		cursor: pointer;
+	}
+	.ncrs-page-edge { padding: 0 12px; border-color: var(--line); background: var(--surface); }
+	.ncrs-page-btn:hover:not(:disabled):not(.ncrs-page-active) { background: var(--field); color: var(--ink); }
+	.ncrs-page-active {
+		background: color-mix(in srgb, var(--blue) 14%, transparent);
+		color: var(--blue-text);
+		font-weight: 600;
+		cursor: default;
+	}
+	.ncrs-page-btn:disabled { opacity: 0.45; cursor: default; }
+	.ncrs-page-gap { padding: 0 4px; color: var(--muted); }
+
+	/* Create / edit popup */
 	.ncrs-overlay {
 		position: fixed;
 		inset: 0;
