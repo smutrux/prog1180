@@ -115,21 +115,55 @@ async function request<T>(
 export const where = (...conds: [string, string, string | number][]) =>
 	conds.map(([f, op, v]) => `(${f},${op},${v})`).join("~and");
 
-/** Every record that matches, following pages until a page adds nothing new. */
+/** Every record that matches. The first request carries no paging parameters
+    (the default page). Later pages are fetched by following the `next` link the
+    server returns, so the server's own page numbering is always the one used.
+    If there is no `next` link, it falls back on page numbers and stops at the
+    first short page. Never asks for a page past the end: NocoDB answers that
+    with "Offset value is invalid", which is treated as the end of the data. */
 export async function listAll<F extends object>(
 	table: TableName,
 	opts: { where?: string; fields?: string[] } = {},
 ): Promise<NcRecord<F>[]> {
+	type Page = { records?: NcRecord<F>[]; next?: unknown };
 	const seen = new Set<string>();
 	const out: NcRecord<F>[] = [];
-	for (let page = 1; page <= 100; page++) {
-		const data = await request<{ records?: NcRecord<F>[] }>("GET", table, "records", {
-			query: { where: opts.where, fields: opts.fields?.join(",")},
-		});
-		const fresh = (data.records ?? []).filter((r) => !seen.has(String(r.id)));
+	const base: Query = { where: opts.where, fields: opts.fields?.join(",") };
+	let paging: Query = {};
+	let firstPageLength = 0;
+
+	for (let n = 1; n <= 100; n++) {
+		let data: Page;
+		try {
+			data = await request<Page>("GET", table, "records", { query: { ...base, ...paging } });
+		} catch (err) {
+			if (n > 1 && err instanceof ApiError && /offset/i.test(err.message)) break;
+			throw err;
+		}
+		const records = data.records ?? [];
+		const fresh = records.filter((r) => !seen.has(String(r.id)));
 		if (fresh.length === 0) break;
 		fresh.forEach((r) => seen.add(String(r.id)));
 		out.push(...fresh);
+		if (n === 1) firstPageLength = records.length;
+
+		if ("next" in data) {
+			if (typeof data.next !== "string" || !data.next) break;
+			try {
+				const params = new URL(data.next, "http://placeholder").searchParams;
+				paging = {};
+				for (const key of ["page", "pageSize", "offset", "limit"]) {
+					const v = params.get(key);
+					if (v !== null) paging[key] = v;
+				}
+				if (Object.keys(paging).length === 0) paging = { page: n + 1 };
+			} catch {
+				paging = { page: n + 1 };
+			}
+		} else {
+			if (records.length < firstPageLength) break;
+			paging = { page: n + 1 };
+		}
 	}
 	return out;
 }
