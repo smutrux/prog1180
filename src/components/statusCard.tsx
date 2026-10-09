@@ -9,11 +9,13 @@ interface StatusCardProps {
     colour: "green" | "red" | "orange" | "blue";
 }
 
+/* Each colour is a CSS variable, so it can change with light and dark mode.
+   The values are defined in the style block below. */
 const colours = {
-    green: "#059669", 
-    red: "#DC2626",
-    orange: "#D97706",
-    blue: "#2563EB"
+    green: "var(--status-green)",
+    red: "var(--status-red)",
+    orange: "var(--status-orange)",
+    blue: "var(--status-blue)",
 };
 
 var StatusCard = (props: StatusCardProps) => {
@@ -22,22 +24,38 @@ var StatusCard = (props: StatusCardProps) => {
             <div className="statusCardHeader">
                 <p>{props.title}</p>
                 <div className="statusIcon" style={{color: colours[props.colour]}}>
-                    <props.icon />
-                </div>     
+                    <props.icon aria-hidden="true" />
+                </div>
             </div>
             <p className="statusAmount">{props.amount}</p>
             <p className="statusSubtext">{props.subtext}</p>
            <style jsx>{`
-  
-            .statusCard { 
-                background-color: white;
+
+            .statusCard {
+                /* Icon colours. Light mode keeps the original palette. */
+                --status-green: #059669;
+                --status-red: #DC2626;
+                --status-orange: #D97706;
+                --status-blue: #2563EB;
+
+                background-color: var(--code-bg);
                 display: flex;
                 flex-direction: column;
                 padding: 1rem 1.25rem;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+                box-shadow: var(--shadow);
                 border-radius: 16px;
-                border: 3px solid #e2e8f0;
+                border: 3px solid var(--border);
                 gap: 1rem;
+            }
+
+            /* Dark mode: lighter tints, so the icons stay clear on the dark surface. */
+            @media (prefers-color-scheme: dark) {
+                .statusCard {
+                    --status-green: #34D399;
+                    --status-red: #F87171;
+                    --status-orange: #FBBF24;
+                    --status-blue: #60A5FA;
+                }
             }
 
             .statusCardHeader {
@@ -50,7 +68,7 @@ var StatusCard = (props: StatusCardProps) => {
                 text-transform: uppercase;
                 font-size: 1rem;
                 font-weight: 600;
-                color: #64748b;
+                color: var(--text-h);
             }
 
             .statusIcon {
@@ -59,7 +77,7 @@ var StatusCard = (props: StatusCardProps) => {
                 justify-content: center;
                 padding: 0.4rem;
                 border-radius: 25%;
-                background-color: #eff6ff;
+                background-color: var(--bg);
                 font-size: 1.5rem;
                 font-weight: bold;
             }
@@ -67,12 +85,11 @@ var StatusCard = (props: StatusCardProps) => {
             .statusAmount {
                font-size: 2rem;
                font-weight: bold;
-               color: black;
-               {/* margin-bottom: 1rem; */}
+               color: var(--text-h);
             }
 
             .statusSubtext {
-               color: #475569;
+               color: var(--text-h);
                font-size: 0.9rem;
             }
         `}</style>
