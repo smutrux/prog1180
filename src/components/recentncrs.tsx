@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import { FiEdit3, FiX } from "react-icons/fi";
 
@@ -33,6 +32,9 @@ const RecentNcrs = () => {
     const [editingNcr, setEditingNcr] = useState<Ncr | null>(null);
     const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
 
+    const tableRef = useRef<HTMLDivElement | null>(null);
+    const shouldScrollToTable = useRef(false);
+
     const editButtonRef = useRef<HTMLButtonElement | null>(null);
     const modalRef = useRef<HTMLDivElement | null>(null);
     const firstInputRef = useRef<HTMLInputElement | null>(null);
@@ -45,15 +47,29 @@ const RecentNcrs = () => {
 
     const previousPage = () => {
         if (currentPage > 1) {
+            shouldScrollToTable.current = true;
             setCurrentPage(currentPage - 1);
         }
     };
 
     const nextPage = () => {
         if (currentPage < totalPages) {
+            shouldScrollToTable.current = true;
             setCurrentPage(currentPage + 1);
         }
     };
+
+    // Scroll after React has rendered the new page.
+    useEffect(() => {
+        if (!shouldScrollToTable.current) return;
+
+        shouldScrollToTable.current = false;
+
+        tableRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+        });
+    }, [currentPage]);
 
     const openEdit = (ncr: Ncr, button: HTMLButtonElement) => {
         const date = new Date(ncr.date);
@@ -208,7 +224,7 @@ const RecentNcrs = () => {
     );
 
     return (
-        <div className="recentNcrs">
+        <div ref={tableRef} className="recentNcrs">
             <p className="recentNcrsTitle">Recent NCR Table</p>
 
             {/* Desktop and tablet table */}
@@ -470,6 +486,7 @@ const RecentNcrs = () => {
                 @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:ital,wght@0,100..900;1,100..900&display=swap');
 
                 .recentNcrs {
+                    scroll-margin-top: 20px;
                     position: relative;
                     width: 100%;
                     min-width: 0;
