@@ -580,7 +580,6 @@ const RecentNcrs = () => {
                 .open {
                     color: #dc2626;
                     background-color: #fef2f2;
-                    border: 1px solid #fecaca;
                 }
 
                 .open .statusDot {
