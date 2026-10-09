@@ -1,119 +1,39 @@
-
 import { useEffect, useRef, useState } from "react";
 import { FiEdit3, FiX } from "react-icons/fi";
 
+type Ncr = {
+    number: string;
+    date: string;
+    supplier: string;
+    product: string;
+    status: "Open" | "Closed";
+};
+
 const RecentNcrs = () => {
-    const [ncrs, setNcrs] = useState([
-        {
-            number: "NCR-2026-001",
-            date: "Oct 2, 2026",
-            supplier: "Acme Manufacturing",
-            product: "Steel Bracket 42A",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-002",
-            date: "Oct 1, 2026",
-            supplier: "Northern Components",
-            product: "Aluminum Housing",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-003",
-            date: "Sep 29, 2026",
-            supplier: "Precision Parts Ltd.",
-            product: "Drive Shaft Assembly",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-004",
-            date: "Sep 27, 2026",
-            supplier: "Maple Industrial",
-            product: "Mounting Plate",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-005",
-            date: "Sep 25, 2026",
-            supplier: "Ontario Fabrication",
-            product: "Control Panel Cover",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-006",
-            date: "Sep 23, 2026",
-            supplier: "Great Lakes Supply",
-            product: "Hydraulic Valve",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-007",
-            date: "Sep 21, 2026",
-            supplier: "Acme Manufacturing",
-            product: "Steel Support Arm",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-008",
-            date: "Sep 18, 2026",
-            supplier: "Northern Components",
-            product: "Electrical Enclosure",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-009",
-            date: "Sep 16, 2026",
-            supplier: "Precision Parts Ltd.",
-            product: "Bearing Housing",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-010",
-            date: "Sep 14, 2026",
-            supplier: "Maple Industrial",
-            product: "Stainless Steel Frame",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-011",
-            date: "Sep 12, 2026",
-            supplier: "Ontario Fabrication",
-            product: "Motor Mount",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-012",
-            date: "Sep 10, 2026",
-            supplier: "Great Lakes Supply",
-            product: "Pressure Regulator",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-013",
-            date: "Sep 8, 2026",
-            supplier: "Acme Manufacturing",
-            product: "Gear Assembly",
-            status: "Open"
-        },
-        {
-            number: "NCR-2026-014",
-            date: "Sep 6, 2026",
-            supplier: "Northern Components",
-            product: "Cooling Fan Housing",
-            status: "Closed"
-        },
-        {
-            number: "NCR-2026-015",
-            date: "Sep 4, 2026",
-            supplier: "Precision Parts Ltd.",
-            product: "Steel Retaining Ring",
-            status: "Open"
-        }
+    const [ncrs, setNcrs] = useState<Ncr[]>([
+        { number: "NCR-2026-001", date: "Oct 2, 2026", supplier: "Acme Manufacturing", product: "Steel Bracket 42A", status: "Open" },
+        { number: "NCR-2026-002", date: "Oct 1, 2026", supplier: "Northern Components", product: "Aluminum Housing", status: "Closed" },
+        { number: "NCR-2026-003", date: "Sep 29, 2026", supplier: "Precision Parts Ltd.", product: "Drive Shaft Assembly", status: "Open" },
+        { number: "NCR-2026-004", date: "Sep 27, 2026", supplier: "Maple Industrial", product: "Mounting Plate", status: "Closed" },
+        { number: "NCR-2026-005", date: "Sep 25, 2026", supplier: "Ontario Fabrication", product: "Control Panel Cover", status: "Open" },
+        { number: "NCR-2026-006", date: "Sep 23, 2026", supplier: "Great Lakes Supply", product: "Hydraulic Valve", status: "Closed" },
+        { number: "NCR-2026-007", date: "Sep 21, 2026", supplier: "Acme Manufacturing", product: "Steel Support Arm", status: "Open" },
+        { number: "NCR-2026-008", date: "Sep 18, 2026", supplier: "Northern Components", product: "Electrical Enclosure", status: "Closed" },
+        { number: "NCR-2026-009", date: "Sep 16, 2026", supplier: "Precision Parts Ltd.", product: "Bearing Housing", status: "Open" },
+        { number: "NCR-2026-010", date: "Sep 14, 2026", supplier: "Maple Industrial", product: "Stainless Steel Frame", status: "Closed" },
+        { number: "NCR-2026-011", date: "Sep 12, 2026", supplier: "Ontario Fabrication", product: "Motor Mount", status: "Open" },
+        { number: "NCR-2026-012", date: "Sep 10, 2026", supplier: "Great Lakes Supply", product: "Pressure Regulator", status: "Closed" },
+        { number: "NCR-2026-013", date: "Sep 8, 2026", supplier: "Acme Manufacturing", product: "Gear Assembly", status: "Open" },
+        { number: "NCR-2026-014", date: "Sep 6, 2026", supplier: "Northern Components", product: "Cooling Fan Housing", status: "Closed" },
+        { number: "NCR-2026-015", date: "Sep 4, 2026", supplier: "Precision Parts Ltd.", product: "Steel Retaining Ring", status: "Open" }
     ]);
 
     const [currentPage, setCurrentPage] = useState(1);
-    const [editingNcr, setEditingNcr] = useState<any>(null);
+    const [editingNcr, setEditingNcr] = useState<Ncr | null>(null);
     const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
+
+    const tableRef = useRef<HTMLDivElement | null>(null);
+    const shouldScrollToTable = useRef(false);
 
     const editButtonRef = useRef<HTMLButtonElement | null>(null);
     const modalRef = useRef<HTMLDivElement | null>(null);
@@ -121,34 +41,38 @@ const RecentNcrs = () => {
     const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
 
     const ncrsPerPage = 4;
-
     const totalPages = Math.ceil(ncrs.length / ncrsPerPage);
-
     const startIndex = (currentPage - 1) * ncrsPerPage;
-
-    const currentNcrs = ncrs.slice(
-        startIndex,
-        startIndex + ncrsPerPage
-    );
+    const currentNcrs = ncrs.slice(startIndex, startIndex + ncrsPerPage);
 
     const previousPage = () => {
         if (currentPage > 1) {
+            shouldScrollToTable.current = true;
             setCurrentPage(currentPage - 1);
         }
     };
 
     const nextPage = () => {
         if (currentPage < totalPages) {
+            shouldScrollToTable.current = true;
             setCurrentPage(currentPage + 1);
         }
     };
 
-    const openEdit = (
-        ncr: any,
-        button: HTMLButtonElement
-    ) => {
-        const date = new Date(ncr.date);
+    // Scroll after React has rendered the new page.
+    useEffect(() => {
+        if (!shouldScrollToTable.current) return;
 
+        shouldScrollToTable.current = false;
+
+        tableRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+        });
+    }, [currentPage]);
+
+    const openEdit = (ncr: Ncr, button: HTMLButtonElement) => {
+        const date = new Date(ncr.date);
         const formattedDate =
             date.getFullYear() +
             "-" +
@@ -156,11 +80,7 @@ const RecentNcrs = () => {
             "-" +
             String(date.getDate()).padStart(2, "0");
 
-        setEditingNcr({
-            ...ncr,
-            date: formattedDate
-        });
-
+        setEditingNcr({ ...ncr, date: formattedDate });
         editButtonRef.current = button;
     };
 
@@ -174,11 +94,9 @@ const RecentNcrs = () => {
     };
 
     useEffect(() => {
-        if (!editingNcr) {
-            return;
-        }
+        if (!editingNcr) return;
 
-        setTimeout(() => {
+        const focusTimeout = window.setTimeout(() => {
             if (showSaveConfirmation) {
                 confirmButtonRef.current?.focus();
             } else {
@@ -193,69 +111,43 @@ const RecentNcrs = () => {
                 } else {
                     closeEdit();
                 }
-
                 return;
             }
 
-            if (
-                e.key !== "Tab" ||
-                !modalRef.current
-            ) {
-                return;
-            }
+            if (e.key !== "Tab" || !modalRef.current) return;
 
             const focusableElements =
                 modalRef.current.querySelectorAll<HTMLElement>(
-                    "button, input, select, textarea, [tabindex]:not([tabindex='-1'])"
+                    "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])"
                 );
 
-            if (focusableElements.length === 0) {
-                return;
-            }
+            if (focusableElements.length === 0) return;
 
-            const firstElement =
-                focusableElements[0];
+            const firstElement = focusableElements[0];
+            const lastElement = focusableElements[focusableElements.length - 1];
 
-            const lastElement =
-                focusableElements[
-                    focusableElements.length - 1
-                ];
-
-            if (
-                e.shiftKey &&
-                document.activeElement === firstElement
-            ) {
+            if (e.shiftKey && document.activeElement === firstElement) {
                 e.preventDefault();
                 lastElement.focus();
-            }
-
-            if (
-                !e.shiftKey &&
-                document.activeElement === lastElement
-            ) {
+            } else if (!e.shiftKey && document.activeElement === lastElement) {
                 e.preventDefault();
                 firstElement.focus();
             }
         };
 
-        document.addEventListener(
-            "keydown",
-            handleKeyDown
-        );
+        document.addEventListener("keydown", handleKeyDown);
 
         return () => {
-            document.removeEventListener(
-                "keydown",
-                handleKeyDown
-            );
+            window.clearTimeout(focusTimeout);
+            document.removeEventListener("keydown", handleKeyDown);
         };
     }, [editingNcr, showSaveConfirmation]);
 
     const handleChange = (
-        e: React.ChangeEvent<
-            HTMLInputElement | HTMLSelectElement
-        >
+        e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
     ) => {
+        if (!editingNcr) return;
+
         const { name, value } = e.target;
 
         setEditingNcr({
@@ -264,13 +156,13 @@ const RecentNcrs = () => {
         });
     };
 
-    // Opens the confirmation dialog
     const saveEdit = () => {
         setShowSaveConfirmation(true);
     };
 
-    // Actually saves the changes
     const confirmSave = () => {
+        if (!editingNcr) return;
+
         const formattedDate = new Date(
             editingNcr.date + "T00:00:00"
         ).toLocaleDateString("en-US", {
@@ -286,13 +178,10 @@ const RecentNcrs = () => {
 
         setNcrs((currentNcrs) =>
             currentNcrs.map((ncr) =>
-                ncr.number === editingNcr.number
-                    ? updatedNcr
-                    : ncr
+                ncr.number === editingNcr.number ? updatedNcr : ncr
             )
         );
 
-        setShowSaveConfirmation(false);
         closeEdit();
     };
 
@@ -304,89 +193,101 @@ const RecentNcrs = () => {
         }, 0);
     };
 
-    const openCalendar = (
-        e: React.MouseEvent<HTMLInputElement>
-    ) => {
+    const openCalendar = (e: React.MouseEvent<HTMLInputElement>) => {
         const input = e.currentTarget;
 
-        if ("showPicker" in input) {
+        if (typeof input.showPicker === "function") {
             try {
-                (
-                    input as HTMLInputElement & {
-                        showPicker: () => void;
-                    }
-                ).showPicker();
+                input.showPicker();
             } catch {
-                // Browser may prevent showPicker.
+                // The browser can open the native picker normally.
             }
         }
     };
 
+    const renderStatus = (status: Ncr["status"]) => (
+        <span className={`status ${status.toLowerCase()}`}>
+            <span className="statusDot" aria-hidden="true" />
+            {status}
+        </span>
+    );
+
+    const renderEditButton = (ncr: Ncr) => (
+        <button
+            className="editButton"
+            type="button"
+            aria-label={`Edit ${ncr.number}`}
+            onClick={(e) => openEdit(ncr, e.currentTarget)}
+        >
+            <FiEdit3 aria-hidden="true" />
+        </button>
+    );
+
     return (
-        <div className="recentNcrs">
-            <p className="recentNcrsTitle">
-                Recent NCR Table
-            </p>
+        <div ref={tableRef} className="recentNcrs">
+            <p className="recentNcrsTitle">Recent NCR Table</p>
 
-            <table>
-                <thead>
-                    <tr>
-                        <th scope="col">NCR NUMBER</th>
-                        <th scope="col">DATE</th>
-                        <th scope="col">SUPPLIER</th>
-                        <th scope="col">PRODUCT</th>
-                        <th scope="col">STATUS</th>
-                        <th scope="col">EDIT</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    {currentNcrs.map((ncr, index) => (
-                        <tr
-                            key={`${ncr.number}-${index}`}
-                        >
-                            <td className="ncrNumber">
-                                {ncr.number}
-                            </td>
-
-                            <td>{ncr.date}</td>
-
-                            <td>{ncr.supplier}</td>
-
-                            <td>{ncr.product}</td>
-
-                            <td>
-                                <span
-                                    className={`status ${ncr.status.toLowerCase()}`}
-                                >
-                                    <span
-                                        className="statusDot"
-                                        aria-hidden="true"
-                                    ></span>
-
-                                    {ncr.status}
-                                </span>
-                            </td>
-
-                            <td>
-                                <button
-                                    className="editButton"
-                                    type="button"
-                                    aria-label={`Edit ${ncr.number}`}
-                                    onClick={(e) =>
-                                        openEdit(
-                                            ncr,
-                                            e.currentTarget
-                                        )
-                                    }
-                                >
-                                    <FiEdit3 aria-hidden="true" />
-                                </button>
-                            </td>
+            {/* Desktop and tablet table */}
+            <div className="desktopTable">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">NCR NUMBER</th>
+                            <th scope="col">DATE</th>
+                            <th scope="col">SUPPLIER</th>
+                            <th scope="col">PRODUCT</th>
+                            <th scope="col">STATUS</th>
+                            <th scope="col">EDIT</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+
+                    <tbody>
+                        {currentNcrs.map((ncr) => (
+                            <tr key={ncr.number}>
+                                <td className="ncrNumber">{ncr.number}</td>
+                                <td>{ncr.date}</td>
+                                <td>{ncr.supplier}</td>
+                                <td>{ncr.product}</td>
+                                <td>{renderStatus(ncr.status)}</td>
+                                <td>{renderEditButton(ncr)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="mobileCards">
+                {currentNcrs.map((ncr) => (
+                    <article className="ncrCard" key={ncr.number}>
+                        <div className="ncrCardHeader">
+                            <span className="ncrNumber">{ncr.number}</span>
+                            {renderStatus(ncr.status)}
+                        </div>
+
+                        <div className="ncrCardDetails">
+                            <div className="ncrCardField">
+                                <span className="fieldLabel">Date</span>
+                                <span>{ncr.date}</span>
+                            </div>
+
+                            <div className="ncrCardField">
+                                <span className="fieldLabel">Supplier</span>
+                                <span>{ncr.supplier}</span>
+                            </div>
+
+                            <div className="ncrCardField">
+                                <span className="fieldLabel">Product</span>
+                                <span>{ncr.product}</span>
+                            </div>
+                        </div>
+
+                        <div className="ncrCardActions">
+                            {renderEditButton(ncr)}
+                        </div>
+                    </article>
+                ))}
+            </div>
 
             <div className="pagination">
                 <button
@@ -416,9 +317,7 @@ const RecentNcrs = () => {
                 <div
                     className="modalOverlay"
                     onClick={() => {
-                        if (!showSaveConfirmation) {
-                            closeEdit();
-                        }
+                        if (!showSaveConfirmation) closeEdit();
                     }}
                 >
                     <div
@@ -435,21 +334,14 @@ const RecentNcrs = () => {
                                 ? "confirm-save-title"
                                 : "edit-ncr-title"
                         }
-                        onClick={(e) =>
-                            e.stopPropagation()
-                        }
+                        onClick={(e) => e.stopPropagation()}
                     >
                         {!showSaveConfirmation ? (
                             <>
                                 <div className="modalHeader">
                                     <div>
-                                        <h2 id="edit-ncr-title">
-                                            Edit NCR
-                                        </h2>
-
-                                        <p>
-                                            {editingNcr.number}
-                                        </p>
+                                        <h2 id="edit-ncr-title">Edit NCR</h2>
+                                        <p>{editingNcr.number}</p>
                                     </div>
 
                                     <button
@@ -467,90 +359,39 @@ const RecentNcrs = () => {
                                         <label htmlFor="ncr-number">
                                             NCR Number
                                         </label>
-
                                         <input
                                             id="ncr-number"
                                             type="text"
-                                            name="number"
-                                            value={
-                                                editingNcr.number
-                                            }
+                                            value={editingNcr.number}
                                             disabled
                                         />
                                     </div>
 
                                     <div className="formGroup">
-                                        <label htmlFor="ncr-date">
-                                            Date
-                                        </label>
-
-                                        <div
-                                            className="dateInputWrapper"
-                                            onClick={(e) => {
-                                                const input =
-                                                    e.currentTarget.querySelector(
-                                                        "input"
-                                                    ) as HTMLInputElement;
-
-                                                if (
-                                                    input &&
-                                                    "showPicker" in
-                                                        input
-                                                ) {
-                                                    try {
-                                                        (
-                                                            input as HTMLInputElement & {
-                                                                showPicker: () => void;
-                                                            }
-                                                        ).showPicker();
-                                                    } catch {
-                                                        // Native picker fallback
-                                                    }
-                                                }
-                                            }}
-                                        >
-                                            <input
-                                                ref={
-                                                    firstInputRef
-                                                }
-                                                id="ncr-date"
-                                                type="date"
-                                                name="date"
-                                                value={
-                                                    editingNcr.date
-                                                }
-                                                onChange={
-                                                    handleChange
-                                                }
-                                                onClick={
-                                                    openCalendar
-                                                }
-                                            />
-                                        </div>
+                                        <label htmlFor="ncr-date">Date</label>
+                                        <input
+                                            ref={firstInputRef}
+                                            id="ncr-date"
+                                            type="date"
+                                            name="date"
+                                            value={editingNcr.date}
+                                            onChange={handleChange}
+                                            onClick={openCalendar}
+                                        />
                                     </div>
 
                                     <div className="formGroup">
                                         <label htmlFor="ncr-status">
                                             Status
                                         </label>
-
                                         <select
                                             id="ncr-status"
                                             name="status"
-                                            value={
-                                                editingNcr.status
-                                            }
-                                            onChange={
-                                                handleChange
-                                            }
+                                            value={editingNcr.status}
+                                            onChange={handleChange}
                                         >
-                                            <option value="Open">
-                                                Open
-                                            </option>
-
-                                            <option value="Closed">
-                                                Closed
-                                            </option>
+                                            <option value="Open">Open</option>
+                                            <option value="Closed">Closed</option>
                                         </select>
                                     </div>
 
@@ -558,17 +399,12 @@ const RecentNcrs = () => {
                                         <label htmlFor="ncr-supplier">
                                             Supplier
                                         </label>
-
                                         <input
                                             id="ncr-supplier"
                                             type="text"
                                             name="supplier"
-                                            value={
-                                                editingNcr.supplier
-                                            }
-                                            onChange={
-                                                handleChange
-                                            }
+                                            value={editingNcr.supplier}
+                                            onChange={handleChange}
                                         />
                                     </div>
 
@@ -576,17 +412,12 @@ const RecentNcrs = () => {
                                         <label htmlFor="ncr-product">
                                             Product
                                         </label>
-
                                         <input
                                             id="ncr-product"
                                             type="text"
                                             name="product"
-                                            value={
-                                                editingNcr.product
-                                            }
-                                            onChange={
-                                                handleChange
-                                            }
+                                            value={editingNcr.product}
+                                            onChange={handleChange}
                                         />
                                     </div>
                                 </div>
@@ -612,7 +443,7 @@ const RecentNcrs = () => {
                         ) : (
                             <>
                                 <div className="confirmationContent">
-                                    <div className="confirmationIcon">
+                                    <div className="confirmationIcon" aria-hidden="true">
                                         ?
                                     </div>
 
@@ -621,15 +452,9 @@ const RecentNcrs = () => {
                                     </h2>
 
                                     <p>
-                                        Are you sure you want
-                                        to save the changes
-                                        made to{" "}
-                                        <strong>
-                                            {
-                                                editingNcr.number
-                                            }
-                                        </strong>
-                                        ?
+                                        Are you sure you want to save the
+                                        changes made to{" "}
+                                        <strong>{editingNcr.number}</strong>?
                                     </p>
                                 </div>
 
@@ -643,9 +468,7 @@ const RecentNcrs = () => {
                                     </button>
 
                                     <button
-                                        ref={
-                                            confirmButtonRef
-                                        }
+                                        ref={confirmButtonRef}
                                         className="saveButton"
                                         type="button"
                                         onClick={confirmSave}
@@ -663,8 +486,10 @@ const RecentNcrs = () => {
                 @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:ital,wght@0,100..900;1,100..900&display=swap');
 
                 .recentNcrs {
+                    scroll-margin-top: 20px;
                     position: relative;
                     width: 100%;
+                    min-width: 0;
                     height: 620px;
                     background-color: #e4e4e4;
                     padding: 2rem;
@@ -673,9 +498,15 @@ const RecentNcrs = () => {
                 }
 
                 .recentNcrsTitle {
+                    margin: 0 0 1rem;
                     font-size: 1.5rem;
                     color: black;
                     font-weight: 700;
+                }
+
+                .desktopTable {
+                    width: 100%;
+                    overflow-x: auto;
                 }
 
                 table {
@@ -686,11 +517,12 @@ const RecentNcrs = () => {
 
                 th {
                     text-align: left;
-                    padding: 0.75rem 1.5rem;
+                    padding: 0.75rem 1rem;
                     background-color: #f8fafc;
                     color: #64748b;
                     font-size: 0.75rem;
                     font-weight: 600;
+                    white-space: nowrap;
                 }
 
                 th:first-child {
@@ -702,7 +534,7 @@ const RecentNcrs = () => {
                 }
 
                 td {
-                    padding: 1rem 1.5rem;
+                    padding: 1rem;
                     background-color: white;
                     color: #1e293b;
                     font-size: 0.9rem;
@@ -720,6 +552,7 @@ const RecentNcrs = () => {
                     font-family: "Geist Mono", monospace;
                     color: #2563eb;
                     font-weight: 600;
+                    overflow-wrap: anywhere;
                 }
 
                 .status {
@@ -728,23 +561,25 @@ const RecentNcrs = () => {
                     justify-content: center;
                     gap: 0.4rem;
                     width: 5.5rem;
+                    min-width: 5.5rem;
                     box-sizing: border-box;
-                    padding: 0.1rem;
+                    padding: 0.2rem 0.4rem;
                     border-radius: 1000em;
                     font-size: 0.75rem;
                     font-weight: 600;
+                    white-space: nowrap;
                 }
 
                 .statusDot {
                     width: 6px;
                     height: 6px;
+                    flex-shrink: 0;
                     border-radius: 50%;
                 }
 
                 .open {
                     color: #dc2626;
                     background-color: #fef2f2;
-                    border: 1px solid #fecaca;
                 }
 
                 .open .statusDot {
@@ -765,6 +600,8 @@ const RecentNcrs = () => {
                     display: flex;
                     align-items: center;
                     justify-content: center;
+                    min-width: 36px;
+                    min-height: 36px;
                     padding: 0.4rem;
                     background-color: white;
                     border: 1px solid #dbe2ea;
@@ -778,17 +615,29 @@ const RecentNcrs = () => {
                     background-color: #f8fafc;
                 }
 
+                .mobileCards {
+                    display: none;
+                }
+
                 .pagination {
                     position: absolute;
                     bottom: 1rem;
                     right: 2rem;
+                    left: 2rem;
                     display: flex;
                     align-items: center;
-                    gap: 2rem;
+                    justify-content: flex-end;
+                    gap: 1rem;
+                }
+
+                .pagination span {
+                    color: #334155;
+                    font-size: 0.85rem;
+                    white-space: nowrap;
                 }
 
                 .pagination button {
-                    padding: 0.9rem 2.5rem;
+                    padding: 0.8rem 1.5rem;
                     border: none;
                     border-radius: 10px;
                     background-color: #f8fafc;
@@ -796,8 +645,8 @@ const RecentNcrs = () => {
                     cursor: pointer;
                 }
 
-                .pagination button:hover {
-                    background-color: #fff;
+                .pagination button:hover:not(:disabled) {
+                    background-color: white;
                 }
 
                 .pagination button:disabled {
@@ -808,37 +657,30 @@ const RecentNcrs = () => {
                 .modalOverlay {
                     position: fixed;
                     inset: 0;
-                    background-color: rgba(
-                        15,
-                        23,
-                        42,
-                        0.45
-                    );
+                    background-color: rgba(15, 23, 42, 0.45);
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     z-index: 1000;
                     padding: 1rem;
+                    overflow-y: auto;
+                }
+
+                .editModal,
+                .confirmationModal {
+                    width: 100%;
+                    background-color: white;
+                    border-radius: 14px;
+                    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+                    overflow: hidden;
                 }
 
                 .editModal {
-                    width: 100%;
                     max-width: 520px;
-                    background-color: white;
-                    border-radius: 14px;
-                    box-shadow: 0 20px 50px
-                        rgba(0, 0, 0, 0.2);
-                    overflow: hidden;
                 }
 
                 .confirmationModal {
-                    width: 100%;
                     max-width: 420px;
-                    background-color: white;
-                    border-radius: 14px;
-                    box-shadow: 0 20px 50px
-                        rgba(0, 0, 0, 0.2);
-                    overflow: hidden;
                 }
 
                 .confirmationContent {
@@ -873,7 +715,8 @@ const RecentNcrs = () => {
                     line-height: 1.5;
                 }
 
-                .confirmationActions {
+                .confirmationActions,
+                .modalActions {
                     display: flex;
                     justify-content: flex-end;
                     gap: 0.75rem;
@@ -898,8 +741,7 @@ const RecentNcrs = () => {
                 .modalHeader p {
                     margin: 0.35rem 0 0;
                     color: #64748b;
-                    font-family: "Geist Mono",
-                        monospace;
+                    font-family: "Geist Mono", monospace;
                     font-size: 0.8rem;
                 }
 
@@ -907,8 +749,8 @@ const RecentNcrs = () => {
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    width: 34px;
-                    height: 34px;
+                    width: 36px;
+                    height: 36px;
                     border: none;
                     border-radius: 7px;
                     background-color: transparent;
@@ -932,6 +774,7 @@ const RecentNcrs = () => {
                     display: flex;
                     flex-direction: column;
                     gap: 0.4rem;
+                    min-width: 0;
                 }
 
                 .fullWidth {
@@ -947,6 +790,8 @@ const RecentNcrs = () => {
                 .formGroup input,
                 .formGroup select {
                     width: 100%;
+                    min-width: 0;
+                    min-height: 44px;
                     box-sizing: border-box;
                     padding: 0.75rem;
                     border: 1px solid #dbe2ea;
@@ -954,40 +799,13 @@ const RecentNcrs = () => {
                     background-color: white;
                     color: #1e293b;
                     font-family: inherit;
-                    outline: none;
-                }
-
-                .formGroup input:focus,
-                .formGroup select:focus {
-                    border-color: #2563eb;
-                    box-shadow: 0 0 0 2px
-                        rgba(
-                            37,
-                            99,
-                            235,
-                            0.1
-                        );
-                }
-
-                .editButton:focus-visible,
-                .closeButton:focus-visible,
-                .pagination button:focus-visible,
-                .cancelButton:focus-visible,
-                .saveButton:focus-visible {
-                    outline: 2px solid #2563eb;
-                    outline-offset: 2px;
+                    font-size: 1rem;
                 }
 
                 .formGroup input:focus-visible,
                 .formGroup select:focus-visible {
-                    border-color: #2563eb;
-                    box-shadow: 0 0 0 3px
-                        rgba(
-                            37,
-                            99,
-                            235,
-                            0.2
-                        );
+                    outline: 2px solid #2563eb;
+                    outline-offset: 2px;
                 }
 
                 .formGroup input:disabled {
@@ -996,36 +814,18 @@ const RecentNcrs = () => {
                     cursor: not-allowed;
                 }
 
-                .dateInputWrapper {
-                    width: 100%;
-                    cursor: pointer;
-                }
-
-                .dateInputWrapper input[type="date"] {
-                    cursor: pointer;
-                }
-
-                .dateInputWrapper
-                    input[type="date"]::-webkit-calendar-picker-indicator {
-                    cursor: pointer;
-                    opacity: 0.8;
-                    padding: 0.2rem;
-                }
-
-                .dateInputWrapper
-                    input[type="date"]::-webkit-calendar-picker-indicator:hover {
-                    opacity: 1;
-                }
-
-                .modalActions {
-                    display: flex;
-                    justify-content: flex-end;
-                    gap: 0.75rem;
-                    padding: 1rem 1.5rem 1.5rem;
+                .editButton:focus-visible,
+                .closeButton:focus-visible,
+                .pagination button:focus-visible,
+                .cancelButton:focus-visible,
+                .saveButton:focus-visible {
+                    outline: 2px solid #2563eb;
+                    outline-offset: 3px;
                 }
 
                 .cancelButton,
                 .saveButton {
+                    min-height: 44px;
                     padding: 0.75rem 1.25rem;
                     border-radius: 8px;
                     cursor: pointer;
@@ -1052,43 +852,140 @@ const RecentNcrs = () => {
                     background-color: #1d4ed8;
                 }
 
-                @media (max-width: 900px) {
+                @media (max-width: 1000px) {
                     .recentNcrs {
-                        overflow-x: auto;
+                        padding: 1.5rem;
                     }
 
                     table {
-                        min-width: 800px;
+                        min-width: 720px;
                     }
                 }
 
                 @media (max-width: 600px) {
                     .recentNcrs {
-                        height: 650px;
+                        height: auto;
+                        min-height: 0;
                         padding: 1rem;
+                        padding-bottom: 5.5rem;
+                    }
+
+                    .recentNcrsTitle {
+                        font-size: 1.25rem;
+                        margin-bottom: 1.25rem;
+                    }
+
+                    .desktopTable {
+                        display: none;
+                    }
+
+                    .mobileCards {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 0.85rem;
+                    }
+
+                    .ncrCard {
+                        min-width: 0;
+                        padding: 1rem;
+                        background-color: white;
+                        border: 1px solid #e2e8f0;
+                        border-radius: 10px;
+                    }
+
+                    .ncrCardHeader {
+                        display: flex;
+                        align-items: flex-start;
+                        justify-content: space-between;
+                        flex-wrap: wrap;
+                        gap: 0.75rem;
+                        padding-bottom: 0.85rem;
+                        border-bottom: 1px solid #e2e8f0;
+                    }
+
+                    .ncrCardHeader .ncrNumber {
+                        font-size: 0.85rem;
+                    }
+
+                    .ncrCardDetails {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 0.85rem;
+                        padding: 1rem 0;
+                    }
+
+                    .ncrCardField {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 0.3rem;
+                        min-width: 0;
+                        color: #1e293b;
+                        font-size: 0.9rem;
+                        overflow-wrap: anywhere;
+                    }
+
+                    .fieldLabel {
+                        color: #64748b;
+                        font-size: 0.75rem;
+                        font-weight: 600;
+                    }
+
+                    .ncrCardActions {
+                        display: flex;
+                        justify-content: flex-end;
+                        padding-top: 0.75rem;
+                        border-top: 1px solid #e2e8f0;
                     }
 
                     .pagination {
-                        right: 1rem;
+                        position: absolute;
                         bottom: 1rem;
+                        left: 1rem;
+                        right: 1rem;
+                        justify-content: space-between;
+                        gap: 0.5rem;
+                    }
+
+                    .pagination button {
+                        min-height: 44px;
+                        padding: 0.7rem 0.8rem;
+                    }
+
+                    .pagination span {
+                        font-size: 0.8rem;
                     }
 
                     .form {
                         grid-template-columns: 1fr;
+                        padding: 1rem;
                     }
 
                     .fullWidth {
                         grid-column: span 1;
                     }
 
+                    .modalOverlay {
+                        align-items: flex-start;
+                    }
+
+                    .editModal,
+                    .confirmationModal {
+                        margin: auto 0;
+                    }
+
                     .modalActions,
                     .confirmationActions {
                         flex-direction: column-reverse;
+                        padding: 1rem;
                     }
 
                     .cancelButton,
                     .saveButton {
                         width: 100%;
+                    }
+
+                    .confirmationContent {
+                        padding: 1.5rem;
                     }
                 }
             `}</style>
@@ -1097,4 +994,3 @@ const RecentNcrs = () => {
 };
 
 export default RecentNcrs;
-
