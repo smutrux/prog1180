@@ -30,44 +30,57 @@ const Dashboard = () => {
 		void load();
 	}, [load]);
 
+	/* The cards show while loading (as placeholders the same size as the real
+	   cards) and once the report is in. Only a failed load shows the error. */
+	const showCards = report !== null || loading;
+	const placeholder = report === null;
+
 	return (
 		<div>
 			<h1>Quality Control Dashboard</h1>
 
-			{report ? (
+			{showCards ? (
 				<div className="stats-row">
+					{placeholder && (
+						<p role="status" className="sr-only">
+							Loading data...
+						</p>
+					)}
 					<StatusCard
 						title="Open NCRs"
-						amount={report.open}
-						subtext={report.onHold ? `${report.onHold} on hold` : "None on hold"}
+						amount={report?.open ?? 0}
+						subtext={report ? (report.onHold ? `${report.onHold} on hold` : "None on hold") : "None on hold"}
 						icon={FiAlertCircle}
 						colour="red"
+						loading={placeholder}
 					/>
 					<StatusCard
 						title="Awaiting review"
-						amount={report.awaitingReview}
+						amount={report?.awaitingReview ?? 0}
 						subtext="Open NCRs with a review pending"
 						icon={FaRegClock}
 						colour="orange"
+						loading={placeholder}
 					/>
 					<StatusCard
 						title="Closed NCRs"
-						amount={report.closed}
-						subtext={`${report.closedThisMonth} closed this month`}
+						amount={report?.closed ?? 0}
+						subtext={`${report?.closedThisMonth ?? 0} closed this month`}
 						icon={TbCircleCheck}
 						colour="green"
+						loading={placeholder}
 					/>
 					<StatusCard
 						title="Total NCRs"
-						amount={report.total}
+						amount={report?.total ?? 0}
 						subtext="All NCRs raised"
 						icon={LuArchive}
 						colour="blue"
+						loading={placeholder}
 					/>
 				</div>
 			) : (
 				<div className="stats-status">
-					{loading && <p role="status">Loading data...</p>}
 					{error && (
 						<>
 							<p role="alert">{error}</p>
@@ -128,6 +141,19 @@ const Dashboard = () => {
 					align-items: flex-start;
 					gap: 1rem;
 					margin-bottom: 3rem;
+				}
+
+				/* Read by screen readers, not drawn. Announces the loading state. */
+				.sr-only {
+					position: absolute;
+					width: 1px;
+					height: 1px;
+					margin: -1px;
+					padding: 0;
+					overflow: hidden;
+					clip: rect(0, 0, 0, 0);
+					white-space: nowrap;
+					border: 0;
 				}
 
 				@media (max-width: 1200px) {

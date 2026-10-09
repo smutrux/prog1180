@@ -15,7 +15,9 @@ import {
 	FaSyncAlt,
 	FaTruck,
 } from "react-icons/fa";
+import { FaPlus } from "react-icons/fa6";
 import Button from "../components/button";
+import { NcrModal } from "../components/NcrModal";
 import StatusCard from "../components/statusCard";
 import { OVERDUE_DAYS, loadReport, type Report } from "../components/reportsService";
 
@@ -27,6 +29,32 @@ interface Group {
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/* Stands in for the real numbers while the page loads. The cards built from it
+   are drawn as placeholders, so only their size matters, not their content. */
+const EMPTY_REPORT: Report = {
+	total: 0,
+	open: 0,
+	onHold: 0,
+	closed: 0,
+	awaitingReview: 0,
+	openedThisMonth: 0,
+	openedLastMonth: 0,
+	closedThisMonth: 0,
+	closedLastMonth: 0,
+	averageDaysToClose: null,
+	closedWithDates: 0,
+	overdue: 0,
+	oldestOpen: null,
+	defectRate: null,
+	defective: 0,
+	received: 0,
+	awaitingDisposition: 0,
+	topProblem: null,
+	topSupplier: null,
+	fromSuppliers: 0,
+	fromWip: 0,
+};
 
 /* Every card is a number plus one line of plain-language context. */
 function buildGroups(r: Report): Group[] {
@@ -113,6 +141,7 @@ const Reports = () => {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
 	const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+	const [modalOpen, setModalOpen] = useState(false);
 
 	const load = useCallback(async () => {
 		setLoading(true);
@@ -131,11 +160,22 @@ const Reports = () => {
 		void load();
 	}, [load]);
 
-	if (!report) {
+	/* The "New NCR" button and its popup, the same as on the NCR tables.
+	   After a save the numbers on this page are reloaded. */
+	const newNcr = (
+		<>
+			<div className="newNcrBtn">
+				<Button text="New NCR" aria="New NCR" size="1rem" icon={FaPlus} onClick={() => setModalOpen(true)} />
+			</div>
+			<NcrModal open={modalOpen} onClose={() => setModalOpen(false)} onSaved={() => void load()} />
+		</>
+	);
+
+	/* The first load failed and nothing is loading now: show the error and a retry button. */
+	if (!report && !loading) {
 		return (
 			<div className="reports">
 				<h1>Reports</h1>
-				{loading && <p role="status">Loading data...</p>}
 				{error && (
 					<>
 						<p role="alert">{error}</p>
@@ -144,13 +184,19 @@ const Reports = () => {
 						</div>
 					</>
 				)}
+				{newNcr}
 				<style jsx>{`
 					.reports { display: flex; flex-direction: column; gap: 1rem; align-items: flex-start; }
 					.reports h1 { margin: 1.5rem 0; }
+					.newNcrBtn { position: fixed; bottom: 1rem; right: 1rem; z-index: 1000; }
 				`}</style>
 			</div>
 		);
 	}
+
+	/* No report yet (first load or a retry): draw the whole page with placeholder
+	   cards of the same size, so nothing moves when the numbers arrive. */
+	const placeholder = !report;
 
 	return (
 		<div className="reports">
@@ -158,31 +204,37 @@ const Reports = () => {
 				<div>
 					<h1>Reports</h1>
 					<p role="status" className="reportsUpdated">
-						{loading
-							? "Refreshing..."
-							: updatedAt && `Updated at ${updatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+						{placeholder
+							? "Loading data..."
+							: loading
+								? "Refreshing..."
+								: updatedAt && `Updated at ${updatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
 					</p>
 				</div>
 				<Button text="Refresh" aria="Refresh reports" icon={FaSyncAlt} enabled={!loading} onClick={() => void load()} size="1.2rem" />
 			</div>
 
-			{error && <p role="alert" className="reportsError">The numbers could not be refreshed. {error}</p>}
+			{report && error && <p role="alert" className="reportsError">The numbers could not be refreshed. {error}</p>}
 
-			{buildGroups(report).map((group) => (
+			{buildGroups(report ?? EMPTY_REPORT).map((group) => (
 				<section key={group.id} aria-labelledby={`reports-${group.id}`} className="reportsGroup">
 					<h2 id={`reports-${group.id}`}>{group.title}</h2>
 					<ul className="cardGrid">
 						{group.cards.map((card) => (
 							<li key={card.title}>
-								<StatusCard {...card} />
+								<StatusCard {...card} loading={placeholder} />
 							</li>
 						))}
 					</ul>
 				</section>
 			))}
 
+			{newNcr}
+
 			<style jsx>{`
-				.reports { display: flex; flex-direction: column; gap: 1.5rem; }
+				/* Bottom padding keeps the fixed New NCR button off the last cards. */
+				.reports { display: flex; flex-direction: column; gap: 1.5rem; padding-bottom: 4.5rem; }
+				.newNcrBtn { position: fixed; bottom: 1rem; right: 1rem; z-index: 1000; }
 				.reportsHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
 				.reportsHeader h1 { margin: 1.5rem 0; }
 				.reportsUpdated { margin: 0.5rem 0; color: var(--text-h); font-size: 0.95rem; }

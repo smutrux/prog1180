@@ -592,7 +592,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const errorKeys = Object.keys(errors);
 	const selectedProblems = values.defect.problemTypeIds;
 
-	if (lookupState === "loading") return <p role="status">Loading form...</p>;
+	if (lookupState === "loading") return <p role="status" style={{ textAlign: "center", margin: "1rem 0" }}>Loading form...</p>;
 
 	if (lookupState === "error") {
 		return (
