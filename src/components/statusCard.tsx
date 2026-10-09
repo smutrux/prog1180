@@ -7,6 +7,9 @@ interface StatusCardProps {
 
     size?: string;
     colour: "green" | "red" | "orange" | "blue";
+    /** Show a shimmering placeholder instead of the numbers. The card keeps
+        exactly the same size, so the page does not jump when the data arrives. */
+    loading?: boolean;
 }
 
 /* Each colour is a CSS variable, so it can change with light and dark mode.
@@ -19,16 +22,19 @@ const colours = {
 };
 
 var StatusCard = (props: StatusCardProps) => {
+    const skeleton = props.loading ? " skeleton" : "";
     return (
-        <div className="statusCard">
+        <div className="statusCard" aria-busy={props.loading ? "true" : undefined}>
             <div className="statusCardHeader">
                 <p>{props.title}</p>
                 <div className="statusIcon" style={{color: colours[props.colour]}}>
                     <props.icon aria-hidden="true" />
                 </div>
             </div>
-            <p className="statusAmount">{props.amount}</p>
-            <p className="statusSubtext">{props.subtext}</p>
+            {/* While loading, the real text is still laid out (so the size is right)
+                but drawn transparent, with a shimmering bar behind it. */}
+            <p className={`statusAmount${skeleton}`} aria-hidden={props.loading ? "true" : undefined}>{props.amount}</p>
+            <p className={`statusSubtext${skeleton}`} aria-hidden={props.loading ? "true" : undefined}>{props.subtext}</p>
            <style jsx>{`
 
             .statusCard {
@@ -37,6 +43,10 @@ var StatusCard = (props: StatusCardProps) => {
                 --status-red: #DC2626;
                 --status-orange: #D97706;
                 --status-blue: #2563EB;
+
+                /* Loading placeholder colours. Grey with transparency, so they suit light and dark mode. */
+                --skeleton-base: rgba(128, 128, 128, 0.22);
+                --skeleton-shine: rgba(128, 128, 128, 0.4);
 
                 background-color: var(--code-bg);
                 display: flex;
@@ -91,6 +101,40 @@ var StatusCard = (props: StatusCardProps) => {
             .statusSubtext {
                color: var(--text-h);
                font-size: 0.9rem;
+            }
+
+            /* Loading placeholder: the text keeps its space but is invisible,
+               and a moving highlight sweeps across the bar. */
+            .skeleton {
+                color: transparent;
+                width: fit-content;
+                max-width: 100%;
+                border-radius: 8px;
+                user-select: none;
+                background: linear-gradient(
+                    90deg,
+                    var(--skeleton-base) 0%,
+                    var(--skeleton-shine) 50%,
+                    var(--skeleton-base) 100%
+                );
+                background-size: 200% 100%;
+                animation: statusShimmer 1.4s ease-in-out infinite;
+            }
+
+            .statusAmount.skeleton {
+                min-width: 4rem;
+            }
+
+            @keyframes statusShimmer {
+                from { background-position: 200% 0; }
+                to { background-position: -200% 0; }
+            }
+
+            /* People who ask for less motion get a still placeholder. */
+            @media (prefers-reduced-motion: reduce) {
+                .skeleton {
+                    animation: none;
+                }
             }
         `}</style>
         </div>

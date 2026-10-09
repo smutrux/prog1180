@@ -18,7 +18,11 @@ import {
 
 /* ---- Names the database must contain (created by scripts/seed.mjs) ---- */
 export const QUALITY_ROLE = "Quality Representative";
-export const STATUS_NEW = "Active";
+/* New NCRs start with this status. If no status has this name, the one with id 1 is used. */
+export const STATUS_NEW = "Open";
+const STATUS_NEW_FALLBACK_ID = 1;
+/* Moving an NCR to a status like this sets its close date. Moving it out of one clears it. */
+export const isClosedStatus = (name: string) => /clos/i.test(name);
 export const REVIEW_SUBMITTED = "Submitted";
 export const IN_HOUSE_SUPPLIER = "In-house production";
 export const PROCESS_LABELS = { supplier: "Supplier or Rec-Insp", wip: "WIP (Production Order)" } as const;
@@ -64,17 +68,28 @@ interface SalesOrderFields { SalesOrderNumber: string | null; ItemSapNumber: str
 interface ItemFields { ItemName: string | null; ItemDesc: string | null }
 interface SOLineItemFields { ItemId: number | null; SalesOrderId: number | null }
 interface POLineItemFields { PurchaseOrderId: number | null }
-interface NCRProblemTypeFields { ProblemTypeId: number | null }
-interface AttachmentFields { AttachmentType: string | null; AttachmentFileName: string | null; AttachmentFilePath: string | null }
+interface NCRProblemTypeFields { NCRId?: unknown; ProblemTypeId: number | null }
+interface AttachmentFields { NCRId?: unknown; AttachmentType: string | null; AttachmentFileName: string | null; AttachmentFilePath: string | null }
 
 /* ---- What the form reads ---- */
 export interface SupplierOption { id: number; name: string }
 export interface ProblemTypeOption { id: number; label: string; description: string }
+export interface StatusOption { id: number; name: string }
 export interface InspectorOption { personId: number; rolePersonId: number; first: string; middle: string; last: string }
 export interface FormLookups {
 	suppliers: SupplierOption[];
 	problemTypes: ProblemTypeOption[];
 	inspectors: InspectorOption[];
+	statuses: StatusOption[];
+}
+
+/** The status a new NCR starts with: "Open", or the status with id 1. */
+export function defaultStatus(statuses: StatusOption[]): StatusOption | undefined {
+	return (
+		statuses.find((s) => same(s.name, STATUS_NEW)) ??
+		statuses.find((s) => s.id === STATUS_NEW_FALLBACK_ID) ??
+		statuses[0]
+	);
 }
 
 export class DuplicateNcrNumberError extends Error {
@@ -100,6 +115,17 @@ export class SubmitError extends Error {
 	}
 }
 
+/* The NCR column that points at NCRStatus. Foreign keys here are named after
+   their table, so this is NCRStatusId. If your column is named differently,
+   change it here. When editing, the real name is detected from the record. */
+export const STATUS_COLUMN = "NCRStatusId";
+
+/** The status column of an NCR row: the one it really has, else STATUS_COLUMN. */
+function statusColumnOf(fields: Record<string, unknown>): string {
+	if (STATUS_COLUMN in fields) return STATUS_COLUMN;
+	return Object.keys(fields).find((k) => /status/i.test(k) && !/review/i.test(k)) ?? STATUS_COLUMN;
+}
+
 const same = (a: string | null | undefined, b: string) =>
 	(a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -113,12 +139,13 @@ function mustFind<T>(list: T[], test: (item: T) => boolean, what: string): T {
 /* Lookups                                                             */
 /* ------------------------------------------------------------------ */
 export async function loadFormLookups(): Promise<FormLookups> {
-	const [suppliers, problemTypes, roles, rolePersons, people] = await Promise.all([
+	const [suppliers, problemTypes, roles, rolePersons, people, statuses] = await Promise.all([
 		listAll<SupplierFields>("Supplier"),
 		listAll<ProblemTypeFields>("ProblemType"),
 		listAll<RoleFields>("Role"),
 		listAll<RolePersonFields>("RolePerson"),
 		listAll<PersonFields>("Person"),
+		listAll<StatusFields>("NCRStatus"),
 	]);
 
 	const quality = roles.find((r) => same(r.fields.RoleName, QUALITY_ROLE));
@@ -149,6 +176,10 @@ export async function loadFormLookups(): Promise<FormLookups> {
 			description: (t.fields.ProblemTypeDesc ?? "").trim(),
 		})),
 		inspectors,
+		statuses: statuses
+			.map((r) => ({ id: refId("NCRStatus", r), name: (r.fields.NCRStatusName ?? "").trim() }))
+			.filter((r) => r.name)
+			.sort((a, b) => a.id - b.id),
 	};
 }
 
@@ -177,6 +208,8 @@ export interface NcrEditData {
 	ncrRef: number; // for foreign keys that point at this NCR
 	ncrNumber: string;
 	processApplicable: string;
+	statusId: number | null; // the NCRStatus row the NCR points at now
+	statusColumn: string; // the NCR column that holds it
 	supplier: string | null; // null: in-house production
 	purchaseOrderNumber: string;
 	salesOrderNumber: string;
@@ -198,7 +231,18 @@ export interface NcrEditData {
 const PATCHED_COLUMNS = [
 	"NCRProcessApplicable", "NCRDefectDescription", "NCRQuantityReceived", "NCRQuantityDefective",
 	"NCRIsNonconforming", "NCRUpdatedAt", "SOLineItemId", "POLineItemId", "NCRRaisedByPersonId",
+	"NCRClosedAt",
 ] as const;
+
+/** Rows in a child table that belong to one NCR. Asks the database first; if the
+    filter finds nothing, loads the table and matches NCRId here, because a
+    filter on a foreign key column does not always behave. */
+async function listForNcr<F extends { NCRId?: unknown }>(table: TableName, ncrRef: number): Promise<NcRecord<F>[]> {
+	const filtered = await listAll<F>(table, { where: where(["NCRId", "eq", ncrRef]) });
+	if (filtered.length > 0) return filtered;
+	const everything = await listAll<F>(table);
+	return everything.filter((r) => fkValue(r.fields.NCRId) === ncrRef);
+}
 
 /** Follows the NCR's foreign keys and collects everything the form shows. */
 export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditData> {
@@ -208,8 +252,8 @@ export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditD
 		getByRef<SOLineItemFields>("SOLineItem", f.SOLineItemId),
 		getByRef<POLineItemFields>("POLineItem", f.POLineItemId),
 		getByRef<PersonFields>("Person", f.NCRRaisedByPersonId),
-		listAll<NCRProblemTypeFields>("NCRProblemType", { where: where(["NCRId", "eq", ncrRef]) }),
-		listAll<AttachmentFields>("Attachment", { where: where(["NCRId", "eq", ncrRef]) }),
+		listForNcr<NCRProblemTypeFields>("NCRProblemType", ncrRef),
+		listForNcr<AttachmentFields>("Attachment", ncrRef),
 	]);
 	const [item, salesOrder, purchaseOrder] = await Promise.all([
 		getByRef<ItemFields>("Item", soLine?.fields.ItemId),
@@ -227,11 +271,14 @@ export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditD
 		return problemTypeId === null ? [] : [{ recordId: r.id, problemTypeId }];
 	});
 
+	const statusColumn = statusColumnOf(f);
 	return {
 		recordId: rec.id,
 		ncrRef,
 		ncrNumber: (f.NCRNumber ?? "").trim(),
 		processApplicable: (f.NCRProcessApplicable ?? "").trim(),
+		statusId: fkValue(f[statusColumn]),
+		statusColumn,
 		supplier: supplierName && !same(supplierName, IN_HOUSE_SUPPLIER) ? supplierName : null,
 		purchaseOrderNumber: (purchaseOrder?.fields.PurchaseOrderNumber ?? "").trim(),
 		salesOrderNumber: (salesOrder?.fields.SalesOrderNumber ?? "").trim(),
@@ -258,7 +305,9 @@ export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditD
 			.filter((a) => !same(a.fields.AttachmentType, "Link"))
 			.map((a) => (a.fields.AttachmentFileName ?? "").trim())
 			.filter(Boolean),
-		originalFields: Object.fromEntries(PATCHED_COLUMNS.map((k) => [k, f[k] ?? null])),
+		originalFields: Object.fromEntries(
+			[...PATCHED_COLUMNS, statusColumn].map((k) => [k, f[k] ?? null]),
+		),
 	};
 }
 
@@ -268,6 +317,8 @@ export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditD
 export interface NcrSubmission {
 	ncrNumber: string;
 	processApplicable: string;
+	/** The status the NCR is saved with. */
+	status: StatusOption;
 	/** Supplier name. null means in-house production. Found by name, created if new. */
 	supplier: string | null;
 	/** Purchase order number, or the production order number for WIP. */
@@ -448,11 +499,7 @@ export async function submitNcr(
 		if (await ncrNumberExists(s.ncrNumber)) throw new DuplicateNcrNumberError(s.ncrNumber);
 
 		progress("Loading statuses...");
-		const [statuses, reviewStatuses] = await Promise.all([
-			listAll<StatusFields>("NCRStatus"),
-			listAll<ReviewStatusFields>("ReviewStatus"),
-		]);
-		const status = mustFind(statuses, (r) => same(r.fields.NCRStatusName, STATUS_NEW), `NCR status "${STATUS_NEW}"`);
+		const reviewStatuses = await listAll<ReviewStatusFields>("ReviewStatus");
 		const review = mustFind(reviewStatuses, (r) => same(r.fields.ReviewStatusName, REVIEW_SUBMITTED), `Review status "${REVIEW_SUBMITTED}"`);
 
 		const inspector = await resolveInspector(s, make);
@@ -468,7 +515,8 @@ export async function submitNcr(
 			...NCR_DEFAULTS,
 			NCRCreatedAtD: now, // the column name has this spelling in the database
 			NCRUpdatedAt: now,
-			StatusId: refId("NCRStatus", status),
+			[STATUS_COLUMN]: s.status.id,
+			NCRClosedAt: isClosedStatus(s.status.name) ? now : null,
 			SOLineItemId: chain.soLineItemId,
 			POLineItemId: chain.poLineItemId,
 			NCRRaisedByPersonId: inspector.personId,
@@ -523,6 +571,10 @@ export async function updateNcr(
 			if (!haveLinks.has(link)) await addLinkAttachment(make, link, edit.ncrRef, inspector.personId, now);
 		}
 
+		/* Keep the existing close date while the NCR stays closed. */
+		const wasClosedAt = edit.originalFields.NCRClosedAt;
+		const closedAt = isClosedStatus(s.status.name) ? (typeof wasClosedAt === "string" && wasClosedAt ? wasClosedAt : now) : null;
+
 		progress("Updating the NCR...");
 		patchAttempted = true;
 		await updateRecord("NCR", edit.recordId, {
@@ -532,6 +584,8 @@ export async function updateNcr(
 			NCRQuantityDefective: s.quantityDefective,
 			NCRIsNonconforming: s.isNonconforming,
 			NCRUpdatedAt: now,
+			[edit.statusColumn]: s.status.id,
+			NCRClosedAt: closedAt,
 			SOLineItemId: chain.soLineItemId,
 			POLineItemId: chain.poLineItemId,
 			NCRRaisedByPersonId: inspector.personId,

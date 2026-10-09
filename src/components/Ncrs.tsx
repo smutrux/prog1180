@@ -26,16 +26,6 @@ const FOCUSABLE =
 /** Which NCRs the table lists. */
 export type NcrShow = "all" | "archived";
 
-// this function takes in a string and a number and returns a string
-// it will cap the length of the string to the number provided and append "..." to the end
-function truncateString(str: string, num: number): string {
-	if (str.length > num) {
-		return str.slice(0, num) + "...";
-	} else {
-		return str;
-	}
-}
-
 /**
  * Props for {@link Ncrs}.
  */
@@ -137,7 +127,7 @@ const formatDate = (d: Date | null) =>
 
 /** Which colour a status pill gets. */
 const statusTone = (s: string) =>
-	/clos|complet|resolv|approv/i.test(s)
+	/clos|complet|resolv|approv|archive/i.test(s)
 		? "closed"
 		: /open|new|pending/i.test(s)
 			? "open"

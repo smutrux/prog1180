@@ -5,6 +5,7 @@ import {
 	DuplicateNcrNumberError,
 	PROCESS_LABELS,
 	SubmitError,
+	defaultStatus,
 	loadFormLookups,
 	loadNcrForEdit,
 	nextNcrNumber,
@@ -48,6 +49,7 @@ type YesNo = "" | "yes" | "no";
 interface FormValues {
 	process: {
 		ncrNumber: string;
+		status: string;
 		processType: ProcessType;
 		supplier: string;
 		newSupplierName: string;
@@ -85,35 +87,47 @@ const SAVED_IDS: SectionId[] = ["process", "item", "defect", "evidence", "inspec
 const REVIEW_STEP = SECTIONS.length - 1;
 
 const makeDefaults = (ncrNumber: string): FormValues => ({
-	process: { ncrNumber, processType: "", supplier: "", newSupplierName: "", poNumber: "", salesOrderNumber: "" },
+	process: { ncrNumber, status: "", processType: "", supplier: "", newSupplierName: "", poNumber: "", salesOrderNumber: "" },
 	item: { itemName: "", itemSapNumber: "", itemDescription: "" },
 	defect: { qtyReceived: "", qtyDefective: "", problemTypeIds: [], defectDescription: "", isNonconforming: "" },
 	evidence: { links: [""], fileNames: [] },
 	inspector: { inspector: "", newFirstName: "", newMiddleName: "", newLastName: "" },
 });
 
-/* Fill in values that depend on database data: drop stale choices and
-   default the inspector to the first person. */
-function sanitize(v: FormValues, l: FormLookups): FormValues {
+/* Fill in values that depend on database data: drop stale choices, default the
+   inspector to the first person and, for a new NCR, default the status to Open.
+   An NCR being edited keeps its own status. */
+function sanitize(v: FormValues, l: FormLookups, edit = false): FormValues {
 	const validIds = new Set(l.problemTypes.map((t) => String(t.id)));
 	const names = l.inspectors.map(fullName);
 	const keep = v.inspector.inspector === ADD_INSPECTOR || names.includes(v.inspector.inspector);
+	const statusKnown = l.statuses.some((s) => s.name === v.process.status);
+	const status = statusKnown || edit ? v.process.status : (defaultStatus(l.statuses)?.name ?? "");
 	return {
 		...v,
+		process: { ...v.process, status },
 		defect: { ...v.defect, problemTypeIds: v.defect.problemTypeIds.filter((id) => validIds.has(id)) },
 		inspector: keep ? v.inspector : { ...v.inspector, inspector: names[0] ?? "" },
 	};
 }
 
-const processTypeOf = (label: string): ProcessType =>
-	label === PROCESS_LABELS.supplier ? "supplier" : label === PROCESS_LABELS.wip ? "wip" : "";
+/* Match the stored text loosely (case, spacing, older wording). If it is empty
+   or unrecognised, fall back on the data: an NCR with a supplier is a supplier
+   NCR, one without is work in progress. */
+const processTypeOf = (label: string, supplier: string | null): ProcessType => {
+	const t = label.trim().toLowerCase();
+	if (t === PROCESS_LABELS.supplier.toLowerCase() || /supplier|rec[\s-]?insp|receiv/.test(t)) return "supplier";
+	if (t === PROCESS_LABELS.wip.toLowerCase() || /wip|work in progress|production/.test(t)) return "wip";
+	return supplier ? "supplier" : "wip";
+};
 
 /* Edit mode: turn the loaded NCR into form values. */
-function toFormValues(ed: NcrEditData): FormValues {
+function toFormValues(ed: NcrEditData, l: FormLookups): FormValues {
 	return {
 		process: {
 			ncrNumber: ed.ncrNumber,
-			processType: processTypeOf(ed.processApplicable),
+			status: l.statuses.find((s) => s.id === ed.statusId)?.name ?? "",
+			processType: processTypeOf(ed.processApplicable, ed.supplier),
 			supplier: ed.supplier ?? "",
 			newSupplierName: "",
 			poNumber: ed.purchaseOrderNumber,
@@ -213,6 +227,7 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 			const p = v.process;
 			const isSupplier = p.processType === "supplier";
 			if (!NCR_NUMBER.test(p.ncrNumber)) e.ncrNumber = "The NCR number is missing. Reload the form to get the next number.";
+			if (!p.status) e.status = "Choose a status.";
 			if (!p.processType) e.processType = "Choose which process this report covers.";
 			if (isSupplier && !p.supplier) e.supplier = "Choose a supplier from the list.";
 			if (p.supplier === ADD_SUPPLIER) {
@@ -343,7 +358,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const [submitted, setSubmitted] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
 	const [submitError, setSubmitError] = useState("");
-	const [lookups, setLookups] = useState<FormLookups>({ suppliers: [], problemTypes: [], inspectors: [] });
+	const [lookups, setLookups] = useState<FormLookups>({ suppliers: [], problemTypes: [], inspectors: [], statuses: [] });
 	const [lookupState, setLookupState] = useState<"loading" | "ready" | "error">("loading");
 	const [lookupError, setLookupError] = useState("");
 	const [editData, setEditData] = useState<NcrEditData | null>(null);
@@ -376,13 +391,13 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				edit ? loadNcrForEdit(dataRef.current as NcRecord<NcrFields>) : Promise.resolve(null),
 			]);
 			const withExtras = addEditOptions(l, ed);
-			const base = ed ? toFormValues(ed) : makeDefaults(next);
+			const base = ed ? toFormValues(ed, withExtras) : makeDefaults(next);
 			const d = loadDrafts(prefix, base);
 			baseRef.current = base;
 			editRef.current = ed;
 			setEditData(ed);
 			setLookups(withExtras);
-			setValues(sanitize(d.values, withExtras));
+			setValues(sanitize(d.values, withExtras, edit));
 			setSaved(d.saved);
 			setHasDraft(d.any);
 			setDirtyIds(new Set());
@@ -406,7 +421,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			const withExtras = addEditOptions(l, editRef.current);
 			setLookups(withExtras);
 			setValues((prev) => {
-				const clean = sanitize(prev, withExtras);
+				const clean = sanitize(prev, withExtras, edit);
 				return clean.process.ncrNumber ? clean : { ...clean, process: { ...clean.process, ncrNumber: next } };
 			});
 		} catch {
@@ -547,7 +562,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 
 	function resetForm(message: string) {
 		const base = edit ? baseRef.current : makeDefaults("");
-		setValues(sanitize(JSON.parse(JSON.stringify(base)), lookups));
+		setValues(sanitize(JSON.parse(JSON.stringify(base)), lookups, edit));
 		setSaved(Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>);
 		setDirtyIds(new Set());
 		setFiles([]);
@@ -559,7 +574,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 
 	function restoreSaved() {
 		const d = loadDrafts(prefix, baseRef.current);
-		setValues(sanitize(d.values, lookups));
+		setValues(sanitize(d.values, lookups, edit));
 		setSaved(d.saved);
 		setDirtyIds(new Set());
 		setFiles([]);
@@ -577,7 +592,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const errorKeys = Object.keys(errors);
 	const selectedProblems = values.defect.problemTypeIds;
 
-	if (lookupState === "loading") return <p role="status">Loading form...</p>;
+	if (lookupState === "loading") return <p role="status" style={{ textAlign: "center", margin: "1rem 0" }}>Loading form...</p>;
 
 	if (lookupState === "error") {
 		return (
@@ -703,6 +718,9 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 						<Input type={Input.TEXT} name="ncrNumber" label="NCR number" value={p.ncrNumber} readOnly
 							placeholder="Looking up the next number..." error={errors.ncrNumber}
 							helpText={edit ? "This number cannot be changed." : "The next number in the sequence. It is checked again when you submit."} />
+						<Input type={Input.DROPDOWN} name="status" label="Status" items={lookups.statuses.map((s) => s.name)}
+							value={p.status} required onChange={text("process", "status")} error={errors.status}
+							helpText={edit ? "Change this when the NCR moves on, for example when it is closed." : "New NCRs start as Open. Change it only if this report starts in a different state."} />
 						<ChoiceGroup id="processType" legend="Which process does this report cover?" required
 							helpText="Choose Supplier or receiving inspection for purchased items. Choose Work in progress for items made in-house."
 							error={errors.processType}>
@@ -945,7 +963,7 @@ function reviewGroups(v: FormValues, files: File[], l: FormLookups, existingFile
 		: v.inspector.inspector;
 	return [
 		{ id: "process" as SectionId, title: "Process and source", rows: [
-			["NCR number", v.process.ncrNumber], ["Process", processLabel(v.process.processType)],
+			["NCR number", v.process.ncrNumber], ["Status", v.process.status], ["Process", processLabel(v.process.processType)],
 			["Supplier", supplierOf(v.process) || "In-house production"],
 			[v.process.processType === "wip" ? "Production order" : "Purchase order", v.process.poNumber],
 			["Sales order", v.process.salesOrderNumber]] },
@@ -976,8 +994,11 @@ function buildSubmission(v: FormValues, files: File[], l: FormLookups): NcrSubmi
 		if (!known) throw new Error("The chosen inspector is no longer in the database. Go back and choose the inspector again.");
 		inspector = { kind: "existing", personId: known.personId, rolePersonId: known.rolePersonId };
 	}
+	const status = l.statuses.find((s) => s.name === p.status);
+	if (!status) throw new Error("The chosen status is no longer in the database. Go back and choose the status again.");
 	return {
 		ncrNumber: p.ncrNumber,
+		status,
 		processApplicable: processLabel(p.processType),
 		supplier: supplierOf(p) || null,
 		purchaseOrderNumber: p.poNumber.trim(),
