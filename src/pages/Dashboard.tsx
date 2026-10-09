@@ -1,114 +1,84 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import StatusCard from "../components/statusCard";
+import Button from "../components/button";
+import Ncrs from "../components/Ncrs";
+import { loadReport, type Report } from "../components/reportsService";
 import { TbCircleCheck } from "react-icons/tb";
 import { LuArchive } from "react-icons/lu";
 import { FiAlertCircle } from "react-icons/fi";
-import { FaRegClock, FaPlus } from "react-icons/fa6";
-import RecentNcrs from "../components/recentncrs";
-import Button from "../components/button";
-import { NcrModal } from "../components/NcrModal";
-import type { NcRecord } from "../components/api";
-import type { NcrFields } from "../components/ncrService";
-import { useNcrList } from "../components/useNcrList";
+import { FaRegClock } from "react-icons/fa6";
+import { FaSyncAlt } from "react-icons/fa";
 
 const Dashboard = () => {
-	const { rows, loading, error, refetch } = useNcrList();
-	const [creating, setCreating] = useState(false);
-	const [editing, setEditing] = useState<NcRecord<NcrFields> | null>(null);
+	const [report, setReport] = useState<Report | null>(null);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState("");
 
-	if (loading) return <p role="status">Loading NCRs...</p>;
-	if (error) return <p role="alert">{error}</p>;
+	const load = useCallback(async () => {
+		setLoading(true);
+		try {
+			setReport(await loadReport());
+			setError("");
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+		} finally {
+			setLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		void load();
+	}, [load]);
 
 	return (
 		<div>
 			<h1>Quality Control Dashboard</h1>
-			<div>
-				<Button
-					text="New NCR"
-					aria="New NCR"
-					icon={FaPlus}
-					onClick={() => setCreating(true)}
-				/>
 
-				<table>
-					<caption>NCRs</caption>
-					<thead>
-						<tr>
-							<th scope="col" className="col-number">
-								Number
-							</th>
-							<th scope="col">Defect</th>
-							<th scope="col" className="col-actions">
-								Actions
-							</th>
-						</tr>
-					</thead>
-					<tbody>
-						{rows.map((row) => (
-							<tr key={row.id}>
-								<td>{row.fields.NCRNumber}</td>
-								<td
-									className="defect-cell"
-									title={row.fields.NCRDefectDescription ?? ""}
-								>
-									{row.fields.NCRDefectDescription}
-								</td>
-								<td>
-									<Button
-										text="Edit"
-										aria={`Edit NCR ${row.fields.NCRNumber}`}
-										onClick={() => setEditing(row)}
-									/>
-								</td>
-							</tr>
-						))}
-					</tbody>
-				</table>
+			{report ? (
+				<div className="stats-row">
+					<StatusCard
+						title="Open NCRs"
+						amount={report.open}
+						subtext={report.onHold ? `${report.onHold} on hold` : "None on hold"}
+						icon={FiAlertCircle}
+						colour="red"
+					/>
+					<StatusCard
+						title="Awaiting review"
+						amount={report.awaitingReview}
+						subtext="Open NCRs with a review pending"
+						icon={FaRegClock}
+						colour="orange"
+					/>
+					<StatusCard
+						title="Closed NCRs"
+						amount={report.closed}
+						subtext={`${report.closedThisMonth} closed this month`}
+						icon={TbCircleCheck}
+						colour="green"
+					/>
+					<StatusCard
+						title="Total NCRs"
+						amount={report.total}
+						subtext="All NCRs raised"
+						icon={LuArchive}
+						colour="blue"
+					/>
+				</div>
+			) : (
+				<div className="stats-status">
+					{loading && <p role="status">Loading data...</p>}
+					{error && (
+						<>
+							<p role="alert">{error}</p>
+							<Button text="Try again" aria="Try again" icon={FaSyncAlt} onClick={() => void load()} />
+						</>
+					)}
+				</div>
+			)}
 
-				<NcrModal
-					open={creating}
-					onClose={() => setCreating(false)}
-					onSaved={refetch}
-				/>
-				<NcrModal
-					open={editing !== null}
-					edit
-					data={editing ?? undefined}
-					onClose={() => setEditing(null)}
-					onSaved={refetch}
-				/>
-			</div>
-			<div className="stats-row">
-				<StatusCard
-					title="Open NCRs"
-					amount={1}
-					subtext="Requiring immediate action"
-					icon={FiAlertCircle}
-					colour="red"
-				/>
-				<StatusCard
-					title="awaiting review"
-					amount={0}
-					subtext="Pending QA coordination sign-off"
-					icon={FaRegClock}
-					colour="orange"
-				/>
-				<StatusCard
-					title="closed ncrs"
-					amount={1}
-					subtext="Resolved this quarter"
-					icon={TbCircleCheck}
-					colour="green"
-				/>
-				<StatusCard
-					title="total NCRs"
-					amount={2}
-					subtext="All logged occurrences"
-					icon={LuArchive}
-					colour="blue"
-				/>
-			</div>
-			<RecentNcrs />
+			<Ncrs show="all" simple />
+
 			<style jsx>{`
 				h1 {
 					color: var(--text);
@@ -121,6 +91,13 @@ const Dashboard = () => {
 					width: 100%;
 					table-layout: fixed; /* Forces the table to respect column bounds */
 					margin-top: 1rem;
+				}
+
+				.new-ncr-button {
+					position: fixed;
+					bottom: 1rem;
+					right: 1rem;
+					z-index: 1000;
 				}
 
 				.col-number {
@@ -141,6 +118,14 @@ const Dashboard = () => {
 				.stats-row {
 					display: grid;
 					grid-template-columns: repeat(4, 1fr);
+					gap: 1rem;
+					margin-bottom: 3rem;
+				}
+
+				.stats-status {
+					display: flex;
+					flex-direction: column;
+					align-items: flex-start;
 					gap: 1rem;
 					margin-bottom: 3rem;
 				}

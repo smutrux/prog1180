@@ -135,7 +135,7 @@ const Reports = () => {
 		return (
 			<div className="reports">
 				<h1>Reports</h1>
-				{loading && <p role="status">Loading reports...</p>}
+				{loading && <p role="status">Loading data...</p>}
 				{error && (
 					<>
 						<p role="alert">{error}</p>
@@ -146,7 +146,7 @@ const Reports = () => {
 				)}
 				<style jsx>{`
 					.reports { display: flex; flex-direction: column; gap: 1rem; align-items: flex-start; }
-					.reports h1 { margin: 0; }
+					.reports h1 { margin: 1.5rem 0; }
 				`}</style>
 			</div>
 		);
@@ -163,7 +163,7 @@ const Reports = () => {
 							: updatedAt && `Updated at ${updatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
 					</p>
 				</div>
-				<Button text="Refresh" aria="Refresh reports" icon={FaSyncAlt} enabled={!loading} onClick={() => void load()} />
+				<Button text="Refresh" aria="Refresh reports" icon={FaSyncAlt} enabled={!loading} onClick={() => void load()} size="1.2rem" />
 			</div>
 
 			{error && <p role="alert" className="reportsError">The numbers could not be refreshed. {error}</p>}

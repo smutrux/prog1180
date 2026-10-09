@@ -45,22 +45,22 @@ var getTextColour = (background: string): "#000000" | "#ffffff" => {
 interface ButtonProps {
 	/** Label shown on the button. */
 	text: string;
- 
+
 	/** Called when the button is clicked. Not called while the button is disabled. */
 	onClick: () => void;
- 
+
 	/**
 	 * Optional icon, shown to the left of the text. Pass the component
 	 * reference from react-icons (`FaBeer`), not an element (`<FaBeer />`).
 	 */
 	icon?: IconType;
- 
+
 	/**
 	 * Whether the button can be clicked. Set to `false` to disable it.
 	 * @defaultValue `true`
 	 */
 	enabled?: boolean;
- 
+
 	/**
 	 * Background colour of the button. The text and icon colour is chosen
 	 * automatically (black or white) for contrast, so use a hex value
@@ -68,14 +68,14 @@ interface ButtonProps {
 	 * @defaultValue `var(--accent)`
 	 */
 	colour?: string;
- 
+
 	/**
 	 * Font size of the button, as any CSS size string (`"1rem"`, `"18px"`).
 	 * Icons are sized in `em`, so they scale with this value.
 	 * @defaultValue inherited from CSS
 	 */
 	size?: string;
- 
+
 	/**
 	 * Renders the button text in bold. This only affects the text, not the
 	 * icon, because font weight doesn't apply to SVGs.
@@ -127,32 +127,39 @@ var Button = ({
 	icon: Icon,
 	enabled = true,
 	colour,
-	size,
+	size = "1.5rem",
 	bold,
 	aria,
 }: ButtonProps) => {
 	return (
-		<button
-			type="button"
-			className="counter"
-			onClick={onClick}
-			disabled={!enabled}
-			aria-label={aria}
-			style={{
-				color: getTextColour(colour ?? "var(--accent)"),
-				fontWeight: bold ? "bold" : "normal",
-				fontSize: size,
-				display: "flex",
-				alignItems: "center",
-				justifyContent: "center",
-				gap: "0.25rem",
-				backgroundColor: colour ? colour : "var(--accent)",
-        borderRadius: '0.5rem',
-			}}
-		>
-			{Icon && <Icon aria-hidden="true" />}
-			{text}
-		</button>
+		<>
+			<button
+				type="button"
+				className="button"
+				onClick={onClick}
+				disabled={!enabled}
+				aria-label={aria}
+			>
+				{Icon && <Icon aria-hidden="true" />}
+				{text}
+			</button>
+
+			<style jsx>{`
+				button {
+					color: ${getTextColour(colour ?? "var(--accent)")};
+					font-weight: ${bold ? "bold" : "normal"};
+					font-size: ${size};
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					gap: 0.25rem;
+					background-color: ${colour ? colour : "var(--accent)"};
+					border-radius: 0.5rem;
+					border: none;
+					padding: 0.5rem 1rem;
+				}
+			`}</style>
+		</>
 	);
 };
 

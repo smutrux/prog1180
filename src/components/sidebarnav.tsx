@@ -136,7 +136,6 @@ var SidebarNav = () => {
           grid-template-columns: 300px 1fr;
           min-height: 100vh;
           font-family: "Geist", sans-serif;
-          background-color: #F5F5F5;
         }
 
         #root > nav {
