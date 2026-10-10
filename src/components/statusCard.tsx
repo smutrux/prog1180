@@ -48,7 +48,7 @@ var StatusCard = (props: StatusCardProps) => {
                 --skeleton-base: rgba(128, 128, 128, 0.22);
                 --skeleton-shine: rgba(128, 128, 128, 0.4);
 
-                background-color: var(--code-bg);
+                background-color: var(--lifted-bg);
                 display: flex;
                 flex-direction: column;
                 padding: 1rem 1.25rem;

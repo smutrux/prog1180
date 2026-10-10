@@ -369,7 +369,7 @@ const InputComponent = (props: InputProps) => {
 					width: 100%;
 					min-height: 2.75rem;
 					padding: 0.5rem 0.75rem;
-					background-color: var(--code-bg);
+					background-color: var(--lifted-bg);
 					border: 1px solid var(--text-h);
 					border-radius: 0.5rem;
 					color: var(--text-h);

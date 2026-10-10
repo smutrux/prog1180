@@ -1110,9 +1110,9 @@ const Ncrs = ({
 					--ink: var(--text-h);
 					--muted: var(--text);
 					--line: var(--border);
-					--surface: var(--bg);
-					--field: var(--nav-bg);
-					--head-bg: var(--nav-bg);
+					--surface: var(--lifted-bg);
+					--field: var(--lifted-bg);
+						--head-bg: rgba(89, 120, 255, 0.09);
 					--blue: #2a43b8;
 					--blue-hover: #1f3396;
 					--blue-text: #263fa6;
@@ -1136,9 +1136,9 @@ const Ncrs = ({
 				}
 				@media (prefers-color-scheme: dark) {
 					.ncrs {
-						--surface: var(--code-bg);
+						--surface: var(--lifted-bg);
 						--field: rgba(255, 255, 255, 0.06);
-						--head-bg: rgba(255, 255, 255, 0.04);
+						--head-bg: rgba(0, 0, 0, 0.15);
 						--blue-text: #a9b8ff;
 						--focus: #a9b8ff;
 						--red: #ffb4ac;

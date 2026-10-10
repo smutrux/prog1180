@@ -161,7 +161,7 @@ var SidebarNav = () => {
 
           padding: 2rem;
 
-          background-color: var(--nav-bg);
+          background-color: var(--lifted-bg);
         }
 
         /* =========================
@@ -180,7 +180,7 @@ var SidebarNav = () => {
         }
 
         .sidebarBrand a {
-          color: var(--sidebar-title);
+          color: var(--text-h);
 
           font-size: 1.75rem;
           font-weight: bold;
@@ -225,7 +225,7 @@ var SidebarNav = () => {
 
           gap: 0.75rem;
 
-          color: var(--sidebar-link-clr);
+          color: var(--text);
 
           font-size: 1.3rem;
           font-weight: 500;
@@ -235,13 +235,13 @@ var SidebarNav = () => {
 
         .sidebarLink > a:hover,
         .sidebarLink > a.active {
-          color: var(--sidebar-link-hover-clr);
+          color: var(--text-h);
           text-decoration: underline;
         }
 
         .sidebarLink:hover,
         .sidebarLink:has(a.active) {
-          background-color: var(--sidebar-link-hover);
+          background-color: var(--hover);
         }
 
         /* Active indicator */
@@ -291,7 +291,7 @@ var SidebarNav = () => {
         }
 
         .mobileBrand a {
-          color: var(--sidebar-title);
+          color: var(--text-h);
 
           font-size: 1.5rem;
           font-weight: bold;
@@ -314,7 +314,7 @@ var SidebarNav = () => {
 
           background: transparent;
 
-          color: var(--sidebar-title);
+          color: var(--text-h);
 
           font-size: 1.7rem;
 
@@ -322,7 +322,7 @@ var SidebarNav = () => {
         }
 
         .menuButton:hover {
-          background-color: var(--sidebar-link-hover);
+          background-color: var(--hover);
         }
 
         .menuButton:focus-visible {
@@ -367,7 +367,7 @@ var SidebarNav = () => {
 
             padding: 0 1rem;
 
-            background-color: var(--nav-bg);
+            background-color: var(--lifted-bg);
 
             border-bottom: 1px solid rgba(128, 128, 128, 0.15);
           }
@@ -393,7 +393,7 @@ var SidebarNav = () => {
 
             padding: 2rem;
 
-            background-color: var(--nav-bg);
+            background-color: var(--lifted-bg);
 
             transform: translateX(-100%);
 
@@ -415,21 +415,21 @@ var SidebarNav = () => {
           }
 
           #sidebar-navigation.sidebar .sidebarBrand a {
-            color: var(--sidebar-title);
+            color: var(--text-h);
           }
 
           #sidebar-navigation.sidebar .sidebarLink > a {
-            color: var(--sidebar-link-clr);
+            color: var(--text);
           }
 
           #sidebar-navigation.sidebar .sidebarLink > a:hover,
           #sidebar-navigation.sidebar .sidebarLink > a.active {
-            color: var(--sidebar-link-hover-clr);
+            color: var(--text-h);
           }
 
           #sidebar-navigation.sidebar .sidebarLink:hover,
           #sidebar-navigation.sidebar .sidebarLink:has(a.active) {
-            background-color: var(--sidebar-link-hover);
+            background-color: var(--hover);
           }
 
           /* Overlay */
