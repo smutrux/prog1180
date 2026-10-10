@@ -17,7 +17,7 @@ import {
 } from "react-icons/fa";
 import { FaPlus } from "react-icons/fa6";
 import Button from "../components/button";
-import { NcrModal } from "../components/NcrModal";
+import { NcrModal } from "../components/ncrModal";
 import StatusCard from "../components/statusCard";
 import { OVERDUE_DAYS, loadReport, type Report } from "../components/reportsService";
 

@@ -1,4 +1,4 @@
-import Ncrs from "../components/Ncrs";
+import Ncrs from "../components/ncrList";
 
 const NCRs = () => {
 	return (

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import StatusCard from "../components/statusCard";
 import Button from "../components/button";
-import Ncrs from "../components/Ncrs";
+import Ncrs from "../components/ncrList";
 import { loadReport, type Report } from "../components/reportsService";
 import { TbCircleCheck } from "react-icons/tb";
 import { LuArchive } from "react-icons/lu";
