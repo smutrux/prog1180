@@ -18,7 +18,7 @@ import type { IconType } from "react-icons";
  * getTextColour("#ffffff"); // "#000000"
  * getTextColour("#2563eb"); // "#ffffff"
  */
-var getTextColour = (background: string): "#000000" | "#ffffff" => {
+const getTextColour = (background: string): "#000000" | "#ffffff" => {
 	let hex = background.replace("#", "");
 	if (hex.length === 3) {
 		hex = hex
@@ -28,14 +28,14 @@ var getTextColour = (background: string): "#000000" | "#ffffff" => {
 	}
 	if (!/^[0-9a-fA-F]{6}$/.test(hex)) return "#ffffff";
 
-	var [r, g, b] = [0, 2, 4].map((i) => {
-		var channel = parseInt(hex.slice(i, i + 2), 16) / 255;
+	const [r, g, b] = [0, 2, 4].map((i) => {
+		const channel = parseInt(hex.slice(i, i + 2), 16) / 255;
 		return channel <= 0.03928
 			? channel / 12.92
 			: ((channel + 0.055) / 1.055) ** 2.4;
 	});
 
-	var luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+	const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 	return luminance > 0.179 ? "#000000" : "#ffffff";
 };
 
@@ -64,15 +64,16 @@ interface ButtonProps {
 	/**
 	 * Background colour of the button. The text and icon colour is chosen
 	 * automatically (black or white) for contrast, so use a hex value
-	 * (`#rgb` or `#rrggbb`) to get the right result.
-	 * @defaultValue `var(--accent)`
+	 * (`#rgb` or `#rrggbb`) to get the right result. Check the result still
+	 * has 7:1 contrast.
+	 * @defaultValue `var(--accent)`, with text in `var(--on-accent)`
 	 */
 	colour?: string;
 
 	/**
 	 * Font size of the button, as any CSS size string (`"1rem"`, `"18px"`).
 	 * Icons are sized in `em`, so they scale with this value.
-	 * @defaultValue inherited from CSS
+	 * @defaultValue `"1rem"`
 	 */
 	size?: string;
 
@@ -84,83 +85,76 @@ interface ButtonProps {
 	bold?: boolean;
 
 	/**
-	 * ARIA label for the button, used for accessibility. This should describe the action of the button for screen readers.
+	 * ARIA label for the button. It describes the action for screen readers
+	 * and must contain the visible text, for example "Edit NCR 12" for a
+	 * button that says "Edit".
 	 */
 	aria: string;
 }
 
 /**
- * A button with optional icon, custom background colour and automatic
- * text contrast.
- *
- * The text and icon colour is computed from `colour` with
- * {@link getTextColour}. When `colour` is omitted, the background uses
- * `var(--accent)`. That variable can't be parsed from JS, so the text
- * falls back to white in that case.
+ * A button with an optional icon, custom background colour and automatic
+ * text contrast. It is at least 44 by 44 pixels, and shows an underline on
+ * hover as well as a colour change.
  *
  * @param props - Component props, see {@link ButtonProps}.
- * @param props.text - Label shown on the button.
- * @param props.onClick - Click handler.
- * @param props.icon - Optional react-icons component, renamed to `Icon`
- *   internally so JSX treats it as a component.
- * @param props.enabled - Enables or disables the button. Defaults to `true`.
- * @param props.colour - Background colour. Defaults to `var(--accent)`.
- * @param props.size - CSS font size for the button.
- * @param props.bold - Bold text when `true`. Defaults to `false`.
  * @returns A `<button type="button">` element.
  *
  * @example
  * import { FaBeer } from "react-icons/fa";
  *
- * <Button
- *   text="Cheers"
- *   onClick={() => console.log("clicked")}
- *   icon={FaBeer}
- *   colour="#f59e0b"
- *   size="1.25rem"
- *   bold
- * />
+ * <Button text="Cheers" aria="Cheers" onClick={() => console.log("clicked")} icon={FaBeer} bold />
  */
-var Button = ({
+const Button = ({
 	text,
 	onClick,
 	icon: Icon,
 	enabled = true,
 	colour,
-	size = "1.5rem",
+	size = "1rem",
 	bold,
 	aria,
-}: ButtonProps) => {
-	return (
-		<>
-			<button
-				type="button"
-				className="button"
-				onClick={onClick}
-				disabled={!enabled}
-				aria-label={aria}
-			>
-				{Icon && <Icon aria-hidden="true" />}
-				{text}
-			</button>
+}: ButtonProps) => (
+	<>
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={!enabled}
+			aria-label={aria}
+		>
+			{Icon && <Icon aria-hidden="true" />}
+			{text}
+		</button>
 
-			<style jsx>{`
-				button {
-					color: ${getTextColour(colour ?? "var(--accent)")};
-					font-weight: ${bold ? "bold" : "normal"};
-					font-size: ${size};
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					gap: 0.25rem;
-					background-color: ${colour ? colour : "var(--accent)"};
-					border-radius: 0.5rem;
-					border: none;
-					padding: 0.5rem 1rem;
-				}
-			`}</style>
-		</>
-	);
-};
+		<style jsx>{`
+			button {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				gap: 0.25rem;
+				min-width: 2.75rem;
+				min-height: 2.75rem;
+				padding: 0.5rem 1rem;
+				border: none;
+				border-radius: 0.5rem;
+				background-color: ${colour ?? "var(--accent)"};
+				color: ${colour ? getTextColour(colour) : "var(--on-accent)"};
+				font-family: inherit;
+				font-size: ${size};
+				font-weight: ${bold ? "bold" : "normal"};
+				cursor: pointer;
+			}
+
+			button:hover:not(:disabled) {
+				text-decoration: underline;
+			}
+
+			button:disabled {
+				opacity: 0.6;
+				cursor: not-allowed;
+			}
+		`}</style>
+	</>
+);
 
 export default Button;

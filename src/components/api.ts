@@ -1,10 +1,13 @@
-/* Low-level NocoDB v3 client.
-   Every call goes to API_ROOT (default "/db"), which the Vite proxy forwards
-   to the database and adds the xc-token header. The token never ships in
-   browser code. See vite.config.ts. */
+/**
+ * Low-level NocoDB v3 client.
+ * Every call goes to API_ROOT (default "/db"), which the Vite proxy forwards
+ * to the database and adds the xc-token header. The token never ships in
+ * browser code. See vite.config.ts.
+ */
 
 export const BASE_ID = "pjrhlnbmxrjbf8f";
 
+/** The id of each table in the database. */
 export const TABLES = {
 	NCR: "m9a85hhm1b89jve",
 	Attachment: "m36ku89zkzxhsod",
@@ -25,14 +28,18 @@ export const TABLES = {
 } as const;
 export type TableName = keyof typeof TABLES;
 
+/** Where the database requests go. The proxy forwards them and adds the token. */
 const API_ROOT = (import.meta.env.VITE_API_ROOT as string | undefined) ?? "/db";
 
-/* Which value do foreign keys point at?
-   "recordId": the record's `id` (the `Id` column). Most likely.
-   "pkField":  the table's own key field, e.g. NCRStatusId.
-   If the first inserts fail with foreign key problems, flip this one switch. */
+/**
+ * Which value do foreign keys point at?
+ * "recordId": the record's `id` (the `Id` column). Most likely.
+ * "pkField":  the table's own key field, e.g. NCRStatusId.
+ * If the first inserts fail with foreign key problems, flip this one switch.
+ */
 export const FK_MODE: "recordId" | "pkField" = "recordId";
 
+/** A record as the database returns it. */
 export interface NcRecord<F extends object = Record<string, unknown>> {
 	id: number | string;
 	id_fields?: Record<string, number | string>;
@@ -48,6 +55,7 @@ export function refId(table: TableName, rec: NcRecord<object>): number {
 	return Number(raw);
 }
 
+/** Thrown when a database request fails. */
 export class ApiError extends Error {
 	status: number;
 	code: string;
@@ -59,8 +67,10 @@ export class ApiError extends Error {
 	}
 }
 
+/** Query-string values. Empty ones are left out. */
 type Query = Record<string, string | number | undefined>;
 
+/** Sends one request to the database and returns its JSON. Throws {@link ApiError} when it fails. */
 async function request<T>(
 	method: "GET" | "POST" | "PATCH" | "DELETE",
 	table: TableName,
@@ -96,9 +106,7 @@ async function request<T>(
 	let data: unknown = null;
 	try {
 		data = text ? JSON.parse(text) : null;
-	} catch {
-		/* non-JSON body */
-	}
+	} catch {}
 	if (!res.ok) {
 		const d = data as { error?: string; message?: string } | null;
 		throw new ApiError(
@@ -135,9 +143,12 @@ export async function listAll<F extends object>(
 	for (let n = 1; n <= 100; n++) {
 		let data: Page;
 		try {
-			data = await request<Page>("GET", table, "records", { query: { ...base, ...paging } });
+			data = await request<Page>("GET", table, "records", {
+				query: { ...base, ...paging },
+			});
 		} catch (err) {
-			if (n > 1 && err instanceof ApiError && /offset/i.test(err.message)) break;
+			if (n > 1 && err instanceof ApiError && /offset/i.test(err.message))
+				break;
 			throw err;
 		}
 		const records = data.records ?? [];
@@ -168,29 +179,50 @@ export async function listAll<F extends object>(
 	return out;
 }
 
+/** The first record that matches, or null. */
 export async function findFirst<F extends object>(
 	table: TableName,
 	whereClause: string,
 ): Promise<NcRecord<F> | null> {
-	const data = await request<{ records?: NcRecord<F>[] }>("GET", table, "records", {
-		query: { where: whereClause, pageSize: 1 },
-	});
+	const data = await request<{ records?: NcRecord<F>[] }>(
+		"GET",
+		table,
+		"records",
+		{
+			query: { where: whereClause, pageSize: 1 },
+		},
+	);
 	return data.records?.[0] ?? null;
 }
 
+/** Creates a record and returns it. */
 export async function createRecord<F extends object = Record<string, unknown>>(
 	table: TableName,
 	fields: Record<string, unknown>,
 ): Promise<NcRecord<F>> {
-	const data = await request<{ records?: NcRecord<F>[] }>("POST", table, "records", {
-		body: { fields },
-	});
+	const data = await request<{ records?: NcRecord<F>[] }>(
+		"POST",
+		table,
+		"records",
+		{
+			body: { fields },
+		},
+	);
 	const rec = data.records?.[0];
-	if (!rec) throw new ApiError("The database did not return the new record.", 200, "NO_RECORD");
+	if (!rec)
+		throw new ApiError(
+			"The database did not return the new record.",
+			200,
+			"NO_RECORD",
+		);
 	return rec;
 }
 
-export async function deleteRecord(table: TableName, id: number | string): Promise<void> {
+/** Deletes a record by its record id. */
+export async function deleteRecord(
+	table: TableName,
+	id: number | string,
+): Promise<void> {
 	await request("DELETE", table, "records", { body: { id } });
 }
 
@@ -204,7 +236,11 @@ export async function readRecord<F extends object>(
 	id: number | string,
 ): Promise<NcRecord<F> | null> {
 	try {
-		const data = await request<NcRecord<F> | { records?: NcRecord<F>[] }>("GET", table, `records/${id}`);
+		const data = await request<NcRecord<F> | { records?: NcRecord<F>[] }>(
+			"GET",
+			table,
+			`records/${id}`,
+		);
 		if (data && "fields" in data) return data;
 		return (data as { records?: NcRecord<F>[] }).records?.[0] ?? null;
 	} catch (err) {
@@ -220,7 +256,9 @@ export function fkValue(v: unknown): number | null {
 	if (Array.isArray(v)) return fkValue(v[0]);
 	if (typeof v === "object") {
 		const o = v as Record<string, unknown>;
-		return fkValue(o.id ?? o.Id ?? (o.id_fields as Record<string, unknown> | undefined)?.Id);
+		return fkValue(
+			o.id ?? o.Id ?? (o.id_fields as Record<string, unknown> | undefined)?.Id,
+		);
 	}
 	const n = Number(v);
 	return Number.isFinite(n) ? n : null;
@@ -237,6 +275,7 @@ export async function getByRef<F extends object>(
 	return findFirst<F>(table, where([`${table}Id`, "eq", id]));
 }
 
+/** Changes the given fields of a record. Other fields are left alone. */
 export async function updateRecord(
 	table: TableName,
 	id: number | string,

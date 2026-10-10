@@ -15,11 +15,15 @@ import {
 	FaSyncAlt,
 	FaTruck,
 } from "react-icons/fa";
-import { FaPlus } from "react-icons/fa6";
 import Button from "../components/button";
-import { NcrModal } from "../components/ncrModal";
+import { NewNcrButton } from "../components/ncrModal";
+import PageHeader from "../components/pageHeader";
 import StatusCard from "../components/statusCard";
-import { OVERDUE_DAYS, loadReport, type Report } from "../components/reportsService";
+import {
+	OVERDUE_DAYS,
+	loadReport,
+	type Report,
+} from "../components/reportsService";
 
 type CardProps = ComponentProps<typeof StatusCard>;
 interface Group {
@@ -28,10 +32,15 @@ interface Group {
 	cards: CardProps[];
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+/** Writes a count with the right singular or plural word, such as "1 day" or "3 days". */
+const plural = (n: number, one: string, many: string) =>
+	`${n} ${n === 1 ? one : many}`;
 
-/* Stands in for the real numbers while the page loads. The cards built from it
-   are drawn as placeholders, so only their size matters, not their content. */
+/**
+ * Stands in for the real numbers while the page loads. The cards built from it
+ * are drawn as placeholders, so only their size matters, not their content.
+ */
+/** Stands in for the real numbers while the page loads. The cards built from it are drawn as placeholders. */
 const EMPTY_REPORT: Report = {
 	total: 0,
 	open: 0,
@@ -56,37 +65,80 @@ const EMPTY_REPORT: Report = {
 	fromWip: 0,
 };
 
-/* Every card is a number plus one line of plain-language context. */
+/** Every card is a number plus one line of plain-language context. */
+/** Turns the report numbers into the cards, grouped under the page's section headings. */
 function buildGroups(r: Report): Group[] {
-	const supplierShare = r.total ? Math.round((r.fromSuppliers / r.total) * 100) : 0;
+	const supplierShare = r.total
+		? Math.round((r.fromSuppliers / r.total) * 100)
+		: 0;
 	return [
 		{
 			id: "status",
 			title: "Status",
 			cards: [
-				{ title: "Open NCRs", amount: r.open, subtext: r.onHold ? `${r.onHold} on hold` : "None on hold", icon: FaFolderOpen, colour: "orange" },
-				{ title: "Closed NCRs", amount: r.closed, subtext: `${r.closedThisMonth} closed this month`, icon: FaCheckCircle, colour: "green" },
-				{ title: "Awaiting review", amount: r.awaitingReview, subtext: "Open NCRs with a review pending", icon: FaHourglassHalf, colour: "blue" },
-				{ title: "Total NCRs", amount: r.total, subtext: "All NCRs raised", icon: FaClipboardList, colour: "blue" },
+				{
+					title: "Open NCRs",
+					amount: r.open,
+					subtext: r.onHold ? `${r.onHold} on hold` : "None on hold",
+					icon: FaFolderOpen,
+					colour: "orange",
+				},
+				{
+					title: "Closed NCRs",
+					amount: r.closed,
+					subtext: `${r.closedThisMonth} closed this month`,
+					icon: FaCheckCircle,
+					colour: "green",
+				},
+				{
+					title: "Awaiting review",
+					amount: r.awaitingReview,
+					subtext: "Open NCRs with a review pending",
+					icon: FaHourglassHalf,
+					colour: "blue",
+				},
+				{
+					title: "Total NCRs",
+					amount: r.total,
+					subtext: "All NCRs raised",
+					icon: FaClipboardList,
+					colour: "blue",
+				},
 			],
 		},
 		{
 			id: "timing",
 			title: "Timing",
 			cards: [
-				{ title: "Opened this month", amount: r.openedThisMonth, subtext: `${r.openedLastMonth} last month`, icon: FaCalendarPlus, colour: "blue" },
-				{ title: "Closed this month", amount: r.closedThisMonth, subtext: `${r.closedLastMonth} last month`, icon: FaCalendarCheck, colour: "green" },
+				{
+					title: "Opened this month",
+					amount: r.openedThisMonth,
+					subtext: `${r.openedLastMonth} last month`,
+					icon: FaCalendarPlus,
+					colour: "blue",
+				},
+				{
+					title: "Closed this month",
+					amount: r.closedThisMonth,
+					subtext: `${r.closedLastMonth} last month`,
+					icon: FaCalendarCheck,
+					colour: "green",
+				},
 				{
 					title: "Average days to close",
 					amount: r.averageDaysToClose ?? 0,
-					subtext: r.closedWithDates ? `Across ${plural(r.closedWithDates, "closed NCR", "closed NCRs")}` : "No closed NCRs yet",
+					subtext: r.closedWithDates
+						? `Across ${plural(r.closedWithDates, "closed NCR", "closed NCRs")}`
+						: "No closed NCRs yet",
 					icon: FaStopwatch,
 					colour: "blue",
 				},
 				{
 					title: `Open over ${OVERDUE_DAYS} days`,
 					amount: r.overdue,
-					subtext: r.oldestOpen ? `Oldest: NCR ${r.oldestOpen.ncrNumber}, ${plural(r.oldestOpen.days, "day", "days")}` : "No open NCRs",
+					subtext: r.oldestOpen
+						? `Oldest: NCR ${r.oldestOpen.ncrNumber}, ${plural(r.oldestOpen.days, "day", "days")}`
+						: "No open NCRs",
 					icon: FaExclamationTriangle,
 					colour: "red",
 				},
@@ -99,11 +151,19 @@ function buildGroups(r: Report): Group[] {
 				{
 					title: "Defect rate (%)",
 					amount: r.defectRate ?? 0,
-					subtext: r.received ? `${r.defective} defective of ${r.received} received` : "No quantities recorded yet",
+					subtext: r.received
+						? `${r.defective} defective of ${r.received} received`
+						: "No quantities recorded yet",
 					icon: FaPercentage,
 					colour: "red",
 				},
-				{ title: "Awaiting disposition", amount: r.awaitingDisposition, subtext: "Open NCRs with no decision yet", icon: FaBalanceScale, colour: "orange" },
+				{
+					title: "Awaiting disposition",
+					amount: r.awaitingDisposition,
+					subtext: "Open NCRs with no decision yet",
+					icon: FaBalanceScale,
+					colour: "orange",
+				},
 				{
 					title: "Most common problem",
 					amount: r.topProblem?.count ?? 0,
@@ -136,12 +196,12 @@ function buildGroups(r: Report): Group[] {
 	];
 }
 
+/** The reports page: grouped numbers about every NCR, with a Refresh button. */
 const Reports = () => {
 	const [report, setReport] = useState<Report | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
 	const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
-	const [modalOpen, setModalOpen] = useState(false);
 
 	const load = useCallback(async () => {
 		setLoading(true);
@@ -160,66 +220,57 @@ const Reports = () => {
 		void load();
 	}, [load]);
 
-	/* The "New NCR" button and its popup, the same as on the NCR tables.
-	   After a save the numbers on this page are reloaded. */
-	const newNcr = (
-		<>
-			<div className="newNcrBtn">
-				<Button text="New NCR" aria="New NCR" size="1rem" icon={FaPlus} onClick={() => setModalOpen(true)} />
-			</div>
-			<NcrModal open={modalOpen} onClose={() => setModalOpen(false)} onSaved={() => void load()} />
-		</>
-	);
-
-	/* The first load failed and nothing is loading now: show the error and a retry button. */
 	if (!report && !loading) {
 		return (
-			<div className="reports">
-				<h1>Reports</h1>
+			<div className="page">
+				<PageHeader title="Reports" />
 				{error && (
-					<>
+					<div className="stack">
 						<p role="alert">{error}</p>
-						<div>
-							<Button text="Try again" aria="Try again" icon={FaSyncAlt} onClick={() => void load()} />
-						</div>
-					</>
+						<Button
+							text="Try again"
+							aria="Try again"
+							icon={FaSyncAlt}
+							onClick={() => void load()}
+						/>
+					</div>
 				)}
-				{newNcr}
-				<style jsx>{`
-					.reports { display: flex; flex-direction: column; gap: 1rem; align-items: flex-start; }
-					.reports h1 { margin: 1.5rem 0; }
-					.newNcrBtn { position: fixed; bottom: 1rem; right: 1rem; z-index: 1000; }
-				`}</style>
+				<NewNcrButton onSaved={() => void load()} />
 			</div>
 		);
 	}
 
-	/* No report yet (first load or a retry): draw the whole page with placeholder
-	   cards of the same size, so nothing moves when the numbers arrive. */
 	const placeholder = !report;
+	const description = placeholder
+		? "Loading data..."
+		: loading
+			? "Refreshing..."
+			: updatedAt
+				? `Updated at ${updatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+				: undefined;
 
 	return (
-		<div className="reports">
-			<div className="reportsHeader">
-				<div>
-					<h1>Reports</h1>
-					<p role="status" className="reportsUpdated">
-						{placeholder
-							? "Loading data..."
-							: loading
-								? "Refreshing..."
-								: updatedAt && `Updated at ${updatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
-					</p>
-				</div>
-				<Button text="Refresh" aria="Refresh reports" icon={FaSyncAlt} enabled={!loading} onClick={() => void load()} size="1.2rem" />
-			</div>
+		<div className="page">
+			<PageHeader title="Reports" description={description} live>
+				<Button
+					text="Refresh"
+					aria="Refresh reports"
+					icon={FaSyncAlt}
+					enabled={!loading}
+					onClick={() => void load()}
+				/>
+			</PageHeader>
 
-			{report && error && <p role="alert" className="reportsError">The numbers could not be refreshed. {error}</p>}
+			{report && error && (
+				<p role="alert" className="reportsError">
+					The numbers could not be refreshed. {error}
+				</p>
+			)}
 
 			{buildGroups(report ?? EMPTY_REPORT).map((group) => (
-				<section key={group.id} aria-labelledby={`reports-${group.id}`} className="reportsGroup">
+				<section key={group.id} aria-labelledby={`reports-${group.id}`}>
 					<h2 id={`reports-${group.id}`}>{group.title}</h2>
-					<ul className="cardGrid">
+					<ul className="card-grid">
 						{group.cards.map((card) => (
 							<li key={card.title}>
 								<StatusCard {...card} loading={placeholder} />
@@ -229,24 +280,12 @@ const Reports = () => {
 				</section>
 			))}
 
-			{newNcr}
+			<NewNcrButton onSaved={() => void load()} />
 
 			<style jsx>{`
-				/* Bottom padding keeps the fixed New NCR button off the last cards. */
-				.reports { display: flex; flex-direction: column; gap: 1.5rem; padding-bottom: 4.5rem; }
-				.newNcrBtn { position: fixed; bottom: 1rem; right: 1rem; z-index: 1000; }
-				.reportsHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
-				.reportsHeader h1 { margin: 1.5rem 0; }
-				.reportsUpdated { margin: 0.5rem 0; color: var(--text-h); font-size: 0.95rem; }
-				.reportsError { margin: 0; color: #b3001b; font-weight: 600; }
-				.reportsGroup h2 { margin: 0 0 0.75rem; font-size: 1.25rem; }
-				.cardGrid {
-					display: grid;
-					grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-					gap: 1rem;
-					margin: 0;
-					padding: 0;
-					list-style: none;
+				.reportsError {
+					color: var(--error);
+					font-weight: 600;
 				}
 			`}</style>
 		</div>
