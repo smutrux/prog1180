@@ -1,5 +1,3 @@
-/* NCR domain logic: lookups for the form, the next NCR number, loading an
-   NCR for editing, and the create and update sequences across all the tables. */
 import {
 	ApiError,
 	createRecord,
@@ -16,31 +14,37 @@ import {
 	type TableName,
 } from "./api";
 
-/* ---- Names the database must contain (created by scripts/seed.mjs) ---- */
+/** The role whose people can be chosen as the inspector. */
 export const QUALITY_ROLE = "Quality Representative";
-/* New NCRs start with this status. If no status has this name, the one with id 1 is used. */
+/** New NCRs start with this status. If no status has this name, the one with id 1 is used. */
 export const STATUS_NEW = "Open";
+/** The status id used when no status is named like {@link STATUS_NEW}. */
 const STATUS_NEW_FALLBACK_ID = 1;
-/* Moving an NCR to a status like this sets its close date. Moving it out of one clears it. */
+/** Moving an NCR to a status like this sets its close date. Moving it out of one clears it. */
 export const isClosedStatus = (name: string) => /clos/i.test(name);
+/** The review status a new NCR starts with. */
 export const REVIEW_SUBMITTED = "Submitted";
+/** The supplier name used for NCRs from in-house production. */
 export const IN_HOUSE_SUPPLIER = "In-house production";
-export const PROCESS_LABELS = { supplier: "Supplier or Rec-Insp", wip: "WIP (Production Order)" } as const;
+/** The wording saved for each kind of process. */
+export const PROCESS_LABELS = {
+	supplier: "Supplier or Rec-Insp",
+	wip: "WIP (Production Order)",
+} as const;
 
-/* ---- Values for columns the Quality section does not collect ----
-   Best guess: not nullable, so each gets a neutral value. Change here. */
+/** Values for columns the form does not ask about. */
 const NCR_DEFAULTS = {
 	NCRDisposition: "Pending",
 	NCRIsNotificationRequired: false,
 	NCRIsDrawingUpdateRequired: "Pending",
 	NCROriginalRevNumber: "",
 	NCRUpdatedRevNumber: "",
-	NCRClosedAt: null as string | null, // an open NCR has no close date
+	NCRClosedAt: null as string | null,
 };
-const PLACEHOLDER_PRICE = 0; // Item, SOLineItem, POLineItem unit prices are not collected
-const PERSON_CONTACT_DEFAULT = ""; // PersonEmail / PersonPhone for people created by the form
+const PLACEHOLDER_PRICE = 0;
+const PERSON_CONTACT_DEFAULT = "";
 
-/* ---- Row shapes (only the columns this file reads) ---- */
+/** The NCR columns this app reads and writes. */
 export interface NcrFields {
 	NCRId?: number | null;
 	NCRNumber: string | null;
@@ -55,27 +59,85 @@ export interface NcrFields {
 	NCRUpdatedAt?: string | null;
 	[column: string]: unknown;
 }
-interface SupplierFields { SupplierName: string | null }
-interface ProblemTypeFields { ProblemTypeLabel: string | null; ProblemTypeDesc: string | null }
-interface PersonFields { PersonFirstName: string | null; PersonMiddleName: string | null; PersonLastName: string | null }
-interface RoleFields { RoleName: string | null }
-interface RolePersonFields { RoleId: number | null; PersonId: number | null }
-interface StatusFields { NCRStatusName: string | null }
-interface ReviewStatusFields { ReviewStatusName: string | null }
-interface NcrNumberFields { NCRNumber: string | null }
-interface PurchaseOrderFields { PurchaseOrderNumber: string | null; SupplierId: number | null }
-interface SalesOrderFields { SalesOrderNumber: string | null; ItemSapNumber: string | null }
-interface ItemFields { ItemName: string | null; ItemDesc: string | null }
-interface SOLineItemFields { ItemId: number | null; SalesOrderId: number | null }
-interface POLineItemFields { PurchaseOrderId: number | null }
-interface NCRProblemTypeFields { NCRId?: unknown; ProblemTypeId: number | null }
-interface AttachmentFields { NCRId?: unknown; AttachmentType: string | null; AttachmentFileName: string | null; AttachmentFilePath: string | null }
+interface SupplierFields {
+	SupplierName: string | null;
+}
+interface ProblemTypeFields {
+	ProblemTypeLabel: string | null;
+	ProblemTypeDesc: string | null;
+}
+interface PersonFields {
+	PersonFirstName: string | null;
+	PersonMiddleName: string | null;
+	PersonLastName: string | null;
+}
+interface RoleFields {
+	RoleName: string | null;
+}
+interface RolePersonFields {
+	RoleId: number | null;
+	PersonId: number | null;
+}
+interface StatusFields {
+	NCRStatusName: string | null;
+}
+interface ReviewStatusFields {
+	ReviewStatusName: string | null;
+}
+interface NcrNumberFields {
+	NCRNumber: string | null;
+}
+interface PurchaseOrderFields {
+	PurchaseOrderNumber: string | null;
+	SupplierId: number | null;
+}
+interface SalesOrderFields {
+	SalesOrderNumber: string | null;
+	ItemSapNumber: string | null;
+}
+interface ItemFields {
+	ItemName: string | null;
+	ItemDesc: string | null;
+}
+interface SOLineItemFields {
+	ItemId: number | null;
+	SalesOrderId: number | null;
+}
+interface POLineItemFields {
+	PurchaseOrderId: number | null;
+}
+interface NCRProblemTypeFields {
+	NCRId?: unknown;
+	ProblemTypeId: number | null;
+}
+interface AttachmentFields {
+	NCRId?: unknown;
+	AttachmentType: string | null;
+	AttachmentFileName: string | null;
+	AttachmentFilePath: string | null;
+}
 
-/* ---- What the form reads ---- */
-export interface SupplierOption { id: number; name: string }
-export interface ProblemTypeOption { id: number; label: string; description: string }
-export interface StatusOption { id: number; name: string }
-export interface InspectorOption { personId: number; rolePersonId: number; first: string; middle: string; last: string }
+export interface SupplierOption {
+	id: number;
+	name: string;
+}
+export interface ProblemTypeOption {
+	id: number;
+	label: string;
+	description: string;
+}
+export interface StatusOption {
+	id: number;
+	name: string;
+}
+export interface InspectorOption {
+	personId: number;
+	rolePersonId: number;
+	first: string;
+	middle: string;
+	last: string;
+}
+/** Everything the form's drop-down lists are built from. */
 export interface FormLookups {
 	suppliers: SupplierOption[];
 	problemTypes: ProblemTypeOption[];
@@ -84,7 +146,9 @@ export interface FormLookups {
 }
 
 /** The status a new NCR starts with: "Open", or the status with id 1. */
-export function defaultStatus(statuses: StatusOption[]): StatusOption | undefined {
+export function defaultStatus(
+	statuses: StatusOption[],
+): StatusOption | undefined {
 	return (
 		statuses.find((s) => same(s.name, STATUS_NEW)) ??
 		statuses.find((s) => s.id === STATUS_NEW_FALLBACK_ID) ??
@@ -92,6 +156,7 @@ export function defaultStatus(statuses: StatusOption[]): StatusOption | undefine
 	);
 }
 
+/** Thrown when the NCR number was taken while the form was open. */
 export class DuplicateNcrNumberError extends Error {
 	ncrNumber: string;
 	constructor(ncrNumber: string) {
@@ -100,12 +165,16 @@ export class DuplicateNcrNumberError extends Error {
 		this.ncrNumber = ncrNumber;
 	}
 }
+/** Thrown when a row the app needs (such as a role or status) is missing from the database. */
 export class MissingSeedError extends Error {
 	constructor(what: string) {
-		super(`${what} is missing from the database. Run the seed script (scripts/seed.mjs) or add it by hand.`);
+		super(
+			`${what} is missing from the database. Run the seed script (scripts/seed.mjs) or add it by hand.`,
+		);
 		this.name = "MissingSeedError";
 	}
 }
+/** Thrown when a save fails. It lists anything that could not be undone. */
 export class SubmitError extends Error {
 	leftovers: string[];
 	constructor(message: string, leftovers: string[]) {
@@ -115,45 +184,53 @@ export class SubmitError extends Error {
 	}
 }
 
-/* The NCR column that points at NCRStatus. Foreign keys here are named after
-   their table, so this is NCRStatusId. If your column is named differently,
-   change it here. When editing, the real name is detected from the record. */
+/**
+ * The NCR column that points at NCRStatus. Foreign keys here are named after
+ * their table, so this is NCRStatusId. If your column is named differently,
+ * change it here. When editing, the real name is detected from the record.
+ */
 export const STATUS_COLUMN = "NCRStatusId";
 
 /** The status column of an NCR row: the one it really has, else STATUS_COLUMN. */
 function statusColumnOf(fields: Record<string, unknown>): string {
 	if (STATUS_COLUMN in fields) return STATUS_COLUMN;
-	return Object.keys(fields).find((k) => /status/i.test(k) && !/review/i.test(k)) ?? STATUS_COLUMN;
+	return (
+		Object.keys(fields).find((k) => /status/i.test(k) && !/review/i.test(k)) ??
+		STATUS_COLUMN
+	);
 }
 
+/** Compares two names, ignoring case and spaces at the ends. */
 const same = (a: string | null | undefined, b: string) =>
 	(a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
 
+/** Finds the item that passes `test`, or throws {@link MissingSeedError} naming `what`. */
 function mustFind<T>(list: T[], test: (item: T) => boolean, what: string): T {
 	const hit = list.find(test);
 	if (!hit) throw new MissingSeedError(what);
 	return hit;
 }
 
-/* ------------------------------------------------------------------ */
-/* Lookups                                                             */
-/* ------------------------------------------------------------------ */
+/** Loads the drop-down lists for the form. */
 export async function loadFormLookups(): Promise<FormLookups> {
-	const [suppliers, problemTypes, roles, rolePersons, people, statuses] = await Promise.all([
-		listAll<SupplierFields>("Supplier"),
-		listAll<ProblemTypeFields>("ProblemType"),
-		listAll<RoleFields>("Role"),
-		listAll<RolePersonFields>("RolePerson"),
-		listAll<PersonFields>("Person"),
-		listAll<StatusFields>("NCRStatus"),
-	]);
+	const [suppliers, problemTypes, roles, rolePersons, people, statuses] =
+		await Promise.all([
+			listAll<SupplierFields>("Supplier"),
+			listAll<ProblemTypeFields>("ProblemType"),
+			listAll<RoleFields>("Role"),
+			listAll<RolePersonFields>("RolePerson"),
+			listAll<PersonFields>("Person"),
+			listAll<StatusFields>("NCRStatus"),
+		]);
 
 	const quality = roles.find((r) => same(r.fields.RoleName, QUALITY_ROLE));
 	const inspectors: InspectorOption[] = [];
 	if (quality) {
 		for (const rp of rolePersons) {
 			if (fkValue(rp.fields.RoleId) !== refId("Role", quality)) continue;
-			const person = people.find((p) => refId("Person", p) === fkValue(rp.fields.PersonId));
+			const person = people.find(
+				(p) => refId("Person", p) === fkValue(rp.fields.PersonId),
+			);
 			if (!person) continue;
 			inspectors.push({
 				personId: refId("Person", person),
@@ -167,7 +244,10 @@ export async function loadFormLookups(): Promise<FormLookups> {
 
 	return {
 		suppliers: suppliers
-			.map((s) => ({ id: refId("Supplier", s), name: (s.fields.SupplierName ?? "").trim() }))
+			.map((s) => ({
+				id: refId("Supplier", s),
+				name: (s.fields.SupplierName ?? "").trim(),
+			}))
 			.filter((s) => s.name && !same(s.name, IN_HOUSE_SUPPLIER))
 			.sort((a, b) => a.name.localeCompare(b.name)),
 		problemTypes: problemTypes.map((t) => ({
@@ -177,7 +257,10 @@ export async function loadFormLookups(): Promise<FormLookups> {
 		})),
 		inspectors,
 		statuses: statuses
-			.map((r) => ({ id: refId("NCRStatus", r), name: (r.fields.NCRStatusName ?? "").trim() }))
+			.map((r) => ({
+				id: refId("NCRStatus", r),
+				name: (r.fields.NCRStatusName ?? "").trim(),
+			}))
 			.filter((r) => r.name)
 			.sort((a, b) => a.id - b.id),
 	};
@@ -196,21 +279,25 @@ export async function nextNcrNumber(): Promise<string> {
 	return `${year}-${String(highest + 1).padStart(3, "0")}`;
 }
 
+/** Whether an NCR with this number already exists. */
 async function ncrNumberExists(ncrNumber: string): Promise<boolean> {
-	return (await findFirst<NcrNumberFields>("NCR", where(["NCRNumber", "eq", ncrNumber]))) !== null;
+	return (
+		(await findFirst<NcrNumberFields>(
+			"NCR",
+			where(["NCRNumber", "eq", ncrNumber]),
+		)) !== null
+	);
 }
 
-/* ------------------------------------------------------------------ */
-/* Loading an NCR for editing                                          */
-/* ------------------------------------------------------------------ */
+/** An NCR and its related details, flattened so the edit form can be filled in. */
 export interface NcrEditData {
-	recordId: number | string; // for PATCH and DELETE
-	ncrRef: number; // for foreign keys that point at this NCR
+	recordId: number | string;
+	ncrRef: number;
 	ncrNumber: string;
 	processApplicable: string;
-	statusId: number | null; // the NCRStatus row the NCR points at now
-	statusColumn: string; // the NCR column that holds it
-	supplier: string | null; // null: in-house production
+	statusId: number | null;
+	statusColumn: string;
+	supplier: string | null;
 	purchaseOrderNumber: string;
 	salesOrderNumber: string;
 	item: { name: string; description: string; sapNumber: string };
@@ -228,24 +315,39 @@ export interface NcrEditData {
 	originalFields: Record<string, unknown>;
 }
 
+/** The NCR columns an edit changes. Their old values are kept so a failed edit can put them back. */
 const PATCHED_COLUMNS = [
-	"NCRProcessApplicable", "NCRDefectDescription", "NCRQuantityReceived", "NCRQuantityDefective",
-	"NCRIsNonconforming", "NCRUpdatedAt", "SOLineItemId", "POLineItemId", "NCRRaisedByPersonId",
+	"NCRProcessApplicable",
+	"NCRDefectDescription",
+	"NCRQuantityReceived",
+	"NCRQuantityDefective",
+	"NCRIsNonconforming",
+	"NCRUpdatedAt",
+	"SOLineItemId",
+	"POLineItemId",
+	"NCRRaisedByPersonId",
 	"NCRClosedAt",
 ] as const;
 
 /** Rows in a child table that belong to one NCR. Asks the database first; if the
     filter finds nothing, loads the table and matches NCRId here, because a
     filter on a foreign key column does not always behave. */
-async function listForNcr<F extends { NCRId?: unknown }>(table: TableName, ncrRef: number): Promise<NcRecord<F>[]> {
-	const filtered = await listAll<F>(table, { where: where(["NCRId", "eq", ncrRef]) });
+async function listForNcr<F extends { NCRId?: unknown }>(
+	table: TableName,
+	ncrRef: number,
+): Promise<NcRecord<F>[]> {
+	const filtered = await listAll<F>(table, {
+		where: where(["NCRId", "eq", ncrRef]),
+	});
 	if (filtered.length > 0) return filtered;
 	const everything = await listAll<F>(table);
 	return everything.filter((r) => fkValue(r.fields.NCRId) === ncrRef);
 }
 
 /** Follows the NCR's foreign keys and collects everything the form shows. */
-export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditData> {
+export async function loadNcrForEdit(
+	rec: NcRecord<NcrFields>,
+): Promise<NcrEditData> {
 	const f = rec.fields;
 	const ncrRef = refId("NCR", rec);
 	const [soLine, poLine, person, problemRows, attachments] = await Promise.all([
@@ -258,14 +360,23 @@ export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditD
 	const [item, salesOrder, purchaseOrder] = await Promise.all([
 		getByRef<ItemFields>("Item", soLine?.fields.ItemId),
 		getByRef<SalesOrderFields>("SalesOrder", soLine?.fields.SalesOrderId),
-		getByRef<PurchaseOrderFields>("PurchaseOrder", poLine?.fields.PurchaseOrderId),
+		getByRef<PurchaseOrderFields>(
+			"PurchaseOrder",
+			poLine?.fields.PurchaseOrderId,
+		),
 	]);
-	const supplier = await getByRef<SupplierFields>("Supplier", purchaseOrder?.fields.SupplierId);
+	const supplier = await getByRef<SupplierFields>(
+		"Supplier",
+		purchaseOrder?.fields.SupplierId,
+	);
 	const supplierName = (supplier?.fields.SupplierName ?? "").trim();
 
 	const linkRows = attachments
 		.filter((a) => same(a.fields.AttachmentType, "Link"))
-		.map((a) => ({ recordId: a.id, url: (a.fields.AttachmentFilePath ?? "").trim() }));
+		.map((a) => ({
+			recordId: a.id,
+			url: (a.fields.AttachmentFilePath ?? "").trim(),
+		}));
 	const problemTypeRows = problemRows.flatMap((r) => {
 		const problemTypeId = fkValue(r.fields.ProblemTypeId);
 		return problemTypeId === null ? [] : [{ recordId: r.id, problemTypeId }];
@@ -279,8 +390,13 @@ export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditD
 		processApplicable: (f.NCRProcessApplicable ?? "").trim(),
 		statusId: fkValue(f[statusColumn]),
 		statusColumn,
-		supplier: supplierName && !same(supplierName, IN_HOUSE_SUPPLIER) ? supplierName : null,
-		purchaseOrderNumber: (purchaseOrder?.fields.PurchaseOrderNumber ?? "").trim(),
+		supplier:
+			supplierName && !same(supplierName, IN_HOUSE_SUPPLIER)
+				? supplierName
+				: null,
+		purchaseOrderNumber: (
+			purchaseOrder?.fields.PurchaseOrderNumber ?? ""
+		).trim(),
 		salesOrderNumber: (salesOrder?.fields.SalesOrderNumber ?? "").trim(),
 		item: {
 			name: (item?.fields.ItemName ?? "").trim(),
@@ -294,7 +410,9 @@ export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditD
 		defectDescription: (f.NCRDefectDescription ?? "").trim(),
 		isNonconforming: f.NCRIsNonconforming ?? null,
 		inspector: {
-			personId: person ? refId("Person", person) : (fkValue(f.NCRRaisedByPersonId) ?? 0),
+			personId: person
+				? refId("Person", person)
+				: (fkValue(f.NCRRaisedByPersonId) ?? 0),
 			first: (person?.fields.PersonFirstName ?? "").trim(),
 			middle: (person?.fields.PersonMiddleName ?? "").trim(),
 			last: (person?.fields.PersonLastName ?? "").trim(),
@@ -311,9 +429,7 @@ export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditD
 	};
 }
 
-/* ------------------------------------------------------------------ */
-/* Create and update                                                   */
-/* ------------------------------------------------------------------ */
+/** What the form hands to {@link submitNcr} and the update. */
 export interface NcrSubmission {
 	ncrNumber: string;
 	processApplicable: string;
@@ -337,6 +453,7 @@ export interface NcrSubmission {
 	links: string[];
 }
 
+/** A record made during a save, kept so it can be deleted if the save fails. */
 type Created = { table: TableName; id: number | string };
 type Make = <F extends object = Record<string, unknown>>(
 	table: TableName,
@@ -344,10 +461,15 @@ type Make = <F extends object = Record<string, unknown>>(
 	fields: Record<string, unknown>,
 ) => Promise<NcRecord<F>>;
 
+/** Keeps a list of the records made during a save and reports progress. */
 function startTracker(progress: (message: string) => void) {
 	const created: Created[] = [];
 	const now = ncDateTime();
-	const make: Make = async <F extends object>(table: TableName, label: string, fields: Record<string, unknown>) => {
+	const make: Make = async <F extends object>(
+		table: TableName,
+		label: string,
+		fields: Record<string, unknown>,
+	) => {
 		progress(`Saving ${label}...`);
 		const rec = await createRecord<F>(table, fields);
 		created.push({ table, id: rec.id });
@@ -356,6 +478,7 @@ function startTracker(progress: (message: string) => void) {
 	return { created, now, make };
 }
 
+/** Deletes the records made during a failed save. Returns descriptions of any that could not be deleted. */
 async function rollback(created: Created[]): Promise<string[]> {
 	const leftovers: string[] = [];
 	for (const c of [...created].reverse()) {
@@ -368,14 +491,27 @@ async function rollback(created: Created[]): Promise<string[]> {
 	return leftovers;
 }
 
-/* STUB: nothing is uploaded yet. Returns the path the file will live at once
-   file storage exists. Replace the body with a real upload. */
-async function uploadAttachmentStub(file: File, ncrNumber: string): Promise<string> {
+/**
+ * STUB: nothing is uploaded yet. Returns the path the file will live at once
+ * file storage exists. Replace the body with a real upload.
+ */
+async function uploadAttachmentStub(
+	file: File,
+	ncrNumber: string,
+): Promise<string> {
 	const safeName = file.name.replace(/[^\w.-]+/g, "_");
 	return `/uploads/ncr/${ncrNumber}/${safeName}`.slice(0, 500);
 }
 
-async function addFileAttachment(make: Make, file: File, ncrNumber: string, ncrRef: number, personId: number, now: string) {
+/** Uploads one file and links it to the NCR. */
+async function addFileAttachment(
+	make: Make,
+	file: File,
+	ncrNumber: string,
+	ncrRef: number,
+	personId: number,
+	now: string,
+) {
 	const path = await uploadAttachmentStub(file, ncrNumber);
 	await make("Attachment", `attachment ${file.name}`, {
 		AttachmentType: file.type.startsWith("image/") ? "Image" : "Document",
@@ -387,7 +523,14 @@ async function addFileAttachment(make: Make, file: File, ncrNumber: string, ncrR
 	});
 }
 
-async function addLinkAttachment(make: Make, link: string, ncrRef: number, personId: number, now: string) {
+/** Links a web address to the NCR. */
+async function addLinkAttachment(
+	make: Make,
+	link: string,
+	ncrRef: number,
+	personId: number,
+	now: string,
+) {
 	await make("Attachment", "a link", {
 		AttachmentType: "Link",
 		AttachmentFileName: new URL(link).hostname.slice(0, 300),
@@ -401,10 +544,17 @@ async function addLinkAttachment(make: Make, link: string, ncrRef: number, perso
 /** The inspector's Person and RolePerson ids. Creates both for a new inspector. */
 async function resolveInspector(s: NcrSubmission, make: Make) {
 	if (s.inspector.kind === "existing") {
-		return { personId: s.inspector.personId, rolePersonId: s.inspector.rolePersonId };
+		return {
+			personId: s.inspector.personId,
+			rolePersonId: s.inspector.rolePersonId,
+		};
 	}
 	const roles = await listAll<RoleFields>("Role");
-	const qualityRole = mustFind(roles, (r) => same(r.fields.RoleName, QUALITY_ROLE), `Role "${QUALITY_ROLE}"`);
+	const qualityRole = mustFind(
+		roles,
+		(r) => same(r.fields.RoleName, QUALITY_ROLE),
+		`Role "${QUALITY_ROLE}"`,
+	);
 	const person = await make("Person", "the inspector", {
 		PersonFirstName: s.inspector.first,
 		PersonMiddleName: s.inspector.middle,
@@ -423,7 +573,10 @@ async function resolveInspector(s: NcrSubmission, make: Make) {
 /** Supplier, purchase order, sales order, item and both line items.
     Reuses rows that already exist and creates the rest. */
 async function resolveChain(s: NcrSubmission, make: Make, now: string) {
-	const [suppliers, items] = await Promise.all([listAll<SupplierFields>("Supplier"), listAll<ItemFields>("Item")]);
+	const [suppliers, items] = await Promise.all([
+		listAll<SupplierFields>("Supplier"),
+		listAll<ItemFields>("Item"),
+	]);
 
 	const supplierName = (s.supplier ?? IN_HOUSE_SUPPLIER).trim();
 	const supplier =
@@ -431,7 +584,10 @@ async function resolveChain(s: NcrSubmission, make: Make, now: string) {
 		(await make("Supplier", "the supplier", { SupplierName: supplierName }));
 
 	const purchaseOrder =
-		(await findFirst<PurchaseOrderFields>("PurchaseOrder", where(["PurchaseOrderNumber", "eq", s.purchaseOrderNumber]))) ??
+		(await findFirst<PurchaseOrderFields>(
+			"PurchaseOrder",
+			where(["PurchaseOrderNumber", "eq", s.purchaseOrderNumber]),
+		)) ??
 		(await make("PurchaseOrder", "the purchase order", {
 			PurchaseOrderNumber: s.purchaseOrderNumber,
 			PurchaseOrderDate: now,
@@ -442,7 +598,9 @@ async function resolveChain(s: NcrSubmission, make: Make, now: string) {
 		where: where(["SalesOrderNumber", "eq", s.salesOrderNumber]),
 	});
 	const salesOrder =
-		salesOrders.find((r) => (r.fields.ItemSapNumber ?? "").trim() === s.item.sapNumber) ??
+		salesOrders.find(
+			(r) => (r.fields.ItemSapNumber ?? "").trim() === s.item.sapNumber,
+		) ??
 		(await make("SalesOrder", "the sales order", {
 			SalesOrderNumber: s.salesOrderNumber,
 			ItemSapNumber: s.item.sapNumber,
@@ -450,7 +608,11 @@ async function resolveChain(s: NcrSubmission, make: Make, now: string) {
 		}));
 
 	const item =
-		items.find((r) => same(r.fields.ItemName, s.item.name) && same(r.fields.ItemDesc, s.item.description)) ??
+		items.find(
+			(r) =>
+				same(r.fields.ItemName, s.item.name) &&
+				same(r.fields.ItemDesc, s.item.description),
+		) ??
 		(await make("Item", "the item", {
 			ItemName: s.item.name,
 			ItemDesc: s.item.description,
@@ -462,7 +624,10 @@ async function resolveChain(s: NcrSubmission, make: Make, now: string) {
 	const itemId = refId("Item", item);
 
 	const soLineItem =
-		(await findFirst<object>("SOLineItem", where(["SalesOrderId", "eq", salesOrderId], ["ItemId", "eq", itemId]))) ??
+		(await findFirst<object>(
+			"SOLineItem",
+			where(["SalesOrderId", "eq", salesOrderId], ["ItemId", "eq", itemId]),
+		)) ??
 		(await make("SOLineItem", "the sales order line", {
 			SOLineItemQuantityOrdered: s.quantityReceived,
 			SOLineItemUnitPrice: PLACEHOLDER_PRICE,
@@ -474,7 +639,11 @@ async function resolveChain(s: NcrSubmission, make: Make, now: string) {
 	const poLineItem =
 		(await findFirst<object>(
 			"POLineItem",
-			where(["PurchaseOrderId", "eq", purchaseOrderId], ["ItemId", "eq", itemId], ["SOLineItemId", "eq", soLineItemId]),
+			where(
+				["PurchaseOrderId", "eq", purchaseOrderId],
+				["ItemId", "eq", itemId],
+				["SOLineItemId", "eq", soLineItemId],
+			),
 		)) ??
 		(await make("POLineItem", "the purchase order line", {
 			POLineItemQuantityOrdered: s.quantityReceived,
@@ -487,8 +656,16 @@ async function resolveChain(s: NcrSubmission, make: Make, now: string) {
 	return { soLineItemId, poLineItemId: refId("POLineItem", poLineItem) };
 }
 
-const messageOf = (err: unknown) => (err instanceof ApiError || err instanceof Error ? err.message : String(err));
+/** The readable message of an error. */
+const messageOf = (err: unknown) =>
+	err instanceof ApiError || err instanceof Error ? err.message : String(err);
 
+/**
+ * Creates a new NCR and everything it needs. If any step fails, what was made is deleted again.
+ *
+ * @throws {@link DuplicateNcrNumberError} when the number is taken.
+ * @throws {@link SubmitError} when the save fails.
+ */
 export async function submitNcr(
 	s: NcrSubmission,
 	progress: (message: string) => void = () => {},
@@ -496,11 +673,16 @@ export async function submitNcr(
 	const { created, now, make } = startTracker(progress);
 	try {
 		progress("Checking the NCR number...");
-		if (await ncrNumberExists(s.ncrNumber)) throw new DuplicateNcrNumberError(s.ncrNumber);
+		if (await ncrNumberExists(s.ncrNumber))
+			throw new DuplicateNcrNumberError(s.ncrNumber);
 
 		progress("Loading statuses...");
 		const reviewStatuses = await listAll<ReviewStatusFields>("ReviewStatus");
-		const review = mustFind(reviewStatuses, (r) => same(r.fields.ReviewStatusName, REVIEW_SUBMITTED), `Review status "${REVIEW_SUBMITTED}"`);
+		const review = mustFind(
+			reviewStatuses,
+			(r) => same(r.fields.ReviewStatusName, REVIEW_SUBMITTED),
+			`Review status "${REVIEW_SUBMITTED}"`,
+		);
 
 		const inspector = await resolveInspector(s, make);
 		const chain = await resolveChain(s, make, now);
@@ -513,7 +695,7 @@ export async function submitNcr(
 			NCRQuantityDefective: s.quantityDefective,
 			NCRIsNonconforming: s.isNonconforming,
 			...NCR_DEFAULTS,
-			NCRCreatedAtD: now, // the column name has this spelling in the database
+			NCRCreatedAtD: now,
 			NCRUpdatedAt: now,
 			[STATUS_COLUMN]: s.status.id,
 			NCRClosedAt: isClosedStatus(s.status.name) ? now : null,
@@ -524,10 +706,22 @@ export async function submitNcr(
 		const ncrRef = refId("NCR", ncr);
 
 		for (const problemTypeId of s.problemTypeIds) {
-			await make("NCRProblemType", "a problem type", { NCRId: ncrRef, ProblemTypeId: problemTypeId });
+			await make("NCRProblemType", "a problem type", {
+				NCRId: ncrRef,
+				ProblemTypeId: problemTypeId,
+			});
 		}
-		for (const file of s.files) await addFileAttachment(make, file, s.ncrNumber, ncrRef, inspector.personId, now);
-		for (const link of s.links) await addLinkAttachment(make, link, ncrRef, inspector.personId, now);
+		for (const file of s.files)
+			await addFileAttachment(
+				make,
+				file,
+				s.ncrNumber,
+				ncrRef,
+				inspector.personId,
+				now,
+			);
+		for (const link of s.links)
+			await addLinkAttachment(make, link, ncrRef, inspector.personId, now);
 
 		await make("NCRPerson", "the inspector's sign-off", {
 			NCRPersonAssignedAt: now,
@@ -540,7 +734,11 @@ export async function submitNcr(
 		return { ncrNumber: s.ncrNumber, recordId: ncr.id };
 	} catch (err) {
 		const leftovers = await rollback(created);
-		if (err instanceof DuplicateNcrNumberError || err instanceof MissingSeedError) throw err;
+		if (
+			err instanceof DuplicateNcrNumberError ||
+			err instanceof MissingSeedError
+		)
+			throw err;
 		throw new SubmitError(messageOf(err), leftovers);
 	}
 }
@@ -562,18 +760,39 @@ export async function updateNcr(
 		const have = new Set(edit.problemTypeRows.map((r) => r.problemTypeId));
 		for (const problemTypeId of s.problemTypeIds) {
 			if (!have.has(problemTypeId)) {
-				await make("NCRProblemType", "a problem type", { NCRId: edit.ncrRef, ProblemTypeId: problemTypeId });
+				await make("NCRProblemType", "a problem type", {
+					NCRId: edit.ncrRef,
+					ProblemTypeId: problemTypeId,
+				});
 			}
 		}
-		for (const file of s.files) await addFileAttachment(make, file, edit.ncrNumber, edit.ncrRef, inspector.personId, now);
+		for (const file of s.files)
+			await addFileAttachment(
+				make,
+				file,
+				edit.ncrNumber,
+				edit.ncrRef,
+				inspector.personId,
+				now,
+			);
 		const haveLinks = new Set(edit.linkRows.map((r) => r.url));
 		for (const link of s.links) {
-			if (!haveLinks.has(link)) await addLinkAttachment(make, link, edit.ncrRef, inspector.personId, now);
+			if (!haveLinks.has(link))
+				await addLinkAttachment(
+					make,
+					link,
+					edit.ncrRef,
+					inspector.personId,
+					now,
+				);
 		}
 
-		/* Keep the existing close date while the NCR stays closed. */
 		const wasClosedAt = edit.originalFields.NCRClosedAt;
-		const closedAt = isClosedStatus(s.status.name) ? (typeof wasClosedAt === "string" && wasClosedAt ? wasClosedAt : now) : null;
+		const closedAt = isClosedStatus(s.status.name)
+			? typeof wasClosedAt === "string" && wasClosedAt
+				? wasClosedAt
+				: now
+			: null;
 
 		progress("Updating the NCR...");
 		patchAttempted = true;
@@ -594,16 +813,13 @@ export async function updateNcr(
 		if (patchAttempted) {
 			try {
 				await updateRecord("NCR", edit.recordId, edit.originalFields);
-			} catch {
-				/* reported through the thrown error below */
-			}
+			} catch {}
 		}
 		const leftovers = await rollback(created);
 		if (err instanceof MissingSeedError) throw err;
 		throw new SubmitError(messageOf(err), leftovers);
 	}
 
-	/* Removals */
 	const leftovers: string[] = [];
 	const wanted = new Set(s.problemTypeIds);
 	for (const r of edit.problemTypeRows) {
@@ -626,7 +842,10 @@ export async function updateNcr(
 		}
 	}
 	if (leftovers.length) {
-		throw new SubmitError("The NCR was updated, but some old records could not be removed.", leftovers);
+		throw new SubmitError(
+			"The NCR was updated, but some old records could not be removed.",
+			leftovers,
+		);
 	}
 	return { ncrNumber: edit.ncrNumber, recordId: edit.recordId };
 }

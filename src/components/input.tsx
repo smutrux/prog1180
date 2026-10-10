@@ -82,19 +82,16 @@ type InputProps =
 	| CheckboxInputProps
 	| DropdownInputProps;
 
+/** Builds the `aria-describedby` value from the help, extra description and error text that are present. */
 const describedBy = (
 	id: string,
 	p: Pick<BaseInputProps, "helpText" | "error" | "aria">,
 ) =>
-	[
-		p.helpText && `${id}-help`,
-		p.aria && `${id}-aria`,
-		p.error && `${id}-error`,
-	]
+	[p.helpText && `${id}-help`, p.aria && `${id}-aria`, p.error && `${id}-error`]
 		.filter(Boolean)
 		.join(" ") || undefined;
 
-/* Label first in the DOM so reading order matches the visual order. */
+/** Label first in the DOM so reading order matches the visual order. */
 const Field = ({
 	id,
 	label,
@@ -123,7 +120,7 @@ const Field = ({
 			</p>
 		)}
 		{aria && (
-			<span id={`${id}-aria`} className="fld-sr">
+			<span id={`${id}-aria`} className="sr-only">
 				{aria}
 			</span>
 		)}
@@ -137,9 +134,9 @@ const Field = ({
 	</div>
 );
 
+/** A drop-down. Lists of more than 20 choices become a text box with suggestions. */
 const DropdownField = (props: DropdownInputProps) => {
-	const { items, value, onChange, name, required, disabled, error } =
-		props;
+	const { items, value, onChange, name, required, disabled, error } = props;
 	const id = props.id ?? name;
 	const common = {
 		id,
@@ -192,11 +189,21 @@ const DropdownField = (props: DropdownInputProps) => {
 	);
 };
 
-/* Radio and checkbox share one component. A checkbox is its own group, so it
-   uses `name`; a radio uses `groupName`. helpText is shown under the label. */
+/**
+ * Radio and checkbox share one component. A checkbox is its own group, so it
+ * uses `name`; a radio uses `groupName`. helpText is shown under the label.
+ */
 const ChoiceField = (props: RadioInputProps | CheckboxInputProps) => {
-	const { name, value, onChange, label, checked, required, disabled, helpText } =
-		props;
+	const {
+		name,
+		value,
+		onChange,
+		label,
+		checked,
+		required,
+		disabled,
+		helpText,
+	} = props;
 	const id = props.id ?? name;
 	const groupName = props.type === InputType.RADIO ? props.groupName : name;
 	return (
@@ -220,7 +227,7 @@ const ChoiceField = (props: RadioInputProps | CheckboxInputProps) => {
 					</span>
 				)}
 				{props.aria && (
-					<span id={`${id}-aria`} className="fld-sr">
+					<span id={`${id}-aria`} className="sr-only">
 						{props.aria}
 					</span>
 				)}
@@ -229,8 +236,19 @@ const ChoiceField = (props: RadioInputProps | CheckboxInputProps) => {
 	);
 };
 
+/** A multi-line text box. */
 const ParagraphField = (props: StandardInputProps) => {
-	const { name, placeholder, value, onChange, required, readOnly, disabled, error, maxLength } = props;
+	const {
+		name,
+		placeholder,
+		value,
+		onChange,
+		required,
+		readOnly,
+		disabled,
+		error,
+		maxLength,
+	} = props;
 	const id = props.id ?? name;
 	return (
 		<Field {...props} id={id}>
@@ -252,12 +270,28 @@ const ParagraphField = (props: StandardInputProps) => {
 	);
 };
 
+/** A single-line input of any text-like type. Password boxes get a show and hide button. */
 const TextLikeField = (props: StandardInputProps) => {
 	const [showPassword, setShowPassword] = useState(false);
 	const {
-		type, name, placeholder, value, onChange, required, readOnly, disabled,
-		error, min, max, step, maxLength, pattern, inputMode, autoComplete,
-		accept, multiple,
+		type,
+		name,
+		placeholder,
+		value,
+		onChange,
+		required,
+		readOnly,
+		disabled,
+		error,
+		min,
+		max,
+		step,
+		maxLength,
+		pattern,
+		inputMode,
+		autoComplete,
+		accept,
+		multiple,
 	} = props;
 	const id = props.id ?? name;
 	const isPassword = type === InputType.PASSWORD;
@@ -305,6 +339,12 @@ const TextLikeField = (props: StandardInputProps) => {
 	);
 };
 
+/**
+ * A labelled form field. The `type` picks which control is shown.
+ *
+ * @param props - The field's name, label, value and handlers, plus optional help text and error.
+ * @returns The field and its styles.
+ */
 const InputComponent = (props: InputProps) => {
 	let content: React.ReactNode;
 	switch (props.type) {
@@ -348,15 +388,7 @@ const InputComponent = (props: InputProps) => {
 				}
 				.fld-error {
 					margin: 0;
-					color: var(--error, #b3001b);
-				}
-				.fld-sr {
-					position: absolute;
-					width: 1px;
-					height: 1px;
-					overflow: hidden;
-					clip: rect(0 0 0 0);
-					white-space: nowrap;
+					color: var(--error);
 				}
 				.fld-field-container {
 					position: relative;
@@ -369,7 +401,7 @@ const InputComponent = (props: InputProps) => {
 					width: 100%;
 					min-height: 2.75rem;
 					padding: 0.5rem 0.75rem;
-					background-color: var(--code-bg);
+					background-color: var(--lifted-bg);
 					border: 1px solid var(--text-h);
 					border-radius: 0.5rem;
 					color: var(--text-h);
@@ -389,13 +421,7 @@ const InputComponent = (props: InputProps) => {
 					border-style: dashed;
 				}
 				.fld-control[aria-invalid="true"] {
-					border: 3px solid var(--error, #b3001b);
-				}
-				.fld-control:focus-visible,
-				.fld-radio input:focus-visible,
-				.fld-toggle:focus-visible {
-					outline: 3px solid var(--text-h);
-					outline-offset: 2px;
+					border: 3px solid var(--error);
 				}
 				.fld-radio {
 					display: flex;
@@ -436,15 +462,10 @@ const InputComponent = (props: InputProps) => {
 					color: var(--text-h);
 					cursor: pointer;
 				}
-				@media (prefers-reduced-motion: no-preference) {
-					.fld-toggle {
-						transition: opacity 0.2s ease;
-					}
-				}
 			`}</style>
 		</>
 	);
 };
 
-export var Input = Object.assign(InputComponent, InputType);
+export const Input = Object.assign(InputComponent, InputType);
 export default Input;
