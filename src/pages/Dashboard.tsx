@@ -1,102 +1,210 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import StatusCard from "../components/statusCard";
 import { TbCircleCheck } from "react-icons/tb";
 import { LuArchive } from "react-icons/lu";
 import { FiAlertCircle } from "react-icons/fi";
-import { FaRegClock } from "react-icons/fa6";
-import { FaSyncAlt } from "react-icons/fa";
+import { FaRegClock, FaPlus } from "react-icons/fa6";
 import Button from "../components/button";
-import Ncrs from "../components/ncrList";
-import PageHeader from "../components/pageHeader";
-import StatusCard from "../components/statusCard";
-import { loadReport, type Report } from "../components/reportsService";
+import { NcrModal } from "../components/NcrModal";
+import type { NcRecord } from "../components/api";
+import type { NcrFields } from "../components/ncrService";
+import { useNcrList } from "../components/useNcrList";
 
-/** The dashboard: four headline numbers and the list of NCRs. */
+const NCR_PAGE_HREF = "/ncrs";
+
+const isOpen = (status: unknown) =>
+	(typeof status === "string" ? status : "").trim().toLowerCase() === "open";
+
+const formatDate = (value: unknown) => {
+	if (!value || typeof value !== "string") return "—";
+	const date = new Date(value);
+	return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+};
+
 const Dashboard = () => {
-	const [report, setReport] = useState<Report | null>(null);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState("");
+	const { rows, loading, error, refetch } = useNcrList();
+	const [creating, setCreating] = useState(false);
+	const [editing, setEditing] = useState<NcRecord<NcrFields> | null>(null);
 
-	const load = useCallback(async () => {
-		setLoading(true);
-		try {
-			setReport(await loadReport());
-			setError("");
-		} catch (e) {
-			setError(e instanceof Error ? e.message : String(e));
-		} finally {
-			setLoading(false);
-		}
-	}, []);
+	if (loading) return <p role="status">Loading NCRs...</p>;
+	if (error) return <p role="alert">{error}</p>;
 
-	useEffect(() => {
-		void load();
-	}, [load]);
-
-	const showCards = report !== null || loading;
-	const placeholder = report === null;
+	const openRows = rows.filter((row) => isOpen(row.fields.NCRStatus));
 
 	return (
 		<div className="page">
-			<PageHeader
-				title="Quality Control Dashboard"
-				description="A summary of NCR activity and the latest reports"
-			/>
+			<h1>Quality Control Dashboard</h1>
 
-			{showCards ? (
-				<div className="card-grid">
-					{placeholder && (
-						<p role="status" className="sr-only">
-							Loading data...
-						</p>
-					)}
-					<StatusCard
-						title="Open NCRs"
-						amount={report?.open ?? 0}
-						subtext={
-							report?.onHold ? `${report.onHold} on hold` : "None on hold"
-						}
-						icon={FiAlertCircle}
-						colour="red"
-						loading={placeholder}
-					/>
-					<StatusCard
-						title="Awaiting review"
-						amount={report?.awaitingReview ?? 0}
-						subtext="Open NCRs with a review pending"
-						icon={FaRegClock}
-						colour="orange"
-						loading={placeholder}
-					/>
-					<StatusCard
-						title="Closed NCRs"
-						amount={report?.closed ?? 0}
-						subtext={`${report?.closedThisMonth ?? 0} closed this month`}
-						icon={TbCircleCheck}
-						colour="green"
-						loading={placeholder}
-					/>
-					<StatusCard
-						title="Total NCRs"
-						amount={report?.total ?? 0}
-						subtext="All NCRs raised"
-						icon={LuArchive}
-						colour="blue"
-						loading={placeholder}
-					/>
+			<section aria-labelledby="open-ncrs-heading">
+				<div className="table-header">
+					<h2 id="open-ncrs-heading">Open NCRs</h2>
+					<div className="table-actions">
+						<a href={NCR_PAGE_HREF}>View all NCRs</a>
+						<Button
+							text="New NCR"
+							aria="New NCR"
+							icon={FaPlus}
+							onClick={() => setCreating(true)}
+						/>
+					</div>
 				</div>
-			) : (
-				<div className="stack">
-					<p role="alert">{error}</p>
-					<Button
-						text="Try again"
-						aria="Try again"
-						icon={FaSyncAlt}
-						onClick={() => void load()}
-					/>
-				</div>
-			)}
 
-			<Ncrs show="all" simple />
+				<div className="table-wrap">
+					<table aria-labelledby="open-ncrs-heading">
+						<thead>
+							<tr>
+								<th scope="col">ID</th>
+								<th scope="col">Date</th>
+								<th scope="col">Status</th>
+								<th scope="col" className="col-action">
+									Action
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							{openRows.length === 0 ? (
+								<tr>
+									<td colSpan={4}>No open NCRs.</td>
+								</tr>
+							) : (
+								openRows.map((row) => (
+									<tr key={row.id}>
+										<td>{String(row.fields.NCRNumber ?? "")}</td>
+										<td>{formatDate(row.fields.NCRDate)}</td>
+										<td>{String(row.fields.NCRStatus ?? "")}</td>
+										<td>
+											<Button
+												text="Edit"
+												aria={`Edit NCR ${String(row.fields.NCRNumber ?? "")}`}
+												onClick={() => setEditing(row)}
+											/>
+										</td>
+									</tr>
+								))
+							)}
+						</tbody>
+					</table>
+				</div>
+
+				<NcrModal
+					open={creating}
+					onClose={() => setCreating(false)}
+					onSaved={refetch}
+				/>
+				<NcrModal
+					open={editing !== null}
+					edit
+					data={editing ?? undefined}
+					onClose={() => setEditing(null)}
+					onSaved={refetch}
+				/>
+			</section>
+
+			<div className="card-grid">
+				<StatusCard
+					title="Open NCRs"
+					amount={1}
+					subtext="Requiring immediate action"
+					icon={FiAlertCircle}
+					colour="red"
+				/>
+				<StatusCard
+					title="awaiting review"
+					amount={0}
+					subtext="Pending QA coordination sign-off"
+					icon={FaRegClock}
+					colour="orange"
+				/>
+				<StatusCard
+					title="closed ncrs"
+					amount={1}
+					subtext="Resolved this quarter"
+					icon={TbCircleCheck}
+					colour="green"
+				/>
+				<StatusCard
+					title="total NCRs"
+					amount={2}
+					subtext="All logged occurrences"
+					icon={LuArchive}
+					colour="blue"
+				/>
+			</div>
+
+			<style jsx>{`
+				.table-header {
+					display: flex;
+					align-items: center;
+					justify-content: space-between;
+					gap: 1rem;
+					margin-bottom: 0.75rem;
+				}
+
+				.table-header h2 {
+					margin-bottom: 0;
+				}
+
+				.table-actions {
+					display: flex;
+					align-items: center;
+					gap: 1.25rem;
+				}
+
+				.table-actions a {
+					color: var(--link);
+					font-weight: 500;
+					text-underline-offset: 0.2em;
+				}
+
+				.table-wrap {
+					overflow-x: auto;
+					background: var(--lifted-bg);
+					border: 1px solid var(--border);
+					border-radius: 0.75rem;
+					box-shadow: var(--shadow);
+				}
+
+				table {
+					width: 100%;
+					border-collapse: collapse;
+				}
+
+				th,
+				td {
+					padding: 0.75rem 1rem;
+					text-align: left;
+					border-bottom: 1px solid var(--border);
+				}
+
+				th {
+					color: var(--text-h);
+					font-weight: 600;
+					white-space: nowrap;
+				}
+
+				td {
+					color: var(--text);
+				}
+
+				tbody tr:last-child td {
+					border-bottom: none;
+				}
+
+				tbody tr:hover {
+					background: var(--hover);
+				}
+
+				.col-action {
+					width: 7rem;
+				}
+
+				@media (max-width: 768px) {
+					.table-header {
+						flex-direction: column;
+						align-items: flex-start;
+					}
+				}
+			`}</style>
 		</div>
 	);
 };
