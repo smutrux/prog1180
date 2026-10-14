@@ -250,7 +250,7 @@ function toRow(
 		ncrNumber: ed?.ncrNumber || String(fields.NCRNumber ?? ""),
 		date: findDate(fields),
 		supplier: ed ? (ed.supplier ?? "In-house") : "-",
-		product: ed ? ed.item.description || ed.item.name : "-",
+		product: ed ? ed.item.name : "-",
 		qtyReceived: num(ed?.quantityReceived),
 		qtyDefective: num(ed?.quantityDefective),
 		defect: ed?.defectDescription ?? "-",
@@ -748,18 +748,11 @@ const Ncrs = ({
 					<div role="rowgroup">
 						<div className="ncrs-row ncrs-head" role="row">
 							<span role="columnheader">NCR number</span>
-							<span role="columnheader">Date created</span>
-							<span role="columnheader">Supplier name</span>
-							<span role="columnheader">Product description</span>
-							<span role="columnheader">Quantity received</span>
-							<span role="columnheader">Quantity defective</span>
-							<span role="columnheader">Description of defect</span>
+							<span role="columnheader" className="ncrs-supplier">Supplier name</span>
+							<span role="columnheader">Product name</span>
+							<span role="columnheader" className="ncrs-desc">Description of defect</span>
 							<span role="columnheader">Status</span>
-							{editable && (
-								<span role="columnheader" className="ncrs-edit-col">
-									Edit
-								</span>
-							)}
+							
 						</div>
 					</div>
 
@@ -770,18 +763,14 @@ const Ncrs = ({
 									<span role="cell" className="ncrs-number">
 										{n.ncrNumber}
 									</span>
-									<span role="cell" className="ncrs-muted">
-										{formatDate(n.date)}
-									</span>
-									<span role="cell" className="ncrs-strong truncate-this">
+									
+									<span role="cell" className="ncrs-strong truncate-this ncrs-supplier">
 										{n.supplier}
 									</span>
 									<span role="cell" className="ncrs-strong truncate-this">
 										{n.product}
 									</span>
-									<span role="cell" className="truncate-this">{n.qtyReceived}</span>
-									<span role="cell" className="truncate-this">{n.qtyDefective}</span>
-									<span role="cell" className="truncate-this">{n.defect}</span>
+									<span role="cell" className="truncate-this ncrs-desc">{n.defect}</span>
 									<span role="cell">
 										<span className={`ncrs-status ncrs-status-${statusTone(n.status)}`}>
 											<span className="ncrs-dot" aria-hidden="true" />
@@ -1012,6 +1001,14 @@ const Ncrs = ({
 					white-space: nowrap;
 					overflow: hidden;
 					text-overflow: ellipsis;
+				}
+
+				.ncrs-supplier {
+					grid-column: span 1;
+				}
+
+				.ncrs-desc {
+   					 grid-column: span 4;
 				}
 
 				.ncrs-body {
