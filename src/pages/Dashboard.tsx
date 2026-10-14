@@ -9,6 +9,7 @@ import Ncrs from "../components/ncrList";
 import PageHeader from "../components/pageHeader";
 import StatusCard from "../components/statusCard";
 import { loadReport, type Report } from "../components/reportsService";
+import { NewNcrButton } from "../components/ncrModal";
 
 /** The dashboard: four headline numbers and the list of NCRs. */
 const Dashboard = () => {
@@ -41,6 +42,8 @@ const Dashboard = () => {
 				title="Quality Control Dashboard"
 				description="A summary of NCR activity and the latest reports"
 			/>
+
+			<NewNcrButton />
 
 			{showCards ? (
 				<div className="card-grid">
