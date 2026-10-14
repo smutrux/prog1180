@@ -1,5 +1,5 @@
 import { fkValue, listAll, refId, type NcRecord, type TableName } from "./api";
-import { IN_HOUSE_SUPPLIER, PROCESS_LABELS } from "./ncrService";
+import { IN_HOUSE_SUPPLIER, PROCESS_LABELS, STATUS_COLUMN} from "./ncrService";
 
 /** The status name that means an NCR is closed. Any other status counts as open. */
 export const STATUS_CLOSED = "Closed";
@@ -19,7 +19,7 @@ interface NcrRow {
 	NCRDisposition: string | null;
 	NCRCreatedAtD: string | null;
 	NCRClosedAt: string | null;
-	StatusId: unknown;
+	NCRStatusId: unknown;
 	POLineItemId: unknown;
 }
 interface StatusRow {
@@ -185,7 +185,7 @@ export function computeReport(
 
 	for (const ncr of raw.ncrs) {
 		const f = ncr.fields;
-		const status = statusName.get(fkValue(f.StatusId) ?? -1) ?? "";
+		const status = statusName.get(fkValue(f[STATUS_COLUMN]) ?? -1) ?? "";
 		const isClosed = same(status, STATUS_CLOSED);
 		if (isClosed) closed++;
 		else {
