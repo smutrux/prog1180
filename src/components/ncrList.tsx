@@ -3,7 +3,7 @@ import { fkValue, listAll, refId, type NcRecord, type TableName } from "./api";
 import { loadNcrForEdit, type NcrEditData, type NcrFields } from "./ncrService";
 import { FaSyncAlt } from "react-icons/fa";
 import Button from "./button";
-import { NcrModal, NewNcrButton } from "./ncrModal";
+import { NcrDetailsModal, NcrModal, NewNcrButton } from "./ncrModal";
 
 /**
  * The table finds the "date created" and "status" columns of the NCR table
@@ -549,6 +549,13 @@ const Ncrs = ({
 	const dateRange = dateChoice ?? defaultDate;
 
 	const [editing, setEditing] = useState<NcRecord<NcrFields> | null>(null);
+	const [viewing, setViewing] = useState<NcrRow | null>(null);
+
+	/** Opens the details, unless the user was selecting text in the row. */
+	const openDetails = (row: NcrRow) => {
+		if (window.getSelection()?.toString()) return;
+		setViewing(row);
+	};
 
 	const [statusNames, setStatusNames] = useState<string[]>([]);
 	const [knownSuppliers, setKnownSuppliers] = useState<string[]>([]);
@@ -766,9 +773,24 @@ const Ncrs = ({
 					<div className="ncrs-body" role="rowgroup">
 						{showRows &&
 							data.rows.map((n) => (
-								<div key={String(n.record.id)} className="ncrs-row ncrs-card" role="row">
+								<div
+									key={String(n.record.id)}
+									className="ncrs-row ncrs-card ncrs-clickable"
+									role="row"
+									onClick={() => openDetails(n)}
+								>
 									<span role="cell" className="ncrs-number">
-										{n.ncrNumber}
+										<button
+											type="button"
+											className="ncrs-open"
+											aria-label={`View details of NCR ${n.ncrNumber}`}
+											onClick={(e) => {
+												e.stopPropagation();
+												setViewing(n);
+											}}
+										>
+											{n.ncrNumber}
+										</button>
 									</span>
 									<span role="cell" className="ncrs-muted">
 										{formatDate(n.date)}
@@ -789,7 +811,11 @@ const Ncrs = ({
 										</span>
 									</span>
 									{editable && (
-										<span role="cell" className="ncrs-edit-col">
+										<span
+											role="cell"
+											className="ncrs-edit-col"
+											onClick={(e) => e.stopPropagation()}
+										>
 											<Button
 												text="Edit"
 												aria={`Edit NCR ${n.ncrNumber}`}
@@ -875,6 +901,21 @@ const Ncrs = ({
 					</div>
 				</nav>
 			)}
+
+			<NcrDetailsModal
+				open={viewing !== null}
+				data={viewing?.record}
+				status={viewing?.status}
+				onClose={() => setViewing(null)}
+				onEdit={
+					editable
+						? (row) => {
+								setViewing(null);
+								setEditing(row);
+							}
+						: undefined
+				}
+			/>
 
 			{editable && (
 				<>
@@ -1041,6 +1082,29 @@ const Ncrs = ({
 					font-size: 0.875rem;
 					font-weight: 700;
 					color: var(--link);
+				}
+
+				.ncrs-clickable {
+					cursor: pointer;
+				}
+
+				.ncrs-clickable:hover {
+					background: var(--hover);
+				}
+
+				.ncrs-clickable:focus-within {
+					outline: 3px solid var(--focus);
+					outline-offset: 2px;
+				}
+
+				.ncrs-open {
+					padding: 0;
+					border: 0;
+					background: transparent;
+					color: inherit;
+					font: inherit;
+					text-align: left;
+					cursor: pointer;
 				}
 
 				.ncrs-muted {
