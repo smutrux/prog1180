@@ -3,14 +3,17 @@ import { NavLink } from "react-router-dom";
 import type { IconType } from "react-icons";
 import { LuLayoutDashboard, LuMenu, LuX } from "react-icons/lu";
 import { FiAlertTriangle } from "react-icons/fi";
-import { FaRegChartBar } from "react-icons/fa";
+import { FaSyncAlt } from "react-icons/fa";
+// import { FaRegChartBar } from "react-icons/fa";
 import { IoTrashOutline } from "react-icons/io5";
 import crossfireLogo from "../assets/crossfireLogo.svg";
+import Button from "../components/button";
+import { useNavigate } from 'react-router-dom';
 
 const links: { to: string; label: string; icon: IconType }[] = [
 	{ to: "/dashboard", label: "Dashboard", icon: LuLayoutDashboard },
 	{ to: "/ncrs", label: "NCRs", icon: FiAlertTriangle },
-	{ to: "/reports", label: "Reports", icon: FaRegChartBar },
+	// { to: "/reports", label: "Reports", icon: FaRegChartBar },
 	{ to: "/archive", label: "Archive", icon: IoTrashOutline },
 ];
 
@@ -25,6 +28,7 @@ const links: { to: string; label: string; icon: IconType }[] = [
 const SidebarNav = () => {
 	const [isOpen, setIsOpen] = useState(false);
 	const menuButton = useRef<HTMLButtonElement>(null);
+	const navigate = useNavigate();
 
 	useEffect(() => {
 		if (!isOpen) return;
@@ -36,6 +40,10 @@ const SidebarNav = () => {
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [isOpen]);
+
+	const reload = () => {
+    navigate(0);
+  }
 
 	return (
 		<>
@@ -88,6 +96,14 @@ const SidebarNav = () => {
 							</NavLink>
 						</li>
 					))}
+					<li>
+						<Button
+							text="Refresh page data"
+							aria="Refresh reports"
+							icon={FaSyncAlt}
+							onClick={() => reload()}
+						/>
+					</li>
 				</ul>
 			</nav>
 
