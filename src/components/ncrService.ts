@@ -13,6 +13,7 @@ import {
 	type NcRecord,
 	type TableName,
 } from "./api";
+import { ConstraintError, assertRecord, validateSubmission } from "./ncrConstraints";
 
 /** The role whose people can be chosen as the inspector. */
 export const QUALITY_ROLE = "Quality Representative";
@@ -31,6 +32,11 @@ export const PROCESS_LABELS = {
 	supplier: "Supplier or Rec-Insp",
 	wip: "WIP (Production Order)",
 } as const;
+/** What the data checks in ncrConstraints.ts need to know about this file's names. */
+const SUBMISSION_RULES = {
+	inHouseSupplier: IN_HOUSE_SUPPLIER,
+	processLabels: Object.values(PROCESS_LABELS),
+};
 
 /** Values for columns the form does not ask about. */
 const NCR_DEFAULTS = {
@@ -470,6 +476,7 @@ function startTracker(progress: (message: string) => void) {
 		label: string,
 		fields: Record<string, unknown>,
 	) => {
+		await assertRecord(table, fields);
 		progress(`Saving ${label}...`);
 		const rec = await createRecord<F>(table, fields);
 		created.push({ table, id: rec.id });
@@ -676,6 +683,9 @@ export async function submitNcr(
 		if (await ncrNumberExists(s.ncrNumber))
 			throw new DuplicateNcrNumberError(s.ncrNumber);
 
+		progress("Checking the answers...");
+		await validateSubmission(s, undefined, SUBMISSION_RULES);
+
 		progress("Loading statuses...");
 		const reviewStatuses = await listAll<ReviewStatusFields>("ReviewStatus");
 		const review = mustFind(
@@ -736,7 +746,8 @@ export async function submitNcr(
 		const leftovers = await rollback(created);
 		if (
 			err instanceof DuplicateNcrNumberError ||
-			err instanceof MissingSeedError
+			err instanceof MissingSeedError ||
+			err instanceof ConstraintError
 		)
 			throw err;
 		throw new SubmitError(messageOf(err), leftovers);
@@ -754,6 +765,9 @@ export async function updateNcr(
 	const { created, now, make } = startTracker(progress);
 	let patchAttempted = false;
 	try {
+		progress("Checking the answers...");
+		await validateSubmission(s, edit, SUBMISSION_RULES);
+
 		const inspector = await resolveInspector(s, make);
 		const chain = await resolveChain(s, make, now);
 
@@ -794,9 +808,7 @@ export async function updateNcr(
 				: now
 			: null;
 
-		progress("Updating the NCR...");
-		patchAttempted = true;
-		await updateRecord("NCR", edit.recordId, {
+		const patch = {
 			NCRProcessApplicable: s.processApplicable,
 			NCRDefectDescription: s.defectDescription,
 			NCRQuantityReceived: s.quantityReceived,
@@ -808,7 +820,13 @@ export async function updateNcr(
 			SOLineItemId: chain.soLineItemId,
 			POLineItemId: chain.poLineItemId,
 			NCRRaisedByPersonId: inspector.personId,
-		});
+		};
+		// Checked before patchAttempted is set, so a rule failure never triggers the undo of a patch that was not sent.
+		await assertRecord("NCR", patch, { id: edit.recordId });
+
+		progress("Updating the NCR...");
+		patchAttempted = true;
+		await updateRecord("NCR", edit.recordId, patch);
 	} catch (err) {
 		if (patchAttempted) {
 			try {
@@ -816,7 +834,7 @@ export async function updateNcr(
 			} catch {}
 		}
 		const leftovers = await rollback(created);
-		if (err instanceof MissingSeedError) throw err;
+		if (err instanceof MissingSeedError || err instanceof ConstraintError) throw err;
 		throw new SubmitError(messageOf(err), leftovers);
 	}
 

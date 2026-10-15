@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Input from "./input";
 import type { NcRecord } from "./api";
+import { ConstraintError } from "./ncrConstraints";
 import {
 	DuplicateNcrNumberError,
 	PROCESS_LABELS,
@@ -359,9 +360,9 @@ function validate(
 			const received = d.qtyReceived.trim();
 			const defective = d.qtyDefective.trim();
 			if (!POSITIVE_INT.test(received))
-				e.qtyReceived = "Enter a whole number of 1 or more.";
+				e.qtyReceived = "Enter a number within the range of 1 and 999999999.";
 			if (!POSITIVE_INT.test(defective))
-				e.qtyDefective = "Enter a whole number of 1 or more.";
+				e.qtyDefective = "Enter a number within the range of 1 and 999999999.";
 			else if (
 				POSITIVE_INT.test(received) &&
 				Number(defective) > Number(received)
@@ -430,6 +431,31 @@ function validate(
 	}
 	return e;
 }
+
+/** Which section each form field lives in, so a rule broken in the database can send the person to the right place. */
+const SECTION_OF_FIELD: Record<string, SectionId> = {
+	ncrNumber: "process",
+	status: "process",
+	processType: "process",
+	supplier: "process",
+	newSupplierName: "process",
+	poNumber: "process",
+	salesOrderNumber: "process",
+	itemName: "item",
+	itemSapNumber: "item",
+	itemDescription: "item",
+	qtyReceived: "defect",
+	qtyDefective: "defect",
+	problemTypeIds: "defect",
+	defectDescription: "defect",
+	isNonconforming: "defect",
+	links: "evidence",
+	files: "evidence",
+	inspector: "inspector",
+	newFirstName: "inspector",
+	newMiddleName: "inspector",
+	newLastName: "inspector",
+};
 
 const focusIdFor = (key: string) =>
 	key === "processType"
@@ -691,6 +717,41 @@ export default function NcrForm({
 		);
 	}
 
+	/**
+	 * Shows the rules a save broke. When every problem belongs to a form field,
+	 * the form goes to the first section with a problem and marks the fields.
+	 * Otherwise they are all listed in the submit error on this step.
+	 */
+	function showConstraintErrors(err: ConstraintError) {
+		const bySection = new Map<number, Errors>();
+		let unplaced = false;
+		for (const v of err.violations) {
+			const section = v.field ? SECTION_OF_FIELD[v.field] : undefined;
+			let key = v.field ?? "";
+			if (key === "links") {
+				const at = values.evidence.links.findIndex((l) => l.trim() === v.value);
+				key = at < 0 ? "" : `link-${at}`;
+			}
+			if (!section || !key) {
+				unplaced = true;
+				continue;
+			}
+			const i = SAVED_IDS.indexOf(section);
+			const found = bySection.get(i) ?? {};
+			if (!found[key]) found[key] = v.message;
+			bySection.set(i, found);
+		}
+		if (!unplaced && bySection.size > 0) {
+			const first = Math.min(...bySection.keys());
+			goTo(first);
+			showErrors(bySection.get(first) ?? {});
+			return;
+		}
+		setSubmitError(
+			`${err.violations.map((v) => v.message).join(" ")} Your answers are kept. Fix this and try again.`,
+		);
+	}
+
 	async function submit() {
 		if (submitting) return;
 		for (let i = 0; i < SAVED_IDS.length; i++) {
@@ -718,7 +779,9 @@ export default function NcrForm({
 			onSaved?.(result.ncrNumber);
 			void refreshLookups();
 		} catch (err) {
-			if (err instanceof DuplicateNcrNumberError) {
+			if (err instanceof ConstraintError) {
+				showConstraintErrors(err);
+			} else if (err instanceof DuplicateNcrNumberError) {
 				const next = await nextNcrNumber().catch(() => "");
 				if (next) update("process", { ncrNumber: next });
 				setSubmitError(
