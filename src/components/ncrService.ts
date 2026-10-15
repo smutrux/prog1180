@@ -19,22 +19,22 @@ import {
 /* ---- Names the database must contain (created by scripts/seed.mjs) ---- */
 export const QUALITY_ROLE = "Quality Representative";
 export const STATUS_NEW = "Active";
+export const STATUS_ARCHIVED = "Archived";
 export const REVIEW_SUBMITTED = "Submitted";
 export const IN_HOUSE_SUPPLIER = "In-house production";
 export const PROCESS_LABELS = { supplier: "Supplier or Rec-Insp", wip: "WIP (Production Order)" } as const;
 
-/* ---- Values for columns the Quality section does not collect ----
-   Best guess: not nullable, so each gets a neutral value. Change here. */
+/* ---- Values for columns the Quality section does not collect ---- */
 const NCR_DEFAULTS = {
 	NCRDisposition: "Pending",
 	NCRIsNotificationRequired: false,
 	NCRIsDrawingUpdateRequired: "Pending",
 	NCROriginalRevNumber: "",
 	NCRUpdatedRevNumber: "",
-	NCRClosedAt: null as string | null, // an open NCR has no close date
+	NCRClosedAt: null as string | null,
 };
-const PLACEHOLDER_PRICE = 0; // Item, SOLineItem, POLineItem unit prices are not collected
-const PERSON_CONTACT_DEFAULT = ""; // PersonEmail / PersonPhone for people created by the form
+const PLACEHOLDER_PRICE = 0;
+const PERSON_CONTACT_DEFAULT = "";
 
 /* ---- Row shapes (only the columns this file reads) ---- */
 export interface NcrFields {
@@ -49,6 +49,7 @@ export interface NcrFields {
 	POLineItemId: number | null;
 	NCRRaisedByPersonId: number | null;
 	NCRUpdatedAt?: string | null;
+	StatusId?: number | null;
 	[column: string]: unknown;
 }
 interface SupplierFields { SupplierName: string | null }
@@ -109,9 +110,6 @@ function mustFind<T>(list: T[], test: (item: T) => boolean, what: string): T {
 	return hit;
 }
 
-/* ------------------------------------------------------------------ */
-/* Lookups                                                             */
-/* ------------------------------------------------------------------ */
 export async function loadFormLookups(): Promise<FormLookups> {
 	const [suppliers, problemTypes, roles, rolePersons, people] = await Promise.all([
 		listAll<SupplierFields>("Supplier"),
@@ -152,7 +150,6 @@ export async function loadFormLookups(): Promise<FormLookups> {
 	};
 }
 
-/** Next number in the YYYY-NNN sequence for the current year. */
 export async function nextNcrNumber(): Promise<string> {
 	const year = new Date().getFullYear();
 	const rows = await listAll<NcrNumberFields>("NCR", { fields: ["NCRNumber"] });
@@ -169,15 +166,14 @@ async function ncrNumberExists(ncrNumber: string): Promise<boolean> {
 	return (await findFirst<NcrNumberFields>("NCR", where(["NCRNumber", "eq", ncrNumber]))) !== null;
 }
 
-/* ------------------------------------------------------------------ */
-/* Loading an NCR for editing                                          */
-/* ------------------------------------------------------------------ */
 export interface NcrEditData {
-	recordId: number | string; // for PATCH and DELETE
-	ncrRef: number; // for foreign keys that point at this NCR
+	recordId: number | string;
+	ncrRef: number;
 	ncrNumber: string;
+	statusName: string | null;
+	isArchived: boolean;
 	processApplicable: string;
-	supplier: string | null; // null: in-house production
+	supplier: string | null;
 	purchaseOrderNumber: string;
 	salesOrderNumber: string;
 	item: { name: string; description: string; sapNumber: string };
@@ -191,7 +187,6 @@ export interface NcrEditData {
 	links: string[];
 	linkRows: { recordId: number | string; url: string }[];
 	existingFiles: string[];
-	/** The NCR columns the update changes, as they are now. Used to undo a failed update. */
 	originalFields: Record<string, unknown>;
 }
 
@@ -200,16 +195,16 @@ const PATCHED_COLUMNS = [
 	"NCRIsNonconforming", "NCRUpdatedAt", "SOLineItemId", "POLineItemId", "NCRRaisedByPersonId",
 ] as const;
 
-/** Follows the NCR's foreign keys and collects everything the form shows. */
 export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditData> {
 	const f = rec.fields;
 	const ncrRef = refId("NCR", rec);
-	const [soLine, poLine, person, problemRows, attachments] = await Promise.all([
+	const [soLine, poLine, person, problemRows, attachments, statusRec] = await Promise.all([
 		getByRef<SOLineItemFields>("SOLineItem", f.SOLineItemId),
 		getByRef<POLineItemFields>("POLineItem", f.POLineItemId),
 		getByRef<PersonFields>("Person", f.NCRRaisedByPersonId),
 		listAll<NCRProblemTypeFields>("NCRProblemType", { where: where(["NCRId", "eq", ncrRef]) }),
 		listAll<AttachmentFields>("Attachment", { where: where(["NCRId", "eq", ncrRef]) }),
+		getByRef<StatusFields>("NCRStatus", f.StatusId),
 	]);
 	const [item, salesOrder, purchaseOrder] = await Promise.all([
 		getByRef<ItemFields>("Item", soLine?.fields.ItemId),
@@ -218,6 +213,7 @@ export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditD
 	]);
 	const supplier = await getByRef<SupplierFields>("Supplier", purchaseOrder?.fields.SupplierId);
 	const supplierName = (supplier?.fields.SupplierName ?? "").trim();
+	const statusName = (statusRec?.fields.NCRStatusName ?? "").trim() || null;
 
 	const linkRows = attachments
 		.filter((a) => same(a.fields.AttachmentType, "Link"))
@@ -231,6 +227,8 @@ export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditD
 		recordId: rec.id,
 		ncrRef,
 		ncrNumber: (f.NCRNumber ?? "").trim(),
+		statusName,
+		isArchived: same(statusName, STATUS_ARCHIVED),
 		processApplicable: (f.NCRProcessApplicable ?? "").trim(),
 		supplier: supplierName && !same(supplierName, IN_HOUSE_SUPPLIER) ? supplierName : null,
 		purchaseOrderNumber: (purchaseOrder?.fields.PurchaseOrderNumber ?? "").trim(),
@@ -262,15 +260,10 @@ export async function loadNcrForEdit(rec: NcRecord<NcrFields>): Promise<NcrEditD
 	};
 }
 
-/* ------------------------------------------------------------------ */
-/* Create and update                                                   */
-/* ------------------------------------------------------------------ */
 export interface NcrSubmission {
 	ncrNumber: string;
 	processApplicable: string;
-	/** Supplier name. null means in-house production. Found by name, created if new. */
 	supplier: string | null;
-	/** Purchase order number, or the production order number for WIP. */
 	purchaseOrderNumber: string;
 	salesOrderNumber: string;
 	item: { name: string; description: string; sapNumber: string };
@@ -317,8 +310,6 @@ async function rollback(created: Created[]): Promise<string[]> {
 	return leftovers;
 }
 
-/* STUB: nothing is uploaded yet. Returns the path the file will live at once
-   file storage exists. Replace the body with a real upload. */
 async function uploadAttachmentStub(file: File, ncrNumber: string): Promise<string> {
 	const safeName = file.name.replace(/[^\w.-]+/g, "_");
 	return `/uploads/ncr/${ncrNumber}/${safeName}`.slice(0, 500);
@@ -347,7 +338,6 @@ async function addLinkAttachment(make: Make, link: string, ncrRef: number, perso
 	});
 }
 
-/** The inspector's Person and RolePerson ids. Creates both for a new inspector. */
 async function resolveInspector(s: NcrSubmission, make: Make) {
 	if (s.inspector.kind === "existing") {
 		return { personId: s.inspector.personId, rolePersonId: s.inspector.rolePersonId };
@@ -369,8 +359,6 @@ async function resolveInspector(s: NcrSubmission, make: Make) {
 	return { personId, rolePersonId: refId("RolePerson", rp) };
 }
 
-/** Supplier, purchase order, sales order, item and both line items.
-    Reuses rows that already exist and creates the rest. */
 async function resolveChain(s: NcrSubmission, make: Make, now: string) {
 	const [suppliers, items] = await Promise.all([listAll<SupplierFields>("Supplier"), listAll<ItemFields>("Item")]);
 
@@ -466,7 +454,7 @@ export async function submitNcr(
 			NCRQuantityDefective: s.quantityDefective,
 			NCRIsNonconforming: s.isNonconforming,
 			...NCR_DEFAULTS,
-			NCRCreatedAtD: now, // the column name has this spelling in the database
+			NCRCreatedAtD: now,
 			NCRUpdatedAt: now,
 			StatusId: refId("NCRStatus", status),
 			SOLineItemId: chain.soLineItemId,
@@ -497,9 +485,6 @@ export async function submitNcr(
 	}
 }
 
-/** Saves edits to an existing NCR. Order matters: new rows first, then the
-    NCR itself, then removals. A failure before the NCR is patched can be
-    undone completely; removals come last because they cannot be undone. */
 export async function updateNcr(
 	edit: NcrEditData,
 	s: NcrSubmission,
@@ -549,7 +534,6 @@ export async function updateNcr(
 		throw new SubmitError(messageOf(err), leftovers);
 	}
 
-	/* Removals */
 	const leftovers: string[] = [];
 	const wanted = new Set(s.problemTypeIds);
 	for (const r of edit.problemTypeRows) {

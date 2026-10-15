@@ -18,15 +18,10 @@ import {
 } from "./ncrService";
 
 export interface NcrFormProps {
-	/** Edit an existing NCR instead of creating one. Needs `data`. */
 	edit?: boolean;
-	/** The NCR row exactly as the NocoDB list or read endpoint returns it. */
 	data?: NcRecord<NcrFields>;
-	/** Called by the Close button on the done screen. */
 	onClose?: () => void;
-	/** Called once after a create or update succeeds, so a list can refresh. */
 	onSaved?: (ncrNumber: string) => void;
-	/** Reports whether there are edits that are not saved to a section draft yet. */
 	onDirtyChange?: (dirty: boolean) => void;
 }
 
@@ -36,9 +31,6 @@ const fullName = (i: { first: string; middle?: string; last: string }) =>
 	[i.first, i.middle, i.last].filter(Boolean).join(" ");
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/* ------------------------------------------------------------------ */
-/* Types and defaults                                                  */
-/* ------------------------------------------------------------------ */
 type ChangeEvt = React.ChangeEvent<
 	HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
 >;
@@ -92,8 +84,6 @@ const makeDefaults = (ncrNumber: string): FormValues => ({
 	inspector: { inspector: "", newFirstName: "", newMiddleName: "", newLastName: "" },
 });
 
-/* Fill in values that depend on database data: drop stale choices and
-   default the inspector to the first person. */
 function sanitize(v: FormValues, l: FormLookups): FormValues {
 	const validIds = new Set(l.problemTypes.map((t) => String(t.id)));
 	const names = l.inspectors.map(fullName);
@@ -108,7 +98,6 @@ function sanitize(v: FormValues, l: FormLookups): FormValues {
 const processTypeOf = (label: string): ProcessType =>
 	label === PROCESS_LABELS.supplier ? "supplier" : label === PROCESS_LABELS.wip ? "wip" : "";
 
-/* Edit mode: turn the loaded NCR into form values. */
 function toFormValues(ed: NcrEditData): FormValues {
 	return {
 		process: {
@@ -132,8 +121,6 @@ function toFormValues(ed: NcrEditData): FormValues {
 	};
 }
 
-/* Edit mode: the NCR's current supplier and inspector must be choosable even
-   if they are not in the normal lists (for example an inspector without the Quality role). */
 function addEditOptions(l: FormLookups, ed: NcrEditData | null): FormLookups {
 	if (!ed) return l;
 	const suppliers =
@@ -148,9 +135,6 @@ function addEditOptions(l: FormLookups, ed: NcrEditData | null): FormLookups {
 	return { ...l, suppliers, inspectors };
 }
 
-/* ------------------------------------------------------------------ */
-/* Draft storage (localStorage, one key per section)                   */
-/* ------------------------------------------------------------------ */
 const CREATE_PREFIX = "ncr-draft-v2";
 const sectionKey = (prefix: string, id: SectionId) => `${prefix}:${id}`;
 
@@ -178,7 +162,6 @@ function clearDrafts(prefix: string) {
 	}
 }
 
-/* Start from `base` (blank form, or the NCR being edited) and lay saved sections on top. */
 function loadDrafts(prefix: string, base: FormValues) {
 	const values: FormValues = JSON.parse(JSON.stringify(base));
 	const saved = Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>;
@@ -197,9 +180,6 @@ function loadDrafts(prefix: string, base: FormValues) {
 	return { values, saved, any, step: firstUnsaved === -1 ? REVIEW_STEP : firstUnsaved };
 }
 
-/* ------------------------------------------------------------------ */
-/* Validation (limits match the database column sizes)                 */
-/* ------------------------------------------------------------------ */
 const DIGITS = /^\d{1,18}$/;
 const POSITIVE_INT = /^[1-9]\d{0,8}$/;
 const NCR_NUMBER = /^\d{4}-\d{3,}$/;
@@ -294,9 +274,6 @@ const focusIdFor = (key: string) =>
 const formatSize = (bytes: number) =>
 	bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-/* ------------------------------------------------------------------ */
-/* Small presentational helper                                         */
-/* ------------------------------------------------------------------ */
 function ChoiceGroup(props: {
 	id: string;
 	legend: string;
@@ -325,9 +302,6 @@ function ChoiceGroup(props: {
 	);
 }
 
-/* ------------------------------------------------------------------ */
-/* The form                                                            */
-/* ------------------------------------------------------------------ */
 export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyChange }: NcrFormProps) {
 	const [values, setValues] = useState<FormValues>(() => makeDefaults(""));
 	const [saved, setSaved] = useState<Record<SectionId, boolean>>(
@@ -347,6 +321,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const [lookupState, setLookupState] = useState<"loading" | "ready" | "error">("loading");
 	const [lookupError, setLookupError] = useState("");
 	const [editData, setEditData] = useState<NcrEditData | null>(null);
+	const isArchived = edit && editData?.isArchived === true;
 
 	const headingRef = useRef<HTMLHeadingElement>(null);
 	const summaryRef = useRef<HTMLElement>(null);
@@ -360,11 +335,8 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const editRef = useRef<NcrEditData | null>(null);
 	const baseRef = useRef<FormValues>(makeDefaults(""));
 
-	/* Edits use their own drafts, so they never mix with a new NCR's drafts. */
 	const prefix = edit && data ? `${CREATE_PREFIX}-edit-${data.id}` : CREATE_PREFIX;
 
-	/* Load everything the form needs: dropdown data, the next NCR number (new)
-	   or the NCR's related rows (edit), then saved drafts on top. */
 	const init = useCallback(async () => {
 		setLookupState("loading");
 		setLookupError("");
@@ -399,7 +371,6 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		void init();
 	}, [init]);
 
-	/* Quiet refresh after a submit or a reset: new suppliers and people, and the next NCR number. */
 	const refreshLookups = useCallback(async () => {
 		try {
 			const [l, next] = await Promise.all([loadFormLookups(), edit ? Promise.resolve("") : nextNcrNumber()]);
@@ -569,7 +540,6 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		void refreshLookups();
 	}
 
-	/* --- derived values --- */
 	const p = values.process;
 	const isSupplierProcess = p.processType === "supplier";
 	const links = values.evidence.links;
@@ -631,6 +601,13 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				else saveAndContinue();
 			}}
 		>
+			{isArchived && (
+				<section className="ncr-error-summary" role="alert">
+					<h3>This NCR is archived</h3>
+					<p>Archived reports are read-only. Use "Restore / Make Live" to make changes.</p>
+				</section>
+			)}
+
 			<h1 id="ncr-title">{edit ? `Edit NCR ${p.ncrNumber}` : "Non-conformance report (NCR)"}</h1>
 
 			<nav aria-label="Form sections" className="ncr-steps">
@@ -650,17 +627,19 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			</nav>
 
 			<div className="ncr-tools">
-				<button
-					type="button"
-					className="ncr-btn"
-					onClick={() => {
-						if (window.confirm("Clear everything on screen? Sections you already saved stay stored, and you can restore them.")) {
-							resetForm("Form cleared. Your saved sections are still stored. Choose Restore saved sections to bring them back.");
-						}
-					}}
-				>
-					Reset form
-				</button>
+				{!isArchived && (
+					<button
+						type="button"
+						className="ncr-btn"
+						onClick={() => {
+							if (window.confirm("Clear everything on screen? Sections you already saved stay stored, and you can restore them.")) {
+								resetForm("Form cleared. Your saved sections are still stored. Choose Restore saved sections to bring them back.");
+							}
+						}}
+					>
+						Reset form
+					</button>
+				)}
 				{hasDraft && (
 					<button type="button" className="ncr-btn" onClick={restoreSaved}>
 						Restore saved sections
@@ -929,9 +908,6 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	);
 }
 
-/* ------------------------------------------------------------------ */
-/* Review summary and submission                                       */
-/* ------------------------------------------------------------------ */
 const supplierOf = (p: FormValues["process"]) =>
 	p.supplier === ADD_SUPPLIER ? p.newSupplierName.trim() : p.supplier.trim();
 const processLabel = (t: ProcessType) => (t ? PROCESS_LABELS[t] : "");
@@ -994,9 +970,6 @@ function buildSubmission(v: FormValues, files: File[], l: FormLookups): NcrSubmi
 	};
 }
 
-/* ------------------------------------------------------------------ */
-/* Styles                                                              */
-/* ------------------------------------------------------------------ */
 function FormStyles() {
 	return (
 		<style jsx global>{`
