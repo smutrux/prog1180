@@ -885,7 +885,7 @@ const Ncrs = ({
 					--error-line: color-mix(in srgb, var(--error) 45%, transparent);
 					--success-bg: color-mix(in srgb, var(--success) 10%, transparent);
 					--success-line: color-mix(in srgb, var(--success) 45%, transparent);
-					--cols: minmax(5rem, max-content) minmax(6rem, 12rem) minmax(6rem, 12rem) minmax(10rem, 24rem) minmax(5rem, max-content) minmax(4rem, max-content);
+					--cols: minmax(5rem, max-content) minmax(6rem, 12rem) minmax(6rem, 12rem) minmax(10rem, 1fr) minmax(5rem, max-content) minmax(4rem, max-content);
 
 					color: var(--text-h);
 					font-size: 0.9375rem;
@@ -1171,6 +1171,11 @@ const Ncrs = ({
 				@media (max-width: 40rem) {
 					.ncrs-search {
 						max-width: none;
+					}
+
+					.ncrs-pager-controls {
+    					width: 100%;
+    					justify-content: space-between;
 					}
 				}
 			`}</style>
