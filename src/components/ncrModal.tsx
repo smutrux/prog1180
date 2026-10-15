@@ -424,8 +424,8 @@ function ModalStyles() {
 		<style jsx global>{`
 			.ncr-new-btn {
 				position: fixed;
-				bottom: 1rem;
-				right: 1rem;
+				top: 2rem;
+				right: 2rem;
 				z-index: 1000;
 			}
 
@@ -539,6 +539,18 @@ function ModalStyles() {
 				display: flex;
 				justify-content: flex-end;
 				gap: 0.75rem;
+			}
+
+			@media (max-width: 1024px) {
+				.ncr-new-btn {
+					position: relative;
+					top: 0;
+					right: 0;
+				}
+
+				Button {
+					width: 100%;
+				}
 			}
 
 			@media (max-width: 40rem) {
