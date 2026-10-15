@@ -748,9 +748,9 @@ const Ncrs = ({
 					<div role="rowgroup">
 						<div className="ncrs-row ncrs-head" role="row">
 							<span role="columnheader">NCR number</span>
-							<span role="columnheader" className="ncrs-supplier">Supplier name</span>
+							<span role="columnheader">Supplier name</span>
 							<span role="columnheader">Product name</span>
-							<span role="columnheader" className="ncrs-desc">Description of defect</span>
+							<span role="columnheader">Description of defect</span>
 							<span role="columnheader">Status</span>
 							
 						</div>
@@ -764,13 +764,13 @@ const Ncrs = ({
 										{n.ncrNumber}
 									</span>
 									
-									<span role="cell" className="ncrs-strong truncate-this ncrs-supplier">
+									<span role="cell" className="ncrs-strong truncate-this">
 										{n.supplier}
 									</span>
 									<span role="cell" className="ncrs-strong truncate-this">
 										{n.product}
 									</span>
-									<span role="cell" className="truncate-this ncrs-desc">{n.defect}</span>
+									<span role="cell" className="truncate-this">{n.defect}</span>
 									<span role="cell">
 										<span className={`ncrs-status ncrs-status-${statusTone(n.status)}`}>
 											<span className="ncrs-dot" aria-hidden="true" />
@@ -885,7 +885,7 @@ const Ncrs = ({
 					--error-line: color-mix(in srgb, var(--error) 45%, transparent);
 					--success-bg: color-mix(in srgb, var(--success) 10%, transparent);
 					--success-line: color-mix(in srgb, var(--success) 45%, transparent);
-					--cols: 7rem 6.5rem minmax(0, 1fr) minmax(0, 1fr) 6rem 6rem minmax(0, 1.4fr) 7rem 5rem;
+					--cols: minmax(5rem, max-content) minmax(6rem, 12rem) minmax(6rem, 12rem) minmax(10rem, 24rem) minmax(5rem, max-content) minmax(4rem, max-content);
 
 					color: var(--text-h);
 					font-size: 0.9375rem;
@@ -1001,14 +1001,6 @@ const Ncrs = ({
 					white-space: nowrap;
 					overflow: hidden;
 					text-overflow: ellipsis;
-				}
-
-				.ncrs-supplier {
-					grid-column: span 1;
-				}
-
-				.ncrs-desc {
-   					 grid-column: span 4;
 				}
 
 				.ncrs-body {
