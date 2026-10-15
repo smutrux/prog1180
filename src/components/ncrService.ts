@@ -15,30 +15,21 @@ import {
 } from "./api";
 import { ConstraintError, assertRecord, validateSubmission } from "./ncrConstraints";
 
-/** The role whose people can be chosen as the inspector. */
 export const QUALITY_ROLE = "Quality Representative";
-/** New NCRs start with this status. If no status has this name, the one with id 1 is used. */
 export const STATUS_NEW = "Open";
-/** The status id used when no status is named like {@link STATUS_NEW}. */
 const STATUS_NEW_FALLBACK_ID = 1;
-/** Moving an NCR to a status like this sets its close date. Moving it out of one clears it. */
 export const isClosedStatus = (name: string) => /clos/i.test(name);
-/** The review status a new NCR starts with. */
 export const REVIEW_SUBMITTED = "Submitted";
-/** The supplier name used for NCRs from in-house production. */
 export const IN_HOUSE_SUPPLIER = "In-house production";
-/** The wording saved for each kind of process. */
 export const PROCESS_LABELS = {
 	supplier: "Supplier or Rec-Insp",
 	wip: "WIP (Production Order)",
 } as const;
-/** What the data checks in ncrConstraints.ts need to know about this file's names. */
 const SUBMISSION_RULES = {
 	inHouseSupplier: IN_HOUSE_SUPPLIER,
 	processLabels: Object.values(PROCESS_LABELS),
 };
 
-/** Values for columns the form does not ask about. */
 const NCR_DEFAULTS = {
 	NCRDisposition: "Pending",
 	NCRIsNotificationRequired: false,
@@ -50,7 +41,6 @@ const NCR_DEFAULTS = {
 const PLACEHOLDER_PRICE = 0;
 const PERSON_CONTACT_DEFAULT = "";
 
-/** The NCR columns this app reads and writes. */
 export interface NcrFields {
 	NCRId?: number | null;
 	NCRNumber: string | null;
@@ -143,7 +133,6 @@ export interface InspectorOption {
 	middle: string;
 	last: string;
 }
-/** Everything the form's drop-down lists are built from. */
 export interface FormLookups {
 	suppliers: SupplierOption[];
 	problemTypes: ProblemTypeOption[];
@@ -151,7 +140,6 @@ export interface FormLookups {
 	statuses: StatusOption[];
 }
 
-/** The status a new NCR starts with: "Open", or the status with id 1. */
 export function defaultStatus(
 	statuses: StatusOption[],
 ): StatusOption | undefined {
@@ -162,7 +150,6 @@ export function defaultStatus(
 	);
 }
 
-/** Thrown when the NCR number was taken while the form was open. */
 export class DuplicateNcrNumberError extends Error {
 	ncrNumber: string;
 	constructor(ncrNumber: string) {
@@ -171,7 +158,6 @@ export class DuplicateNcrNumberError extends Error {
 		this.ncrNumber = ncrNumber;
 	}
 }
-/** Thrown when a row the app needs (such as a role or status) is missing from the database. */
 export class MissingSeedError extends Error {
 	constructor(what: string) {
 		super(
@@ -180,7 +166,6 @@ export class MissingSeedError extends Error {
 		this.name = "MissingSeedError";
 	}
 }
-/** Thrown when a save fails. It lists anything that could not be undone. */
 export class SubmitError extends Error {
 	leftovers: string[];
 	constructor(message: string, leftovers: string[]) {
@@ -190,14 +175,8 @@ export class SubmitError extends Error {
 	}
 }
 
-/**
- * The NCR column that points at NCRStatus. Foreign keys here are named after
- * their table, so this is NCRStatusId. If your column is named differently,
- * change it here. When editing, the real name is detected from the record.
- */
 export const STATUS_COLUMN = "NCRStatusId";
 
-/** The status column of an NCR row: the one it really has, else STATUS_COLUMN. */
 function statusColumnOf(fields: Record<string, unknown>): string {
 	if (STATUS_COLUMN in fields) return STATUS_COLUMN;
 	return (
@@ -206,18 +185,15 @@ function statusColumnOf(fields: Record<string, unknown>): string {
 	);
 }
 
-/** Compares two names, ignoring case and spaces at the ends. */
 const same = (a: string | null | undefined, b: string) =>
 	(a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
 
-/** Finds the item that passes `test`, or throws {@link MissingSeedError} naming `what`. */
 function mustFind<T>(list: T[], test: (item: T) => boolean, what: string): T {
 	const hit = list.find(test);
 	if (!hit) throw new MissingSeedError(what);
 	return hit;
 }
 
-/** Loads the drop-down lists for the form. */
 export async function loadFormLookups(): Promise<FormLookups> {
 	const [suppliers, problemTypes, roles, rolePersons, people, statuses] =
 		await Promise.all([
@@ -272,7 +248,6 @@ export async function loadFormLookups(): Promise<FormLookups> {
 	};
 }
 
-/** Next number in the YYYY-NNN sequence for the current year. */
 export async function nextNcrNumber(): Promise<string> {
 	const year = new Date().getFullYear();
 	const rows = await listAll<NcrNumberFields>("NCR", { fields: ["NCRNumber"] });
@@ -285,7 +260,6 @@ export async function nextNcrNumber(): Promise<string> {
 	return `${year}-${String(highest + 1).padStart(3, "0")}`;
 }
 
-/** Whether an NCR with this number already exists. */
 async function ncrNumberExists(ncrNumber: string): Promise<boolean> {
 	return (
 		(await findFirst<NcrNumberFields>(
@@ -295,7 +269,6 @@ async function ncrNumberExists(ncrNumber: string): Promise<boolean> {
 	);
 }
 
-/** An NCR and its related details, flattened so the edit form can be filled in. */
 export interface NcrEditData {
 	recordId: number | string;
 	ncrRef: number;
@@ -317,11 +290,9 @@ export interface NcrEditData {
 	links: string[];
 	linkRows: { recordId: number | string; url: string }[];
 	existingFiles: string[];
-	/** The NCR columns the update changes, as they are now. Used to undo a failed update. */
 	originalFields: Record<string, unknown>;
 }
 
-/** The NCR columns an edit changes. Their old values are kept so a failed edit can put them back. */
 const PATCHED_COLUMNS = [
 	"NCRProcessApplicable",
 	"NCRDefectDescription",
@@ -335,9 +306,6 @@ const PATCHED_COLUMNS = [
 	"NCRClosedAt",
 ] as const;
 
-/** Rows in a child table that belong to one NCR. Asks the database first; if the
-    filter finds nothing, loads the table and matches NCRId here, because a
-    filter on a foreign key column does not always behave. */
 async function listForNcr<F extends { NCRId?: unknown }>(
 	table: TableName,
 	ncrRef: number,
@@ -350,7 +318,6 @@ async function listForNcr<F extends { NCRId?: unknown }>(
 	return everything.filter((r) => fkValue(r.fields.NCRId) === ncrRef);
 }
 
-/** Follows the NCR's foreign keys and collects everything the form shows. */
 export async function loadNcrForEdit(
 	rec: NcRecord<NcrFields>,
 ): Promise<NcrEditData> {
@@ -435,15 +402,11 @@ export async function loadNcrForEdit(
 	};
 }
 
-/** What the form hands to {@link submitNcr} and the update. */
 export interface NcrSubmission {
 	ncrNumber: string;
 	processApplicable: string;
-	/** The status the NCR is saved with. */
 	status: StatusOption;
-	/** Supplier name. null means in-house production. Found by name, created if new. */
 	supplier: string | null;
-	/** Purchase order number, or the production order number for WIP. */
 	purchaseOrderNumber: string;
 	salesOrderNumber: string;
 	item: { name: string; description: string; sapNumber: string };
@@ -459,7 +422,6 @@ export interface NcrSubmission {
 	links: string[];
 }
 
-/** A record made during a save, kept so it can be deleted if the save fails. */
 type Created = { table: TableName; id: number | string };
 type Make = <F extends object = Record<string, unknown>>(
 	table: TableName,
@@ -467,7 +429,6 @@ type Make = <F extends object = Record<string, unknown>>(
 	fields: Record<string, unknown>,
 ) => Promise<NcRecord<F>>;
 
-/** Keeps a list of the records made during a save and reports progress. */
 function startTracker(progress: (message: string) => void) {
 	const created: Created[] = [];
 	const now = ncDateTime();
@@ -485,7 +446,6 @@ function startTracker(progress: (message: string) => void) {
 	return { created, now, make };
 }
 
-/** Deletes the records made during a failed save. Returns descriptions of any that could not be deleted. */
 async function rollback(created: Created[]): Promise<string[]> {
 	const leftovers: string[] = [];
 	for (const c of [...created].reverse()) {
@@ -498,10 +458,6 @@ async function rollback(created: Created[]): Promise<string[]> {
 	return leftovers;
 }
 
-/**
- * STUB: nothing is uploaded yet. Returns the path the file will live at once
- * file storage exists. Replace the body with a real upload.
- */
 async function uploadAttachmentStub(
 	file: File,
 	ncrNumber: string,
@@ -510,7 +466,6 @@ async function uploadAttachmentStub(
 	return `/uploads/ncr/${ncrNumber}/${safeName}`.slice(0, 500);
 }
 
-/** Uploads one file and links it to the NCR. */
 async function addFileAttachment(
 	make: Make,
 	file: File,
@@ -530,7 +485,6 @@ async function addFileAttachment(
 	});
 }
 
-/** Links a web address to the NCR. */
 async function addLinkAttachment(
 	make: Make,
 	link: string,
@@ -548,7 +502,6 @@ async function addLinkAttachment(
 	});
 }
 
-/** The inspector's Person and RolePerson ids. Creates both for a new inspector. */
 async function resolveInspector(s: NcrSubmission, make: Make) {
 	if (s.inspector.kind === "existing") {
 		return {
@@ -577,8 +530,6 @@ async function resolveInspector(s: NcrSubmission, make: Make) {
 	return { personId, rolePersonId: refId("RolePerson", rp) };
 }
 
-/** Supplier, purchase order, sales order, item and both line items.
-    Reuses rows that already exist and creates the rest. */
 async function resolveChain(s: NcrSubmission, make: Make, now: string) {
 	const [suppliers, items] = await Promise.all([
 		listAll<SupplierFields>("Supplier"),
@@ -663,16 +614,9 @@ async function resolveChain(s: NcrSubmission, make: Make, now: string) {
 	return { soLineItemId, poLineItemId: refId("POLineItem", poLineItem) };
 }
 
-/** The readable message of an error. */
 const messageOf = (err: unknown) =>
 	err instanceof ApiError || err instanceof Error ? err.message : String(err);
 
-/**
- * Creates a new NCR and everything it needs. If any step fails, what was made is deleted again.
- *
- * @throws {@link DuplicateNcrNumberError} when the number is taken.
- * @throws {@link SubmitError} when the save fails.
- */
 export async function submitNcr(
 	s: NcrSubmission,
 	progress: (message: string) => void = () => {},
@@ -754,9 +698,6 @@ export async function submitNcr(
 	}
 }
 
-/** Saves edits to an existing NCR. Order matters: new rows first, then the
-    NCR itself, then removals. A failure before the NCR is patched can be
-    undone completely; removals come last because they cannot be undone. */
 export async function updateNcr(
 	edit: NcrEditData,
 	s: NcrSubmission,
@@ -821,7 +762,6 @@ export async function updateNcr(
 			POLineItemId: chain.poLineItemId,
 			NCRRaisedByPersonId: inspector.personId,
 		};
-		// Checked before patchAttempted is set, so a rule failure never triggers the undo of a patch that was not sent.
 		await assertRecord("NCR", patch, { id: edit.recordId });
 
 		progress("Updating the NCR...");
@@ -865,5 +805,23 @@ export async function updateNcr(
 			leftovers,
 		);
 	}
+	return { ncrNumber: edit.ncrNumber, recordId: edit.recordId };
+}
+
+/** Moves an archived (closed) NCR back to the open status, so it can be edited again. */
+export async function unarchiveNcr(
+	edit: NcrEditData,
+	statuses: StatusOption[],
+	progress: (message: string) => void = () => {},
+): Promise<{ ncrNumber: string; recordId: number | string }> {
+	const target = defaultStatus(statuses);
+	if (!target) throw new MissingSeedError("An open NCR status");
+
+	progress("Restoring the NCR...");
+	await updateRecord("NCR", edit.recordId, {
+		[edit.statusColumn]: target.id,
+		NCRClosedAt: null,
+		NCRUpdatedAt: ncDateTime(),
+	});
 	return { ncrNumber: edit.ncrNumber, recordId: edit.recordId };
 }
