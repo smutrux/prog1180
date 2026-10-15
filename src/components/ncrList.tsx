@@ -750,7 +750,7 @@ const Ncrs = ({
 							<span role="columnheader">NCR number</span>
 							<span role="columnheader">Supplier name</span>
 							<span role="columnheader">Product name</span>
-							<span role="columnheader">Description of defect</span>
+							<span role="columnheader" className="ncrs-defect">Description of defect</span>
 							<span role="columnheader">Status</span>
 							
 						</div>
@@ -770,7 +770,7 @@ const Ncrs = ({
 									<span role="cell" className="ncrs-strong truncate-this">
 										{n.product}
 									</span>
-									<span role="cell" className="truncate-this">{n.defect}</span>
+									<span role="cell" className="truncate-this ncrs-defect">{n.defect}</span>
 									<span role="cell">
 										<span className={`ncrs-status ncrs-status-${statusTone(n.status)}`}>
 											<span className="ncrs-dot" aria-hidden="true" />
@@ -885,7 +885,8 @@ const Ncrs = ({
 					--error-line: color-mix(in srgb, var(--error) 45%, transparent);
 					--success-bg: color-mix(in srgb, var(--success) 10%, transparent);
 					--success-line: color-mix(in srgb, var(--success) 45%, transparent);
-					--cols: minmax(5rem, max-content) minmax(6rem, 12rem) minmax(6rem, 12rem) minmax(10rem, 1fr) minmax(5rem, max-content) minmax(4rem, max-content);
+					--cols: minmax(5rem, 6rem) minmax(6rem, 12rem) minmax(6rem, 12rem) minmax(10rem, 1fr) minmax(5rem, max-content) minmax(4rem, max-content);
+					--cols-no-defect: minmax(5rem, 6rem) minmax(6rem, 12rem) minmax(6rem, 1fr) minmax(5rem, max-content) minmax(4rem, max-content);
 
 					color: var(--text-h);
 					font-size: 0.9375rem;
@@ -1127,7 +1128,7 @@ const Ncrs = ({
 				}
 
 				.ncrs-page-btn {
-					min-width: 44px;
+					min-width: 40px;
 					min-height: 44px;
 					padding: 0 10px;
 					border: 2px solid transparent;
@@ -1168,7 +1169,7 @@ const Ncrs = ({
 					color: var(--text);
 				}
 
-				@media (max-width: 40rem) {
+				@media (max-width: 40rem) {	
 					.ncrs-search {
 						max-width: none;
 					}
@@ -1177,6 +1178,19 @@ const Ncrs = ({
     					width: 100%;
     					justify-content: space-between;
 					}
+
+					.ncrs-table {
+						min-width: 40rem;
+					}
+
+					.ncrs-defect {
+						display: none;
+					}
+
+					.ncrs-row {
+						grid-template-columns: var(--cols-no-defect);
+					}
+					
 				}
 			`}</style>
 		</div>
