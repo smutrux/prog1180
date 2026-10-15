@@ -1,56 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fkValue, listAll, refId, type NcRecord, type TableName } from "./api";
-import { loadNcrForEdit, type NcrEditData, type NcrFields } from "./ncrService";
+import { loadNcrForEdit, unarchiveNcr, type NcrEditData, type NcrFields } from "./ncrService";
 import { FaSyncAlt } from "react-icons/fa";
 import Button from "./button";
 import { NcrDetailsModal, NcrModal, NewNcrButton } from "./ncrModal";
 
-/**
- * The table finds the "date created" and "status" columns of the NCR table
- * by guessing from their names. If a column shows "-" and you know its exact
- * name, type it here (for example status: "NCRStatusId"). Leave "" to guess.
- */
 const COLUMN_OVERRIDES = { date: "", status: "" };
 
-/** Which NCRs the table lists. */
 export type NcrShow = "all" | "archived";
 
-/**
- * Props for {@link Ncrs}.
- */
 interface NcrsProps {
-	/**
-	 * `"all"` lists every status. `"archived"` lists only archived NCRs,
-	 * which are the ones with a closed status (see {@link isArchived}).
-	 * @defaultValue `"all"`
-	 */
 	show?: NcrShow;
-
-	/**
-	 * Hides the search box and the filters. Pagination stays. A simple table
-	 * always lists every NCR that matches `show`, over all time.
-	 * @defaultValue `false`
-	 */
 	simple?: boolean;
-
-	/**
-	 * How many NCRs are shown per page.
-	 * @defaultValue `10`
-	 */
 	pageSize?: number;
-
-	/**
-	 * Shows the Edit buttons and the New NCR button. Set to `false` for a
-	 * read-only table.
-	 * @defaultValue `true`
-	 */
 	editable?: boolean;
-
-	/**
-	 * Name of the table for screen readers. Give each table on a page its own
-	 * name, so people can tell them apart.
-	 * @defaultValue `"Non-conformance reports"`
-	 */
 	label?: string;
 }
 
@@ -99,7 +62,6 @@ const DATE_OPTIONS = [
 const ALL_SUPPLIERS = "All Suppliers";
 const DEFAULT_DATE = "Last 30 Days";
 
-/** Formats a date as "Oct 9, 2026", or "-" when there is none. */
 const formatDate = (d: Date | null) =>
 	d
 		? d.toLocaleDateString("en-US", {
@@ -109,7 +71,6 @@ const formatDate = (d: Date | null) =>
 			})
 		: "-";
 
-/** Which colour a status pill gets. */
 const statusTone = (s: string) =>
 	/clos|complet|resolv|approv|archive/i.test(s)
 		? "closed"
@@ -117,10 +78,8 @@ const statusTone = (s: string) =>
 			? "open"
 			: "other";
 
-/** An NCR is archived when its status is a closed one. Change this one line to change the rule. */
 const isArchived = (status: string) => statusTone(status) === "closed";
 
-/** Run `fn` over `items`, a few at a time, keeping the original order. */
 async function mapPool<T, R>(
 	items: T[],
 	size: number,
@@ -141,7 +100,6 @@ async function mapPool<T, R>(
 	return out;
 }
 
-/** Reads a date from the database. Returns null for anything that is not a date. */
 function parseDate(v: unknown): Date | null {
 	if (typeof v !== "string" || !v.trim()) return null;
 	const s = v.trim();
@@ -155,7 +113,6 @@ function parseDate(v: unknown): Date | null {
 	return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** Find the date an NCR was created, from whichever column holds one. */
 function findDate(fields: AnyFields): Date | null {
 	if (COLUMN_OVERRIDES.date) return parseDate(fields[COLUMN_OVERRIDES.date]);
 	const keys = Object.keys(fields);
@@ -170,7 +127,6 @@ function findDate(fields: AnyFields): Date | null {
 	return null;
 }
 
-/** The readable name of a row in a small lookup table such as ReviewStatus. */
 function displayName(fields: AnyFields): string {
 	const texts = Object.entries(fields).filter(
 		([k, v]) => typeof v === "string" && v.trim() && !/id$/i.test(k),
@@ -180,7 +136,6 @@ function displayName(fields: AnyFields): string {
 	return best ? String(best[1]).trim() : "";
 }
 
-/** Maps record ids to readable names for one lookup table. */
 function buildNames(table: TableName, recs: NcRecord<AnyFields>[]): NameMap {
 	const map: NameMap = new Map();
 	for (const r of recs) {
@@ -190,7 +145,6 @@ function buildNames(table: TableName, recs: NcRecord<AnyFields>[]): NameMap {
 	return map;
 }
 
-/** A value that is either already text ("Open") or an id to look up. */
 function textOrLookup(raw: unknown, maps: NameMap[]): string {
 	if (typeof raw === "string" && raw.trim() && Number.isNaN(Number(raw)))
 		return raw.trim();
@@ -203,7 +157,6 @@ function textOrLookup(raw: unknown, maps: NameMap[]): string {
 	return "";
 }
 
-/** Finds the status name of an NCR from its own column or from the status rows that point at it. */
 function findStatus(rec: NcRecord<NcrFields>, sd: StatusData): string {
 	const fields = rec.fields as unknown as AnyFields;
 
@@ -258,9 +211,7 @@ function toRow(
 	};
 }
 
-/** Small lookup tables: load once and reuse for every page and every table on the screen. */
 let lookups: Promise<StatusData> | null = null;
-/** The small lookup tables, loaded once and shared by every table on the screen. */
 function getLookups(): Promise<StatusData> {
 	const p = (lookups ??= (async () => {
 		const none = [] as NcRecord<AnyFields>[];
@@ -280,9 +231,7 @@ function getLookups(): Promise<StatusData> {
 	return p;
 }
 
-/** The plain NCR records, newest first. */
 let allNcrs: Promise<NcRecord<NcrFields>[]> | null = null;
-/** The plain NCR records, newest first, loaded once and shared by every table on the screen. */
 function getAllNcrs(): Promise<NcRecord<NcrFields>[]> {
 	const p = (allNcrs ??= listAll<NcrFields>("NCR").then((recs) =>
 		[...recs].sort((a, b) => Number(b.id) - Number(a.id)),
@@ -293,13 +242,10 @@ function getAllNcrs(): Promise<NcRecord<NcrFields>[]> {
 	return p;
 }
 
-/** Rows whose details were already loaded, so no row is fetched twice. */
 const rowCache = new Map<string, NcrRow>();
 
-/** Every mounted table listens here, so a save in one table refreshes all of them. */
 const listeners = new Set<() => void>();
 
-/** Forget everything loaded from the database and tell every table to reload (used after a save). */
 function resetLoaders() {
 	lookups = null;
 	allNcrs = null;
@@ -307,7 +253,6 @@ function resetLoaders() {
 	listeners.forEach((l) => l());
 }
 
-/** Turn plain NCR records into table rows by loading their related details. */
 function enrich(
 	records: NcRecord<NcrFields>[],
 	sd: StatusData,
@@ -328,7 +273,6 @@ function enrich(
 	});
 }
 
-/** Loads one page of NCRs for the given filters. This is the only place the table talks to the database. Status and date are filtered first, because they only need the NCR record itself. Search and supplier need the related details of every remaining NCR. */
 async function fetchNcrPage(
 	page: number,
 	pageSize: number,
@@ -391,7 +335,6 @@ async function fetchNcrPage(
 	return { rows, total };
 }
 
-/** The magnifying glass shown in the search box. */
 function SearchIcon() {
 	return (
 		<svg
@@ -411,7 +354,6 @@ function SearchIcon() {
 	);
 }
 
-/** The down arrow shown on each filter. */
 function ChevronIcon() {
 	return (
 		<svg
@@ -430,12 +372,6 @@ function ChevronIcon() {
 	);
 }
 
-/**
- * A filter shown as "Label: Value". A real `<select>` is laid invisibly on top of it, so it works with mouse, touch and keyboard.
- *
- * @param props - The filter's name, current value, choices and change handler.
- * @returns A labelled drop-down.
- */
 function FilterPill(props: {
 	label: string;
 	value: string;
@@ -503,7 +439,6 @@ function FilterPill(props: {
 	);
 }
 
-/** Page numbers to show, 0-based, with "…" for gaps: 1 2 3 … 6 */
 function pageWindow(current: number, total: number): (number | "…")[] {
 	if (total <= 5) return Array.from({ length: total }, (_, i) => i);
 	if (current < 3) return [0, 1, 2, "…", total - 1];
@@ -511,20 +446,6 @@ function pageWindow(current: number, total: number): (number | "…")[] {
 	return [0, "…", current - 1, current, current + 1, "…", total - 1];
 }
 
-/**
- * A table of NCRs with optional search and filters, pagination, and a popup
- * to create and edit NCRs.
- *
- * Several tables can be on one page. They share the loaded data, and a save
- * in one table refreshes all of them.
- *
- * @param props - Component props, see {@link NcrsProps}.
- * @returns The table, its pagination and (when `editable`) the edit popup.
- *
- * @example
- * <Ncrs />
- * <Ncrs show="archived" simple editable={false} pageSize={5} label="Archived NCRs" />
- */
 const Ncrs = ({
 	show = "all",
 	simple = false,
@@ -550,11 +471,32 @@ const Ncrs = ({
 
 	const [editing, setEditing] = useState<NcRecord<NcrFields> | null>(null);
 	const [viewing, setViewing] = useState<NcrRow | null>(null);
+	const [restoring, setRestoring] = useState(false);
 
-	/** Opens the details, unless the user was selecting text in the row. */
 	const openDetails = (row: NcrRow) => {
 		if (window.getSelection()?.toString()) return;
 		setViewing(row);
+	};
+
+	const restoreNcr = async (row: NcRecord<NcrFields>) => {
+		if (restoring) return;
+		setRestoring(true);
+		try {
+			const edit = await loadNcrForEdit(row);
+			const sd = await getLookups();
+			const statuses = [...sd.ncrNames.entries()].map(([id, name]) => ({
+				id: Number(id),
+				name,
+			}));
+			await unarchiveNcr(edit, statuses);
+			resetLoaders();
+			setViewing(null);
+		} catch (err) {
+			console.error("Could not restore the NCR:", err);
+			window.alert("Could not restore the NCR. Please try again.");
+		} finally {
+			setRestoring(false);
+		}
 	};
 
 	const [statusNames, setStatusNames] = useState<string[]>([]);
@@ -810,7 +752,7 @@ const Ncrs = ({
 											{n.status || "-"}
 										</span>
 									</span>
-									{editable && (
+									{editable && !isArchived(n.status) && (
 										<span
 											role="cell"
 											className="ncrs-edit-col"
@@ -908,13 +850,19 @@ const Ncrs = ({
 				status={viewing?.status}
 				onClose={() => setViewing(null)}
 				onEdit={
-					editable
+					editable && viewing && !isArchived(viewing.status)
 						? (row) => {
 								setViewing(null);
 								setEditing(row);
 							}
 						: undefined
 				}
+				onRestore={
+					editable && viewing && isArchived(viewing.status)
+						? (row) => void restoreNcr(row)
+						: undefined
+				}
+				restoring={restoring}
 			/>
 
 			{editable && (
