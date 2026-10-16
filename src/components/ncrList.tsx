@@ -98,17 +98,6 @@ const DATE_OPTIONS = [
 ];
 const ALL_SUPPLIERS = "All Suppliers";
 const DEFAULT_DATE = "Last 30 Days";
-
-/** Formats a date as "Oct 9, 2026", or "-" when there is none. */
-const formatDate = (d: Date | null) =>
-	d
-		? d.toLocaleDateString("en-US", {
-				month: "short",
-				day: "numeric",
-				year: "numeric",
-			})
-		: "-";
-
 /** Which colour a status pill gets. */
 const statusTone = (s: string) =>
 	/clos|complet|resolv|approv|archive/i.test(s)
