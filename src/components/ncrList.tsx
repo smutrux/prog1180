@@ -61,16 +61,7 @@ const DATE_OPTIONS = [
 ];
 const ALL_SUPPLIERS = "All Suppliers";
 const DEFAULT_DATE = "Last 30 Days";
-
-const formatDate = (d: Date | null) =>
-	d
-		? d.toLocaleDateString("en-US", {
-				month: "short",
-				day: "numeric",
-				year: "numeric",
-			})
-		: "-";
-
+/** Which colour a status pill gets. */
 const statusTone = (s: string) =>
 	/clos|complet|resolv|approv|archive/i.test(s)
 		? "closed"
@@ -203,7 +194,7 @@ function toRow(
 		ncrNumber: ed?.ncrNumber || String(fields.NCRNumber ?? ""),
 		date: findDate(fields),
 		supplier: ed ? (ed.supplier ?? "In-house") : "-",
-		product: ed ? ed.item.description || ed.item.name : "-",
+		product: ed ? ed.item.name : "-",
 		qtyReceived: num(ed?.quantityReceived),
 		qtyDefective: num(ed?.quantityDefective),
 		defect: ed?.defectDescription ?? "-",
@@ -697,18 +688,11 @@ const Ncrs = ({
 					<div role="rowgroup">
 						<div className="ncrs-row ncrs-head" role="row">
 							<span role="columnheader">NCR number</span>
-							<span role="columnheader">Date created</span>
 							<span role="columnheader">Supplier name</span>
-							<span role="columnheader">Product description</span>
-							<span role="columnheader">Quantity received</span>
-							<span role="columnheader">Quantity defective</span>
-							<span role="columnheader">Description of defect</span>
+							<span role="columnheader">Product name</span>
+							<span role="columnheader" className="ncrs-defect">Description of defect</span>
 							<span role="columnheader">Status</span>
-							{editable && (
-								<span role="columnheader" className="ncrs-edit-col">
-									Edit
-								</span>
-							)}
+							
 						</div>
 					</div>
 
@@ -734,18 +718,14 @@ const Ncrs = ({
 											{n.ncrNumber}
 										</button>
 									</span>
-									<span role="cell" className="ncrs-muted">
-										{formatDate(n.date)}
-									</span>
+									
 									<span role="cell" className="ncrs-strong truncate-this">
 										{n.supplier}
 									</span>
 									<span role="cell" className="ncrs-strong truncate-this">
 										{n.product}
 									</span>
-									<span role="cell" className="truncate-this">{n.qtyReceived}</span>
-									<span role="cell" className="truncate-this">{n.qtyDefective}</span>
-									<span role="cell" className="truncate-this">{n.defect}</span>
+									<span role="cell" className="truncate-this ncrs-defect">{n.defect}</span>
 									<span role="cell">
 										<span className={`ncrs-status ncrs-status-${statusTone(n.status)}`}>
 											<span className="ncrs-dot" aria-hidden="true" />
@@ -885,7 +865,8 @@ const Ncrs = ({
 					--error-line: color-mix(in srgb, var(--error) 45%, transparent);
 					--success-bg: color-mix(in srgb, var(--success) 10%, transparent);
 					--success-line: color-mix(in srgb, var(--success) 45%, transparent);
-					--cols: 7rem 6.5rem minmax(0, 1fr) minmax(0, 1fr) 6rem 6rem minmax(0, 1.4fr) 7rem 5rem;
+					--cols: minmax(5rem, 6rem) minmax(6rem, 12rem) minmax(6rem, 12rem) minmax(10rem, 1fr) minmax(5rem, max-content) minmax(4rem, max-content);
+					--cols-no-defect: minmax(5rem, 6rem) minmax(6rem, 12rem) minmax(6rem, 1fr) minmax(5rem, max-content) minmax(4rem, max-content);
 
 					color: var(--text-h);
 					font-size: 0.9375rem;
@@ -1150,7 +1131,7 @@ const Ncrs = ({
 				}
 
 				.ncrs-page-btn {
-					min-width: 44px;
+					min-width: 40px;
 					min-height: 44px;
 					padding: 0 10px;
 					border: 2px solid transparent;
@@ -1191,10 +1172,28 @@ const Ncrs = ({
 					color: var(--text);
 				}
 
-				@media (max-width: 40rem) {
+				@media (max-width: 40rem) {	
 					.ncrs-search {
 						max-width: none;
 					}
+
+					.ncrs-pager-controls {
+    					width: 100%;
+    					justify-content: space-between;
+					}
+
+					.ncrs-table {
+						min-width: 40rem;
+					}
+
+					.ncrs-defect {
+						display: none;
+					}
+
+					.ncrs-row {
+						grid-template-columns: var(--cols-no-defect);
+					}
+					
 				}
 			`}</style>
 		</div>
