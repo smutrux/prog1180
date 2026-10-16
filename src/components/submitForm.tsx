@@ -15,6 +15,7 @@ import {
 	type NcrEditData,
 	type NcrFields,
 	type NcrSubmission,
+	defaultStatus,
 } from "./ncrService";
 
 export interface NcrFormProps {
@@ -317,7 +318,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const [submitted, setSubmitted] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
 	const [submitError, setSubmitError] = useState("");
-	const [lookups, setLookups] = useState<FormLookups>({ suppliers: [], problemTypes: [], inspectors: [] });
+	const [lookups, setLookups] = useState<FormLookups>({ statuses: [], suppliers: [], problemTypes: [], inspectors: [] });
 	const [lookupState, setLookupState] = useState<"loading" | "ready" | "error">("loading");
 	const [lookupError, setLookupError] = useState("");
 	const [editData, setEditData] = useState<NcrEditData | null>(null);
@@ -484,7 +485,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		setSubmitting(true);
 		setSubmitError("");
 		try {
-			const submission = buildSubmission(values, files, lookups);
+			const submission = buildSubmission(values, files, lookups, edit ? editData?.statusId ?? null : null);
 			const result = edit && editData
 				? await updateNcr(editData, submission, setStatus)
 				: await submitNcr(submission, setStatus);
@@ -943,8 +944,10 @@ function reviewGroups(v: FormValues, files: File[], l: FormLookups, existingFile
 	] as { id: SectionId; title: string; rows: [string, string][] }[];
 }
 
-function buildSubmission(v: FormValues, files: File[], l: FormLookups): NcrSubmission {
+function buildSubmission(v: FormValues, files: File[], l: FormLookups, currentStatusId: number | null = null): NcrSubmission {
 	const p = v.process;
+	const status = (currentStatusId !== null ? l.statuses.find((x) => x.id === currentStatusId) : undefined) ?? defaultStatus(l.statuses);
+	if (!status) throw new Error("No NCR statuses were found in the database, so the NCR cannot be saved.");
 	let inspector: NcrSubmission["inspector"];
 	if (v.inspector.inspector === ADD_INSPECTOR) {
 		inspector = {
@@ -961,6 +964,7 @@ function buildSubmission(v: FormValues, files: File[], l: FormLookups): NcrSubmi
 	return {
 		ncrNumber: p.ncrNumber,
 		processApplicable: processLabel(p.processType),
+		status,
 		supplier: supplierOf(p) || null,
 		purchaseOrderNumber: p.poNumber.trim(),
 		salesOrderNumber: p.salesOrderNumber.trim(),

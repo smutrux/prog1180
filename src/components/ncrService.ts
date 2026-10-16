@@ -291,6 +291,7 @@ export interface NcrEditData {
 	linkRows: { recordId: number | string; url: string }[];
 	existingFiles: string[];
 	originalFields: Record<string, unknown>;
+  isArchived?: boolean;
 }
 
 const PATCHED_COLUMNS = [
