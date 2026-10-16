@@ -252,13 +252,7 @@ const Reports = () => {
 	return (
 		<div className="page">
 			<PageHeader title="Reports" description={description} live>
-				<Button
-					text="Refresh"
-					aria="Refresh reports"
-					icon={FaSyncAlt}
-					enabled={!loading}
-					onClick={() => void load()}
-				/>
+				
 			</PageHeader>
 
 			{report && error && (
