@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Input from "./input";
-import type { NcRecord } from "./api";
+import { readRecord, type NcRecord } from "./api";
 import {
 	ADD_INSPECTOR,
 	ADD_SUPPLIER,
@@ -583,12 +583,18 @@ export default function NcrForm({
 		try {
 			if (edit && !dataRef.current)
 				throw new Error("No NCR was given to edit.");
+			// Read the NCR fresh from the database, so the saved draft answers are always included.
+			const loadEdit = async () => {
+				const row = dataRef.current as NcRecord<NcrFields>;
+				const fresh = await readRecord<NcrFields>("NCR", row.id).catch(
+					() => null,
+				);
+				return loadNcrForEdit(fresh ?? row);
+			};
 			const [l, next, ed] = await Promise.all([
 				loadFormLookups(),
 				edit ? Promise.resolve("") : nextNcrNumber(),
-				edit
-					? loadNcrForEdit(dataRef.current as NcRecord<NcrFields>)
-					: Promise.resolve(null),
+				edit ? loadEdit() : Promise.resolve(null),
 			]);
 			const withExtras = addEditOptions(l, ed);
 			const base = ed ? toFormValues(ed, withExtras) : makeDefaults(next);
@@ -597,7 +603,7 @@ export default function NcrForm({
 			editRef.current = ed;
 			setEditData(ed);
 			setDraftRef(
-				ed?.draft
+				ed?.isDraft
 					? { recordId: ed.recordId, statusColumn: ed.statusColumn }
 					: null,
 			);
@@ -610,6 +616,10 @@ export default function NcrForm({
 			if (ed?.draft)
 				setStatus(
 					`Your draft was restored. You are back on section ${d.step + 1} of ${SECTIONS.length}: ${SECTIONS[d.step].title}.`,
+				);
+			else if (ed?.isDraft)
+				setStatus(
+					"This draft has no saved answers yet, so the form starts on the first section. Choose Save as draft to keep your progress.",
 				);
 			else if (d.any)
 				setStatus(
@@ -720,10 +730,29 @@ export default function NcrForm({
 		);
 	}
 
-	function saveAndContinue() {
+	async function saveAndContinue() {
 		const id = SECTIONS[step].id as SectionId;
 		const found = validate(id, values, files, false);
 		if (Object.keys(found).length) return showErrors(found);
+
+		// A form that already has a draft in the database saves there, not just in the browser.
+		if (draftRef) {
+			const nextStep = step + 1;
+			const nextSaved = { ...saved, [id]: true };
+			const ok = await saveDraftNow({
+				step: nextStep,
+				saved: nextSaved,
+				quiet: true,
+			});
+			if (!ok) return; // the error is already in the status line; stay on this section
+			setSaved(nextSaved);
+			goTo(nextStep);
+			setStatus(
+				`${SECTIONS[step].title} saved to your draft. Now on section ${nextStep + 1} of ${SECTIONS.length}: ${SECTIONS[nextStep].title}.`,
+			);
+			return;
+		}
+
 		const ok = writeSection(prefix, id, values[id]);
 		setSaved((prev) => ({ ...prev, [id]: ok }));
 		setDirtyIds((prev) => {
@@ -740,15 +769,24 @@ export default function NcrForm({
 		);
 	}
 
-	/** Saves the form as a draft NCR, wherever the person is and whatever is filled in. */
-	async function saveDraftNow() {
-		if (submitting || savingDraft) return;
+	/** Saves the form as a draft NCR, wherever the person is and whatever is filled in.
+	    Returns true when the draft was saved. */
+	async function saveDraftNow(
+		opts: {
+			step?: number;
+			saved?: Record<SectionId, boolean>;
+			quiet?: boolean;
+		} = {},
+	): Promise<boolean> {
+		if (submitting || savingDraft) return false;
 		if (!NCR_NUMBER.test(values.process.ncrNumber)) {
 			setStatus(
 				"The NCR number is missing, so the draft cannot be saved. Reload the form to get the next number.",
 			);
-			return;
+			return false;
 		}
+		const toStep = opts.step ?? step;
+		const toSaved = opts.saved ?? saved;
 		setSavingDraft(true);
 		setSubmitError("");
 		const wholeNumber = (s: string) =>
@@ -759,9 +797,9 @@ export default function NcrForm({
 		try {
 			const result = await saveDraft({
 				ncrNumber: values.process.ncrNumber,
-				step,
+				step: toStep,
 				values,
-				saved,
+				saved: toSaved,
 				processApplicable: processLabel(values.process.processType),
 				defectDescription: values.defect.defectDescription.trim(),
 				quantityReceived: wholeNumber(values.defect.qtyReceived),
@@ -783,10 +821,18 @@ export default function NcrForm({
 				clearDrafts(prefix);
 				setHasDraft(false);
 			}
-			setStatus(
-				`Draft ${result.ncrNumber} saved. It reopens on section ${step + 1} of ${SECTIONS.length}: ${SECTIONS[step].title}. You can also find it in the NCR list with the status Draft.`,
-			);
+			if (!opts.quiet)
+				setStatus(
+					`Draft ${result.ncrNumber} saved. It reopens on section ${toStep + 1} of ${SECTIONS.length}: ${SECTIONS[toStep].title}. You can also find it in the NCR list with the status Draft.`,
+				);
 			onSaved?.(result.ncrNumber);
+			if (result.warning) {
+				setStatus(
+					`The draft row was saved, but ${result.warning} Your answers on screen are not lost, but they will not come back when you reopen the draft.`,
+				);
+				return false;
+			}
+			return true;
 		} catch (err) {
 			if (err instanceof DuplicateNcrNumberError) {
 				const next = await nextNcrNumber().catch(() => "");
@@ -797,6 +843,7 @@ export default function NcrForm({
 			} else {
 				setStatus(`The draft was not saved. ${messageOf(err)}`);
 			}
+			return false;
 		} finally {
 			setSavingDraft(false);
 		}
@@ -977,7 +1024,7 @@ export default function NcrForm({
 			onSubmit={(e) => {
 				e.preventDefault();
 				if (step === REVIEW_STEP) void submit();
-				else saveAndContinue();
+				else void saveAndContinue();
 			}}
 		>
 			<h1 id="ncr-title">
@@ -1579,6 +1626,12 @@ export default function NcrForm({
 					</>
 				)}
 
+				{/* Same message as the status line at the top, repeated here so it is seen after pressing a button at the bottom. Hidden from screen readers so it is not announced twice. */}
+				{status && (
+					<p className="ncr-status" aria-hidden="true">
+						{status}
+					</p>
+				)}
 				<div className="ncr-actions">
 					{step > 0 && (
 						<button

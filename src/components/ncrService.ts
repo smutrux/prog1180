@@ -224,6 +224,23 @@ function mustFind<T>(list: T[], test: (item: T) => boolean, what: string): T {
 	return hit;
 }
 
+/** The NCRStatus rows as options. Loaded once and reused, because every NCR row needs them. */
+let statusOptions: Promise<StatusOption[]> | null = null;
+function getStatusOptions(): Promise<StatusOption[]> {
+	const p = (statusOptions ??= listAll<StatusFields>("NCRStatus").then((rows) =>
+		rows
+			.map((r) => ({
+				id: refId("NCRStatus", r),
+				name: (r.fields.NCRStatusName ?? "").trim(),
+			}))
+			.filter((r) => r.name),
+	));
+	p.catch(() => {
+		if (statusOptions === p) statusOptions = null;
+	});
+	return p;
+}
+
 /** Loads the drop-down lists for the form. */
 export async function loadFormLookups(): Promise<FormLookups> {
 	const [suppliers, problemTypes, roles, rolePersons, people, statuses] =
@@ -321,23 +338,30 @@ const DRAFT_COLUMNS = ["NCRDraftStep", "NCRDraftData", "NCRCreatedAtD"] as const
 
 /** Reads the draft stored on an NCR row, or null when the row is not a draft. */
 function readDraft(f: Record<string, unknown>): DraftState | null {
-	const raw = f.NCRDraftData;
-	if (typeof raw !== "string" || !raw.trim()) return null;
-	try {
-		const parsed = JSON.parse(raw) as {
-			values?: unknown;
-			saved?: Record<string, boolean>;
-		} | null;
-		if (!parsed || typeof parsed !== "object" || !parsed.values) return null;
-		const step = Number(f.NCRDraftStep);
-		return {
-			step: Number.isInteger(step) && step >= 0 ? step : 0,
-			values: parsed.values,
-			saved: parsed.saved ?? {},
-		};
-	} catch {
-		return null;
+	let parsed: unknown = f.NCRDraftData;
+	// The column may hand back text, an object (JSON column) or text encoded twice.
+	for (let i = 0; i < 2 && typeof parsed === "string"; i++) {
+		if (!parsed.trim()) return null;
+		const raw: string = parsed;
+		try {
+			parsed = JSON.parse(raw);
+		} catch {
+			console.warn(
+				"[draft] NCRDraftData is not valid JSON. It was probably cut off: make sure the NCRDraftData column is Long Text.",
+				{ length: raw.length },
+			);
+			return null;
+		}
 	}
+	if (!parsed || typeof parsed !== "object") return null;
+	const draft = parsed as { values?: unknown; saved?: Record<string, boolean> };
+	if (!draft.values) return null;
+	const step = Number(f.NCRDraftStep);
+	return {
+		step: Number.isInteger(step) && step >= 0 ? step : 0,
+		values: draft.values,
+		saved: draft.saved ?? {},
+	};
 }
 
 /**
@@ -395,10 +419,16 @@ export interface DraftInput {
  */
 export async function saveDraft(
 	d: DraftInput,
-): Promise<{ ncrNumber: string; recordId: number | string }> {
+): Promise<{
+	ncrNumber: string;
+	recordId: number | string;
+	/** Set when the row was saved but the database did not keep all the answers. */
+	warning?: string;
+}> {
 	const draft = d.statuses.find((s) => isDraftStatus(s.name));
 	if (!draft) throw new MissingSeedError(`Status "${STATUS_DRAFT}"`);
 	const now = ncDateTime();
+	const draftJson = JSON.stringify({ values: d.values, saved: d.saved });
 	const columns: Record<string, unknown> = {
 		NCRProcessApplicable: d.processApplicable,
 		NCRDefectDescription: d.defectDescription,
@@ -408,13 +438,18 @@ export async function saveDraft(
 		NCRUpdatedAt: now,
 		[d.existing?.statusColumn ?? STATUS_COLUMN]: draft.id,
 		NCRDraftStep: d.step,
-		NCRDraftData: JSON.stringify({ values: d.values, saved: d.saved }),
+		NCRDraftData: draftJson,
 	};
 	if (d.inspectorPersonId) columns.NCRRaisedByPersonId = d.inspectorPersonId;
 
 	if (d.existing) {
 		await updateRecord("NCR", d.existing.recordId, columns);
-		return { ncrNumber: d.ncrNumber, recordId: d.existing.recordId };
+		const warning = await checkDraftStored(d.existing.recordId, draftJson);
+		return {
+			ncrNumber: d.ncrNumber,
+			recordId: d.existing.recordId,
+			...(warning ? { warning } : {}),
+		};
 	}
 	if (await ncrNumberExists(d.ncrNumber))
 		throw new DuplicateNcrNumberError(d.ncrNumber);
@@ -424,7 +459,31 @@ export async function saveDraft(
 		NCRCreatedAtD: now,
 		...columns,
 	});
-	return { ncrNumber: d.ncrNumber, recordId: rec.id };
+	const warning = await checkDraftStored(rec.id, draftJson);
+	return {
+		ncrNumber: d.ncrNumber,
+		recordId: rec.id,
+		...(warning ? { warning } : {}),
+	};
+}
+
+/** Reads the draft row back and returns a message when the database did not keep all the answers. */
+async function checkDraftStored(
+	recordId: number | string,
+	expected: string,
+): Promise<string | null> {
+	try {
+		const back = await readRecord<NcrFields>("NCR", recordId);
+		const got = back?.fields.NCRDraftData;
+		if (got !== null && typeof got === "object") return null; // a JSON column keeps it whole
+		if (typeof got !== "string" || got.length === 0)
+			return "the database did not return the draft answers. Check that the NCR table has a column named NCRDraftData of type Long Text.";
+		if (got.length < expected.length)
+			return `the database kept only ${got.length} of ${expected.length} characters of the draft answers. Change the NCRDraftData column to type Long Text.`;
+		return null;
+	} catch {
+		return null;
+	}
 }
 
 /** Loads a saved draft fresh from the database, ready to be submitted with {@link updateNcr}. */
@@ -461,7 +520,9 @@ export interface NcrEditData {
 	links: string[];
 	linkRows: { recordId: number | string; url: string }[];
 	existingFiles: string[];
-	/** The saved draft answers, or null when the NCR is not a draft. */
+	/** True when the NCR has the Draft status or carries saved draft answers. */
+	isDraft: boolean;
+	/** The saved draft answers, or null when there are none (including a draft whose answers could not be read). */
 	draft: DraftState | null;
 	/** The NCR columns the update changes, as they are now. Used to undo a failed update. */
 	originalFields: Record<string, unknown>;
@@ -502,13 +563,15 @@ export async function loadNcrForEdit(
 ): Promise<NcrEditData> {
 	const f = rec.fields;
 	const ncrRef = refId("NCR", rec);
-	const [soLine, poLine, person, problemRows, attachments] = await Promise.all([
-		getByRef<SOLineItemFields>("SOLineItem", f.SOLineItemId),
-		getByRef<POLineItemFields>("POLineItem", f.POLineItemId),
-		getByRef<PersonFields>("Person", f.NCRRaisedByPersonId),
-		listForNcr<NCRProblemTypeFields>("NCRProblemType", ncrRef),
-		listForNcr<AttachmentFields>("Attachment", ncrRef),
-	]);
+	const [soLine, poLine, person, problemRows, attachments, statuses] =
+		await Promise.all([
+			getByRef<SOLineItemFields>("SOLineItem", f.SOLineItemId),
+			getByRef<POLineItemFields>("POLineItem", f.POLineItemId),
+			getByRef<PersonFields>("Person", f.NCRRaisedByPersonId),
+			listForNcr<NCRProblemTypeFields>("NCRProblemType", ncrRef),
+			listForNcr<AttachmentFields>("Attachment", ncrRef),
+			getStatusOptions().catch(() => [] as StatusOption[]),
+		]);
 	const [item, salesOrder, purchaseOrder] = await Promise.all([
 		getByRef<ItemFields>("Item", soLine?.fields.ItemId),
 		getByRef<SalesOrderFields>("SalesOrder", soLine?.fields.SalesOrderId),
@@ -535,13 +598,18 @@ export async function loadNcrForEdit(
 	});
 
 	const statusColumn = statusColumnOf(f);
+	const statusId = fkValue(f[statusColumn]);
 	const draft = readDraft(f);
+	// A draft is recognised by its status too, so one whose answers cannot be read stays a draft.
+	const isDraft =
+		draft !== null ||
+		statuses.some((s) => s.id === statusId && isDraftStatus(s.name));
 	return {
 		recordId: rec.id,
 		ncrRef,
 		ncrNumber: (f.NCRNumber ?? "").trim(),
 		processApplicable: (f.NCRProcessApplicable ?? "").trim(),
-		statusId: fkValue(f[statusColumn]),
+		statusId,
 		statusColumn,
 		supplier:
 			supplierName && !same(supplierName, IN_HOUSE_SUPPLIER)
@@ -577,8 +645,9 @@ export async function loadNcrForEdit(
 			.map((a) => (a.fields.AttachmentFileName ?? "").trim())
 			.filter(Boolean),
 		draft,
+		isDraft,
 		originalFields: Object.fromEntries(
-			[...PATCHED_COLUMNS, statusColumn, ...(draft ? DRAFT_COLUMNS : [])].map(
+			[...PATCHED_COLUMNS, statusColumn, ...(isDraft ? DRAFT_COLUMNS : [])].map(
 				(k) => [k, f[k] ?? null],
 			),
 		),
@@ -913,7 +982,7 @@ export async function updateNcr(
 		const inspector = await resolveInspector(s, make);
 		const chain = await resolveChain(s, make, now);
 
-		if (edit.draft) {
+		if (edit.isDraft) {
 			// A draft never had the inspector's sign-off row. It is made on submit.
 			progress("Loading statuses...");
 			const reviewStatuses = await listAll<ReviewStatusFields>("ReviewStatus");
@@ -983,8 +1052,13 @@ export async function updateNcr(
 			POLineItemId: chain.poLineItemId,
 			NCRRaisedByPersonId: inspector.personId,
 			// Submitting a draft clears the draft columns and starts the NCR's clock.
-			...(edit.draft
-				? { NCRDraftStep: null, NCRDraftData: null, NCRCreatedAtD: now }
+			...(edit.isDraft
+				? {
+					  NCRCreatedAtD: now,
+					  ...(edit.draft
+						  ? { NCRDraftStep: null, NCRDraftData: null }
+						  : {}),
+				  }
 				: {}),
 		});
 	} catch (err) {

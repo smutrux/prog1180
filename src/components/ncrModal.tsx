@@ -379,4 +379,4 @@ function ModalStyles() {
 			}
 		`}</style>
 	);
-}
+}	
