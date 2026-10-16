@@ -7,6 +7,7 @@ import {
 	getByRef,
 	listAll,
 	ncDateTime,
+	readRecord,
 	refId,
 	updateRecord,
 	where,
@@ -17,6 +18,7 @@ import { ConstraintError, assertRecord, validateSubmission } from "./ncrConstrai
 
 export const QUALITY_ROLE = "Quality Representative";
 export const STATUS_NEW = "Open";
+export const STATUS_DRAFT = "Draft";
 const STATUS_NEW_FALLBACK_ID = 1;
 export const isClosedStatus = (name: string) => /clos/i.test(name);
 export const REVIEW_SUBMITTED = "Submitted";
@@ -267,6 +269,83 @@ async function ncrNumberExists(ncrNumber: string): Promise<boolean> {
 			where(["NCRNumber", "eq", ncrNumber]),
 		)) !== null
 	);
+}
+
+/** True when an NCR is an unfinished draft (its form answers are stored in NCRDraftData). */
+export function isDraftRecord(rec: { fields: object }): boolean {
+	const raw = (rec.fields as Record<string, unknown>).NCRDraftData;
+	return typeof raw === "string" && raw.trim() !== "";
+}
+
+export interface DraftPayload {
+	values: Record<string, Record<string, unknown>>;
+	/** The index of the form section the person was on when they saved. */
+	step: number;
+}
+
+/** Reads the saved form answers of a draft. Returns null if there are none or they are unreadable. */
+export function parseDraft(rec: { fields: object }): DraftPayload | null {
+	const f = rec.fields as Record<string, unknown>;
+	const raw = f.NCRDraftData;
+	if (typeof raw !== "string" || !raw.trim()) return null;
+	try {
+		const parsed = JSON.parse(raw) as { values?: unknown };
+		if (!parsed || typeof parsed.values !== "object" || parsed.values === null)
+			return null;
+		const step = Number(f.NCRDraftStep);
+		return {
+			values: parsed.values as DraftPayload["values"],
+			step: Number.isFinite(step) ? Math.trunc(step) : 0,
+		};
+	} catch {
+		return null;
+	}
+}
+
+export interface DraftToSave {
+	/** The NCR record id of an existing draft, or null for the first save. */
+	recordId: number | string | null;
+	ncrNumber: string;
+	/** The form answers, stored as they are. */
+	values: unknown;
+	step: number;
+}
+
+/**
+ * Saves the form answers as a draft NCR. The first save creates the NCR record
+ * (so the NCR number is reserved). Later saves update it.
+ * Nothing is validated: a draft can be incomplete.
+ */
+export async function saveDraft(
+	d: DraftToSave,
+	statuses: StatusOption[],
+	progress: (message: string) => void = () => {},
+): Promise<{ ncrNumber: string; recordId: number | string }> {
+	const now = ncDateTime();
+	const draftFields = {
+		NCRDraftData: JSON.stringify({ v: 1, values: d.values }),
+		NCRDraftStep: String(d.step),
+		NCRUpdatedAt: now,
+	};
+	if (d.recordId !== null) {
+		progress("Saving the draft...");
+		await updateRecord("NCR", d.recordId, draftFields);
+		return { ncrNumber: d.ncrNumber, recordId: d.recordId };
+	}
+	progress("Checking the NCR number...");
+	if (await ncrNumberExists(d.ncrNumber))
+		throw new DuplicateNcrNumberError(d.ncrNumber);
+	const status =
+		statuses.find((s) => same(s.name, STATUS_DRAFT)) ?? defaultStatus(statuses);
+	progress("Saving the draft...");
+	const rec = await createRecord("NCR", {
+		NCRNumber: d.ncrNumber,
+		...NCR_DEFAULTS,
+		NCRCreatedAtD: now,
+		...draftFields,
+		...(status ? { [STATUS_COLUMN]: status.id } : {}),
+	});
+	return { ncrNumber: d.ncrNumber, recordId: rec.id };
 }
 
 export interface NcrEditData {
@@ -618,15 +697,52 @@ async function resolveChain(s: NcrSubmission, make: Make, now: string) {
 const messageOf = (err: unknown) =>
 	err instanceof ApiError || err instanceof Error ? err.message : String(err);
 
+/** Columns put back if turning a draft into a real NCR fails part way. */
+const DRAFT_RESTORE_COLUMNS = [
+	...PATCHED_COLUMNS,
+	"NCRDraftData",
+	"NCRDraftStep",
+	"NCRCreatedAtD",
+] as const;
+
+/**
+ * Submits an NCR. Pass `draftId` to turn a saved draft into the real NCR
+ * instead of creating a new NCR record.
+ */
 export async function submitNcr(
 	s: NcrSubmission,
 	progress: (message: string) => void = () => {},
+	draftId: number | string | null = null,
 ): Promise<{ ncrNumber: string; recordId: number | string }> {
 	const { created, now, make } = startTracker(progress);
+	let draftRestore: { id: number | string; fields: Record<string, unknown> } | null =
+		null;
+	let draftPatched = false;
 	try {
-		progress("Checking the NCR number...");
-		if (await ncrNumberExists(s.ncrNumber))
-			throw new DuplicateNcrNumberError(s.ncrNumber);
+		let draftRec: NcRecord<NcrFields> | null = null;
+		if (draftId !== null) {
+			progress("Loading the draft...");
+			draftRec = await readRecord<NcrFields>("NCR", draftId);
+			if (!draftRec)
+				throw new SubmitError(
+					"The saved draft could not be found. It may have been removed.",
+					[],
+				);
+			const df = draftRec.fields as Record<string, unknown>;
+			draftRestore = {
+				id: draftRec.id,
+				fields: Object.fromEntries(
+					[...DRAFT_RESTORE_COLUMNS, statusColumnOf(df)].map((k) => [
+						k,
+						df[k] ?? null,
+					]),
+				),
+			};
+		} else {
+			progress("Checking the NCR number...");
+			if (await ncrNumberExists(s.ncrNumber))
+				throw new DuplicateNcrNumberError(s.ncrNumber);
+		}
 
 		progress("Checking the answers...");
 		await validateSubmission(s, undefined, SUBMISSION_RULES);
@@ -642,7 +758,7 @@ export async function submitNcr(
 		const inspector = await resolveInspector(s, make);
 		const chain = await resolveChain(s, make, now);
 
-		const ncr = await make("NCR", "the NCR", {
+		const ncrFields = {
 			NCRNumber: s.ncrNumber,
 			NCRProcessApplicable: s.processApplicable,
 			NCRDefectDescription: s.defectDescription,
@@ -657,7 +773,21 @@ export async function submitNcr(
 			SOLineItemId: chain.soLineItemId,
 			POLineItemId: chain.poLineItemId,
 			NCRRaisedByPersonId: inspector.personId,
-		});
+		};
+		let ncr: NcRecord<object>;
+		if (draftRec) {
+			await assertRecord("NCR", ncrFields, { id: draftRec.id });
+			progress("Saving the NCR...");
+			draftPatched = true;
+			await updateRecord("NCR", draftRec.id, {
+				...ncrFields,
+				NCRDraftData: "",
+				NCRDraftStep: "",
+			});
+			ncr = draftRec;
+		} else {
+			ncr = await make("NCR", "the NCR", ncrFields);
+		}
 		const ncrRef = refId("NCR", ncr);
 
 		for (const problemTypeId of s.problemTypeIds) {
@@ -688,6 +818,11 @@ export async function submitNcr(
 
 		return { ncrNumber: s.ncrNumber, recordId: ncr.id };
 	} catch (err) {
+		if (draftPatched && draftRestore) {
+			try {
+				await updateRecord("NCR", draftRestore.id, draftRestore.fields);
+			} catch {}
+		}
 		const leftovers = await rollback(created);
 		if (
 			err instanceof DuplicateNcrNumberError ||
