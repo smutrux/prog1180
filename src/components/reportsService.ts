@@ -1,5 +1,10 @@
 import { fkValue, listAll, refId, type NcRecord, type TableName } from "./api";
-import { IN_HOUSE_SUPPLIER, PROCESS_LABELS, STATUS_COLUMN} from "./ncrService";
+import {
+	IN_HOUSE_SUPPLIER,
+	PROCESS_LABELS,
+	STATUS_COLUMN,
+	STATUS_DRAFT,
+} from "./ncrService";
 
 /** The status name that means an NCR is closed. Any other status counts as open. */
 export const STATUS_CLOSED = "Closed";
@@ -137,6 +142,14 @@ export function computeReport(
 	now: Date = new Date(),
 ): Report {
 	const statusName = nameMap("NCRStatus", raw.statuses, (f) => f.NCRStatusName);
+	/** Drafts are not submitted yet, so no number in the report counts them. */
+	const ncrs = raw.ncrs.filter(
+		(n) =>
+			!same(
+				statusName.get(fkValue(n.fields[STATUS_COLUMN]) ?? -1),
+				STATUS_DRAFT,
+			),
+	);
 	const reviewName = nameMap(
 		"ReviewStatus",
 		raw.reviewStatuses,
@@ -183,7 +196,7 @@ export function computeReport(
 	let fromWip = 0;
 	const supplierCounts = new Map<string, number>();
 
-	for (const ncr of raw.ncrs) {
+	for (const ncr of ncrs) {
 		const f = ncr.fields;
 		const status = statusName.get(fkValue(f[STATUS_COLUMN]) ?? -1) ?? "";
 		const isClosed = same(status, STATUS_CLOSED);
@@ -254,7 +267,7 @@ export function computeReport(
 			awaiting.add(ncrRef);
 	}
 
-	const allRefs = new Set(raw.ncrs.map((n) => refId("NCR", n)));
+	const allRefs = new Set(ncrs.map((n) => refId("NCR", n)));
 	const problemCounts = new Map<string, number>();
 	for (const row of raw.ncrProblems) {
 		const ncrRef = fkValue(row.fields.NCRId);
@@ -266,7 +279,7 @@ export function computeReport(
 	const topSupplier = top(supplierCounts);
 
 	return {
-		total: raw.ncrs.length,
+		total: ncrs.length,
 		open: openNcrs.length,
 		onHold,
 		closed,

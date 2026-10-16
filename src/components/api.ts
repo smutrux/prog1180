@@ -103,6 +103,13 @@ async function request<T>(
 	}
 
 	const text = await res.text();
+	// DEBUG: log every write so you can see in the browser console what was sent and what came back. Remove when done.
+	if (method !== "GET") {
+		console.log(`[db] ${method} ${table} -> ${res.status}`, {
+			sent: opts.body,
+			received: text.slice(0, 500),
+		});
+	}
 	let data: unknown = null;
 	try {
 		data = text ? JSON.parse(text) : null;

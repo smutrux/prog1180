@@ -1,20 +1,71 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fkValue, listAll, refId, type NcRecord, type TableName } from "./api";
-import { loadNcrForEdit, unarchiveNcr, type NcrEditData, type NcrFields } from "./ncrService";
+import {
+	draftSummary,
+	isDraftStatus,
+	loadNcrForEdit,
+	type NcrEditData,
+	type NcrFields,
+} from "./ncrService";
 import { FaSyncAlt } from "react-icons/fa";
 import Button from "./button";
 import { NcrDetailsModal, NcrModal, NewNcrButton } from "./ncrModal";
 
+/**
+ * The table finds the "date created" and "status" columns of the NCR table
+ * by guessing from their names. If a column shows "-" and you know its exact
+ * name, type it here (for example status: "NCRStatusId"). Leave "" to guess.
+ */
 const COLUMN_OVERRIDES = { date: "", status: "" };
 
+/** Which NCRs the table lists. */
 export type NcrShow = "all" | "archived";
 
+/**
+ * Props for {@link Ncrs}.
+ */
 interface NcrsProps {
+	/**
+	 * `"all"` lists every status. `"archived"` lists only archived NCRs,
+	 * which are the ones with a closed status (see {@link isArchived}).
+	 * @defaultValue `"all"`
+	 */
 	show?: NcrShow;
+
+	/**
+	 * Hides the search box and the filters. Pagination stays. A simple table
+	 * always lists every NCR that matches `show`, over all time.
+	 * @defaultValue `false`
+	 */
 	simple?: boolean;
+
+	/**
+	 * How many NCRs are shown per page.
+	 * @defaultValue `10`
+	 */
 	pageSize?: number;
+
+	/**
+	 * Shows the Edit buttons and the New NCR button. Set to `false` for a
+	 * read-only table. The View buttons are always shown.
+	 * @defaultValue `true`
+	 */
 	editable?: boolean;
+
+	/**
+	 * Name of the table for screen readers. Give each table on a page its own
+	 * name, so people can tell them apart.
+	 * @defaultValue `"Non-conformance reports"`
+	 */
 	label?: string;
+
+	/**
+	 * Status to start filtered on, as written in a link such as
+	 * `/ncrs?status=open`. It is matched to a real status name, ignoring
+	 * case, spaces and hyphens. It also removes the date limit, so the list
+	 * agrees with the dashboard counts.
+	 */
+	initialStatus?: string;
 }
 
 type AnyFields = Record<string, unknown>;
@@ -61,6 +112,29 @@ const DATE_OPTIONS = [
 ];
 const ALL_SUPPLIERS = "All Suppliers";
 const DEFAULT_DATE = "Last 30 Days";
+
+/** Formats a date as "Oct 9, 2026", or "-" when there is none. */
+const formatDate = (d: Date | null) =>
+	d
+		? d.toLocaleDateString("en-US", {
+				month: "short",
+				day: "numeric",
+				year: "numeric",
+			})
+		: "-";
+
+/** The facts shown in the details popup for one row. */
+const detailsFor = (n: NcrRow) => [
+	{ label: "NCR number", value: n.ncrNumber },
+	{ label: "Date created", value: formatDate(n.date) },
+	{ label: "Status", value: n.status || "-" },
+	{ label: "Supplier name", value: n.supplier },
+	{ label: "Product description", value: n.product },
+	{ label: "Quantity received", value: n.qtyReceived },
+	{ label: "Quantity defective", value: n.qtyDefective },
+	{ label: "Description of defect", value: n.defect },
+];
+
 /** Which colour a status pill gets. */
 const statusTone = (s: string) =>
 	/clos|complet|resolv|approv|archive/i.test(s)
@@ -69,8 +143,10 @@ const statusTone = (s: string) =>
 			? "open"
 			: "other";
 
+/** An NCR is archived when its status is a closed one. Change this one line to change the rule. */
 const isArchived = (status: string) => statusTone(status) === "closed";
 
+/** Run `fn` over `items`, a few at a time, keeping the original order. */
 async function mapPool<T, R>(
 	items: T[],
 	size: number,
@@ -91,6 +167,7 @@ async function mapPool<T, R>(
 	return out;
 }
 
+/** Reads a date from the database. Returns null for anything that is not a date. */
 function parseDate(v: unknown): Date | null {
 	if (typeof v !== "string" || !v.trim()) return null;
 	const s = v.trim();
@@ -104,6 +181,7 @@ function parseDate(v: unknown): Date | null {
 	return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** Find the date an NCR was created, from whichever column holds one. */
 function findDate(fields: AnyFields): Date | null {
 	if (COLUMN_OVERRIDES.date) return parseDate(fields[COLUMN_OVERRIDES.date]);
 	const keys = Object.keys(fields);
@@ -118,6 +196,7 @@ function findDate(fields: AnyFields): Date | null {
 	return null;
 }
 
+/** The readable name of a row in a small lookup table such as ReviewStatus. */
 function displayName(fields: AnyFields): string {
 	const texts = Object.entries(fields).filter(
 		([k, v]) => typeof v === "string" && v.trim() && !/id$/i.test(k),
@@ -127,6 +206,7 @@ function displayName(fields: AnyFields): string {
 	return best ? String(best[1]).trim() : "";
 }
 
+/** Maps record ids to readable names for one lookup table. */
 function buildNames(table: TableName, recs: NcRecord<AnyFields>[]): NameMap {
 	const map: NameMap = new Map();
 	for (const r of recs) {
@@ -136,6 +216,7 @@ function buildNames(table: TableName, recs: NcRecord<AnyFields>[]): NameMap {
 	return map;
 }
 
+/** A value that is either already text ("Open") or an id to look up. */
 function textOrLookup(raw: unknown, maps: NameMap[]): string {
 	if (typeof raw === "string" && raw.trim() && Number.isNaN(Number(raw)))
 		return raw.trim();
@@ -148,6 +229,7 @@ function textOrLookup(raw: unknown, maps: NameMap[]): string {
 	return "";
 }
 
+/** Finds the status name of an NCR from its own column or from the status rows that point at it. */
 function findStatus(rec: NcRecord<NcrFields>, sd: StatusData): string {
 	const fields = rec.fields as unknown as AnyFields;
 
@@ -189,20 +271,28 @@ function toRow(
 	const fields = record.fields as unknown as AnyFields;
 	const num = (n: number | null | undefined) =>
 		n === null || n === undefined ? "-" : String(n);
+	// A draft has no supplier, item or order rows yet, so it shows its saved answers.
+	const dr = draftSummary(ed?.draft ?? null);
 	return {
 		record,
 		ncrNumber: ed?.ncrNumber || String(fields.NCRNumber ?? ""),
 		date: findDate(fields),
-		supplier: ed ? (ed.supplier ?? "In-house") : "-",
-		product: ed ? ed.item.name : "-",
-		qtyReceived: num(ed?.quantityReceived),
-		qtyDefective: num(ed?.quantityDefective),
-		defect: ed?.defectDescription ?? "-",
+		supplier: dr ? dr.supplier || "-" : ed ? (ed.supplier ?? "In-house") : "-",
+		product: dr
+			? dr.product || "-"
+			: ed
+				? ed.item.description || ed.item.name
+				: "-",
+		qtyReceived: dr ? dr.qtyReceived || "-" : num(ed?.quantityReceived),
+		qtyDefective: dr ? dr.qtyDefective || "-" : num(ed?.quantityDefective),
+		defect: dr ? dr.defect || "-" : (ed?.defectDescription ?? "-"),
 		status: findStatus(record, sd),
 	};
 }
 
+/** Small lookup tables: load once and reuse for every page and every table on the screen. */
 let lookups: Promise<StatusData> | null = null;
+/** The small lookup tables, loaded once and shared by every table on the screen. */
 function getLookups(): Promise<StatusData> {
 	const p = (lookups ??= (async () => {
 		const none = [] as NcRecord<AnyFields>[];
@@ -222,7 +312,9 @@ function getLookups(): Promise<StatusData> {
 	return p;
 }
 
+/** The plain NCR records, newest first. */
 let allNcrs: Promise<NcRecord<NcrFields>[]> | null = null;
+/** The plain NCR records, newest first, loaded once and shared by every table on the screen. */
 function getAllNcrs(): Promise<NcRecord<NcrFields>[]> {
 	const p = (allNcrs ??= listAll<NcrFields>("NCR").then((recs) =>
 		[...recs].sort((a, b) => Number(b.id) - Number(a.id)),
@@ -233,10 +325,13 @@ function getAllNcrs(): Promise<NcRecord<NcrFields>[]> {
 	return p;
 }
 
+/** Rows whose details were already loaded, so no row is fetched twice. */
 const rowCache = new Map<string, NcrRow>();
 
+/** Every mounted table listens here, so a save in one table refreshes all of them. */
 const listeners = new Set<() => void>();
 
+/** Forget everything loaded from the database and tell every table to reload (used after a save). */
 function resetLoaders() {
 	lookups = null;
 	allNcrs = null;
@@ -244,6 +339,7 @@ function resetLoaders() {
 	listeners.forEach((l) => l());
 }
 
+/** Turn plain NCR records into table rows by loading their related details. */
 function enrich(
 	records: NcRecord<NcrFields>[],
 	sd: StatusData,
@@ -264,6 +360,7 @@ function enrich(
 	});
 }
 
+/** Loads one page of NCRs for the given filters. This is the only place the table talks to the database. Status and date are filtered first, because they only need the NCR record itself. Search and supplier need the related details of every remaining NCR. */
 async function fetchNcrPage(
 	page: number,
 	pageSize: number,
@@ -326,6 +423,7 @@ async function fetchNcrPage(
 	return { rows, total };
 }
 
+/** The magnifying glass shown in the search box. */
 function SearchIcon() {
 	return (
 		<svg
@@ -345,6 +443,7 @@ function SearchIcon() {
 	);
 }
 
+/** The down arrow shown on each filter. */
 function ChevronIcon() {
 	return (
 		<svg
@@ -363,6 +462,12 @@ function ChevronIcon() {
 	);
 }
 
+/**
+ * A filter shown as "Label: Value". A real `<select>` is laid invisibly on top of it, so it works with mouse, touch and keyboard.
+ *
+ * @param props - The filter's name, current value, choices and change handler.
+ * @returns A labelled drop-down.
+ */
 function FilterPill(props: {
 	label: string;
 	value: string;
@@ -430,6 +535,7 @@ function FilterPill(props: {
 	);
 }
 
+/** Page numbers to show, 0-based, with "…" for gaps: 1 2 3 … 6 */
 function pageWindow(current: number, total: number): (number | "…")[] {
 	if (total <= 5) return Array.from({ length: total }, (_, i) => i);
 	if (current < 3) return [0, 1, 2, "…", total - 1];
@@ -437,14 +543,30 @@ function pageWindow(current: number, total: number): (number | "…")[] {
 	return [0, "…", current - 1, current, current + 1, "…", total - 1];
 }
 
+/**
+ * A table of NCRs with optional search and filters, pagination, and popups
+ * to view, create and edit NCRs.
+ *
+ * Several tables can be on one page. They share the loaded data, and a save
+ * in one table refreshes all of them.
+ *
+ * @param props - Component props, see {@link NcrsProps}.
+ * @returns The table, its pagination and the popups.
+ *
+ * @example
+ * <Ncrs />
+ * <Ncrs show="archived" simple editable={false} pageSize={5} label="Archived NCRs" />
+ */
 const Ncrs = ({
 	show = "all",
 	simple = false,
 	pageSize = 10,
 	editable = true,
 	label = "Non-conformance reports",
+	initialStatus,
 }: NcrsProps) => {
-	const defaultDate = simple || show === "archived" ? ALL_TIME : DEFAULT_DATE;
+	const defaultDate =
+		simple || show === "archived" || initialStatus ? ALL_TIME : DEFAULT_DATE;
 
 	const [data, setData] = useState<PageResult>({ rows: [], total: 0 });
 	const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(
@@ -462,33 +584,6 @@ const Ncrs = ({
 
 	const [editing, setEditing] = useState<NcRecord<NcrFields> | null>(null);
 	const [viewing, setViewing] = useState<NcrRow | null>(null);
-	const [restoring, setRestoring] = useState(false);
-
-	const openDetails = (row: NcrRow) => {
-		if (window.getSelection()?.toString()) return;
-		setViewing(row);
-	};
-
-	const restoreNcr = async (row: NcRecord<NcrFields>) => {
-		if (restoring) return;
-		setRestoring(true);
-		try {
-			const edit = await loadNcrForEdit(row);
-			const sd = await getLookups();
-			const statuses = [...sd.ncrNames.entries()].map(([id, name]) => ({
-				id: Number(id),
-				name,
-			}));
-			await unarchiveNcr(edit, statuses);
-			resetLoaders();
-			setViewing(null);
-		} catch (err) {
-			console.error("Could not restore the NCR:", err);
-			window.alert("Could not restore the NCR. Please try again.");
-		} finally {
-			setRestoring(false);
-		}
-	};
 
 	const [statusNames, setStatusNames] = useState<string[]>([]);
 	const [knownSuppliers, setKnownSuppliers] = useState<string[]>([]);
@@ -590,6 +685,17 @@ const Ncrs = ({
 		};
 	}, [simple, reloadKey]);
 
+	// Applies the status from a link such as /ncrs?status=open, once.
+	const appliedInitial = useRef(false);
+	useEffect(() => {
+		if (!initialStatus || appliedInitial.current || statusNames.length === 0)
+			return;
+		const same = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+		const match = statusNames.find((n) => same(n) === same(initialStatus));
+		if (match) setStatus(match);
+		appliedInitial.current = true;
+	}, [initialStatus, statusNames]);
+
 	useEffect(() => {
 		const reload = () => {
 			cache.current.clear();
@@ -639,8 +745,7 @@ const Ncrs = ({
 	const firstShown = data.total === 0 ? 0 : page * pageSize + 1;
 	const lastShown = Math.min(data.total, page * pageSize + data.rows.length);
 
-	const showMessage =
-		loadState === "error" || data.rows.length === 0;
+	const showMessage = loadState === "error" || data.rows.length === 0;
 	const unfiltered =
 		simple ||
 		(search.trim() === "" &&
@@ -656,7 +761,11 @@ const Ncrs = ({
 	return (
 		<div className="ncrs">
 			{!simple && (
-				<section className="ncrs-filters" role="search" aria-label={`Search and filter: ${label}`}>
+				<section
+					className="ncrs-filters"
+					role="search"
+					aria-label={`Search and filter: ${label}`}
+				>
 					<div className="ncrs-search">
 						<SearchIcon />
 						<input
@@ -668,14 +777,24 @@ const Ncrs = ({
 						/>
 					</div>
 					<div className="ncrs-filter-group">
-						<FilterPill label="Status" value={status} options={statusOptions} onChange={setStatus} />
+						<FilterPill
+							label="Status"
+							value={status}
+							options={statusOptions}
+							onChange={setStatus}
+						/>
 						<FilterPill
 							label="Date"
 							value={dateRange}
 							options={DATE_OPTIONS.map((d) => d.label)}
 							onChange={setDateChoice}
 						/>
-						<FilterPill label="Supplier" value={supplier} options={supplierOptions} onChange={setSupplier} />
+						<FilterPill
+							label="Supplier"
+							value={supplier}
+							options={supplierOptions}
+							onChange={setSupplier}
+						/>
 						<button type="button" className="ncrs-clear" onClick={clearFilters}>
 							Clear filters
 						</button>
@@ -683,16 +802,31 @@ const Ncrs = ({
 				</section>
 			)}
 
-			<div className="ncrs-scroll" role="region" tabIndex={0} aria-label={`Scrollable area: ${label}`}>
-				<div className="ncrs-table" role="table" aria-label={label} aria-busy={loadState === "loading"}>
+			<div
+				className="ncrs-scroll"
+				role="region"
+				tabIndex={0}
+				aria-label={`Scrollable area: ${label}`}
+			>
+				<div
+					className="ncrs-table"
+					role="table"
+					aria-label={label}
+					aria-busy={loadState === "loading"}
+				>
 					<div role="rowgroup">
 						<div className="ncrs-row ncrs-head" role="row">
 							<span role="columnheader">NCR number</span>
+							<span role="columnheader">Date created</span>
 							<span role="columnheader">Supplier name</span>
-							<span role="columnheader">Product name</span>
-							<span role="columnheader" className="ncrs-defect">Description of defect</span>
+							<span role="columnheader">Product description</span>
+							<span role="columnheader">Quantity received</span>
+							<span role="columnheader">Quantity defective</span>
+							<span role="columnheader">Description of defect</span>
 							<span role="columnheader">Status</span>
-							
+							<span role="columnheader" className="ncrs-actions-col">
+								Actions
+							</span>
 						</div>
 					</div>
 
@@ -701,61 +835,72 @@ const Ncrs = ({
 							data.rows.map((n) => (
 								<div
 									key={String(n.record.id)}
-									className="ncrs-row ncrs-card ncrs-clickable"
+									className="ncrs-row ncrs-card"
 									role="row"
-									onClick={() => openDetails(n)}
 								>
 									<span role="cell" className="ncrs-number">
-										<button
-											type="button"
-											className="ncrs-open"
-											aria-label={`View details of NCR ${n.ncrNumber}`}
-											onClick={(e) => {
-												e.stopPropagation();
-												setViewing(n);
-											}}
-										>
-											{n.ncrNumber}
-										</button>
+										{n.ncrNumber}
 									</span>
-									
+									<span role="cell" className="ncrs-muted">
+										{formatDate(n.date)}
+									</span>
 									<span role="cell" className="ncrs-strong truncate-this">
 										{n.supplier}
 									</span>
 									<span role="cell" className="ncrs-strong truncate-this">
 										{n.product}
 									</span>
-									<span role="cell" className="truncate-this ncrs-defect">{n.defect}</span>
+									<span role="cell" className="truncate-this">
+										{n.qtyReceived}
+									</span>
+									<span role="cell" className="truncate-this">
+										{n.qtyDefective}
+									</span>
+									<span role="cell" className="truncate-this">
+										{n.defect}
+									</span>
 									<span role="cell">
-										<span className={`ncrs-status ncrs-status-${statusTone(n.status)}`}>
+										<span
+											className={`ncrs-status ncrs-status-${statusTone(n.status)}`}
+										>
 											<span className="ncrs-dot" aria-hidden="true" />
 											{n.status || "-"}
 										</span>
 									</span>
-									{editable && !isArchived(n.status) && (
-										<span
-											role="cell"
-											className="ncrs-edit-col"
-											onClick={(e) => e.stopPropagation()}
-										>
+									<span role="cell" className="ncrs-actions-col">
+										<Button
+											text="View"
+											aria={`View NCR ${n.ncrNumber}`}
+											onClick={() => setViewing(n)}
+										/>
+										{editable && (
 											<Button
-												text="Edit"
-												aria={`Edit NCR ${n.ncrNumber}`}
+												text={isDraftStatus(n.status) ? "Continue" : "Edit"}
+												aria={`${isDraftStatus(n.status) ? "Continue draft" : "Edit"} NCR ${n.ncrNumber}`}
 												onClick={() => setEditing(n.record)}
 											/>
-										</span>
-									)}
+										)}
+									</span>
 								</div>
 							))}
 
 						{showMessage && (
 							<div role="row">
-								<div className="ncrs-empty" role="cell" aria-colspan={editable ? 9 : 8}>
-									{loadState === "loading" && <p role="status">Loading NCRs...</p>}
+								<div className="ncrs-empty" role="cell" aria-colspan={9}>
+									{loadState === "loading" && (
+										<p role="status">Loading NCRs...</p>
+									)}
 									{loadState === "error" && (
 										<>
-											<p role="alert">The NCRs could not be loaded. {loadError}</p>
-											<Button text="Try again" aria="Try again" icon={FaSyncAlt} onClick={resetLoaders} />
+											<p role="alert">
+												The NCRs could not be loaded. {loadError}
+											</p>
+											<Button
+												text="Try again"
+												aria="Try again"
+												icon={FaSyncAlt}
+												onClick={resetLoaders}
+											/>
 										</>
 									)}
 									{loadState === "ready" && <p>{emptyText}</p>}
@@ -769,7 +914,8 @@ const Ncrs = ({
 			{loadState !== "error" && (
 				<nav className="ncrs-pager" aria-label={`Pagination: ${label}`}>
 					<p className="ncrs-pager-info" role="status">
-						Showing <strong>{firstShown}</strong> to <strong>{lastShown}</strong> of <strong>{data.total}</strong>{" "}
+						Showing <strong>{firstShown}</strong> to{" "}
+						<strong>{lastShown}</strong> of <strong>{data.total}</strong>{" "}
 						{data.total === 1 ? "report" : "reports"}
 						{updating && ". Updating results."}
 					</p>
@@ -789,7 +935,11 @@ const Ncrs = ({
 
 						{pageWindow(page, pageCount).map((p, i) =>
 							p === "…" ? (
-								<span key={`gap-${i}`} className="ncrs-page-gap" aria-hidden="true">
+								<span
+									key={`gap-${i}`}
+									className="ncrs-page-gap"
+									aria-hidden="true"
+								>
 									…
 								</span>
 							) : (
@@ -824,27 +974,6 @@ const Ncrs = ({
 				</nav>
 			)}
 
-			<NcrDetailsModal
-				open={viewing !== null}
-				data={viewing?.record}
-				status={viewing?.status}
-				onClose={() => setViewing(null)}
-				onEdit={
-					editable && viewing && !isArchived(viewing.status)
-						? (row) => {
-								setViewing(null);
-								setEditing(row);
-							}
-						: undefined
-				}
-				onRestore={
-					editable && viewing && isArchived(viewing.status)
-						? (row) => void restoreNcr(row)
-						: undefined
-				}
-				restoring={restoring}
-			/>
-
 			{editable && (
 				<>
 					<NewNcrButton onSaved={resetLoaders} />
@@ -858,6 +987,21 @@ const Ncrs = ({
 				</>
 			)}
 
+			<NcrDetailsModal
+				open={viewing !== null}
+				onClose={() => setViewing(null)}
+				title={viewing ? `NCR ${viewing.ncrNumber}` : "NCR details"}
+				details={viewing ? detailsFor(viewing) : []}
+				onEdit={
+					editable && viewing
+						? () => {
+								setEditing(viewing.record);
+								setViewing(null);
+							}
+						: undefined
+				}
+			/>
+
 			<style jsx>{`
 				.ncrs {
 					--head-bg: color-mix(in srgb, var(--link) 10%, var(--lifted-bg));
@@ -865,8 +1009,8 @@ const Ncrs = ({
 					--error-line: color-mix(in srgb, var(--error) 45%, transparent);
 					--success-bg: color-mix(in srgb, var(--success) 10%, transparent);
 					--success-line: color-mix(in srgb, var(--success) 45%, transparent);
-					--cols: minmax(5rem, 6rem) minmax(6rem, 12rem) minmax(6rem, 12rem) minmax(10rem, 1fr) minmax(5rem, max-content) minmax(4rem, max-content);
-					--cols-no-defect: minmax(5rem, 6rem) minmax(6rem, 12rem) minmax(6rem, 1fr) minmax(5rem, max-content) minmax(4rem, max-content);
+					--cols: 7rem 6.5rem minmax(0, 1fr) minmax(0, 1fr) 6rem 6rem
+						minmax(0, 1.4fr) 7rem 11rem;
 
 					color: var(--text-h);
 					font-size: 0.9375rem;
@@ -948,7 +1092,7 @@ const Ncrs = ({
 				}
 
 				.ncrs-table {
-					min-width: 56rem;
+					min-width: 62rem;
 				}
 
 				.ncrs-row {
@@ -1013,29 +1157,6 @@ const Ncrs = ({
 					color: var(--link);
 				}
 
-				.ncrs-clickable {
-					cursor: pointer;
-				}
-
-				.ncrs-clickable:hover {
-					background: var(--hover);
-				}
-
-				.ncrs-clickable:focus-within {
-					outline: 3px solid var(--focus);
-					outline-offset: 2px;
-				}
-
-				.ncrs-open {
-					padding: 0;
-					border: 0;
-					background: transparent;
-					color: inherit;
-					font: inherit;
-					text-align: left;
-					cursor: pointer;
-				}
-
 				.ncrs-muted {
 					color: var(--text);
 				}
@@ -1044,9 +1165,10 @@ const Ncrs = ({
 					font-weight: 500;
 				}
 
-				.ncrs-edit-col {
-					justify-self: end;
-					text-align: right;
+				.ncrs-actions-col {
+					display: flex;
+					justify-content: flex-end;
+					gap: 8px;
 				}
 
 				.ncrs-status {
@@ -1131,7 +1253,7 @@ const Ncrs = ({
 				}
 
 				.ncrs-page-btn {
-					min-width: 40px;
+					min-width: 44px;
 					min-height: 44px;
 					padding: 0 10px;
 					border: 2px solid transparent;
@@ -1172,28 +1294,10 @@ const Ncrs = ({
 					color: var(--text);
 				}
 
-				@media (max-width: 40rem) {	
+				@media (max-width: 40rem) {
 					.ncrs-search {
 						max-width: none;
 					}
-
-					.ncrs-pager-controls {
-    					width: 100%;
-    					justify-content: space-between;
-					}
-
-					.ncrs-table {
-						min-width: 40rem;
-					}
-
-					.ncrs-defect {
-						display: none;
-					}
-
-					.ncrs-row {
-						grid-template-columns: var(--cols-no-defect);
-					}
-					
 				}
 			`}</style>
 		</div>
