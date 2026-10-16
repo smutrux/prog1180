@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fkValue, listAll, refId, type NcRecord, type TableName } from "./api";
-import { loadNcrForEdit, unarchiveNcr, type NcrEditData, type NcrFields } from "./ncrService";
+import { isDraftRecord, loadNcrForEdit, parseDraft, unarchiveNcr, type NcrEditData, type NcrFields } from "./ncrService";
 import { FaSyncAlt } from "react-icons/fa";
 import Button from "./button";
 import { NcrDetailsModal, NcrModal, NewNcrButton } from "./ncrModal";
@@ -181,25 +181,61 @@ function findStatus(rec: NcRecord<NcrFields>, sd: StatusData): string {
 	return "";
 }
 
-function toRow(
-	record: NcRecord<NcrFields>,
-	ed: NcrEditData | null,
-	sd: StatusData,
-): NcrRow {
+/** The status shown for an NCR. Drafts always show "Draft". */
+const STATUS_DRAFT_LABEL = "Draft";
+const NEW_SUPPLIER_CHOICE = "Not listed: add a new supplier";
+function statusOf(rec: NcRecord<NcrFields>, sd: StatusData): string {
+	return isDraftRecord(rec) ? STATUS_DRAFT_LABEL : findStatus(rec, sd);
+}
+
+/** A list row built from the answers saved in a draft. */
+function draftRow(record: NcRecord<NcrFields>): NcrRow {
 	const fields = record.fields as unknown as AnyFields;
-	const num = (n: number | null | undefined) =>
-		n === null || n === undefined ? "-" : String(n);
+	const v = parseDraft(record)?.values ?? {};
+	const str = (section: string, key: string) => {
+		const x = v[section]?.[key];
+		return typeof x === "string" ? x.trim() : "";
+	};
+	const process = str("process", "processType");
+	const chosen = str("process", "supplier");
+	const supplier =
+		(chosen === NEW_SUPPLIER_CHOICE ? str("process", "newSupplierName") : chosen) ||
+		(process ? "In-house" : "-");
 	return {
 		record,
-		ncrNumber: ed?.ncrNumber || String(fields.NCRNumber ?? ""),
+		ncrNumber: String(fields.NCRNumber ?? ""),
 		date: findDate(fields),
-		supplier: ed ? (ed.supplier ?? "In-house") : "-",
-		product: ed ? ed.item.name : "-",
-		qtyReceived: num(ed?.quantityReceived),
-		qtyDefective: num(ed?.quantityDefective),
-		defect: ed?.defectDescription ?? "-",
-		status: findStatus(record, sd),
+		supplier,
+		product: str("item", "itemName") || "-",
+		qtyReceived: str("defect", "qtyReceived") || "-",
+		qtyDefective: str("defect", "qtyDefective") || "-",
+		defect: str("defect", "defectDescription") || "-",
+		status: STATUS_DRAFT_LABEL,
 	};
+}
+
+function toRow(
+    record: NcRecord<NcrFields>,
+    ed: NcrEditData | null,
+    sd: StatusData,
+): NcrRow {
+    if (isDraftRecord(record)) return draftRow(record);
+
+    const fields = record.fields as unknown as AnyFields;
+    const num = (n: number | null | undefined) =>
+        n === null || n === undefined ? "-" : String(n);
+
+    return {
+        record,
+        ncrNumber: ed?.ncrNumber || String(fields.NCRNumber ?? ""),
+        date: findDate(fields),
+        supplier: ed ? (ed.supplier ?? "In-house") : "-",
+        product: ed ? ed.item.name : "-",
+        qtyReceived: num(ed?.quantityReceived),
+        qtyDefective: num(ed?.quantityDefective),
+        defect: ed?.defectDescription ?? "-",
+        status: findStatus(record, sd),
+    };
 }
 
 let lookups: Promise<StatusData> | null = null;
@@ -249,6 +285,7 @@ function enrich(
 	sd: StatusData,
 ): Promise<NcrRow[]> {
 	return mapPool(records, 6, async (rec) => {
+		if (isDraftRecord(rec)) return draftRow(rec);
 		const key = String(rec.id);
 		const cached = rowCache.get(key);
 		if (cached) return cached;
@@ -276,7 +313,7 @@ async function fetchNcrPage(
 	const cutoff =
 		days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 	const candidates = all.filter((rec) => {
-		const status = findStatus(rec, sd);
+		const status = statusOf(rec, sd);
 		if (filters.show === "archived" && !isArchived(status)) return false;
 		if (filters.status !== ALL_STATUSES && status !== filters.status)
 			return false;
@@ -602,9 +639,10 @@ const Ncrs = ({
 	}, []);
 
 	const statusOptions = useMemo(() => {
-		const names = statusNames.filter(
-			(n) => show !== "archived" || isArchived(n),
-		);
+		const names = [
+			...statusNames.filter((n) => show !== "archived" || isArchived(n)),
+			...(show === "archived" ? [] : [STATUS_DRAFT_LABEL]),
+		];
 		return [
 			ALL_STATUSES,
 			...Array.from(
@@ -739,8 +777,8 @@ const Ncrs = ({
 											onClick={(e) => e.stopPropagation()}
 										>
 											<Button
-												text="Edit"
-												aria={`Edit NCR ${n.ncrNumber}`}
+												text={isDraftRecord(n.record) ? "Continue" : "Edit"}
+												aria={`${isDraftRecord(n.record) ? "Continue" : "Edit"} NCR ${n.ncrNumber}`}
 												onClick={() => setEditing(n.record)}
 											/>
 										</span>
@@ -851,7 +889,7 @@ const Ncrs = ({
 					<NcrModal
 						open={editing !== null}
 						onClose={() => setEditing(null)}
-						edit
+						edit={editing === null || !isDraftRecord(editing)}
 						data={editing ?? undefined}
 						onSaved={resetLoaders}
 					/>

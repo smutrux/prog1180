@@ -6,8 +6,11 @@ import {
 	PROCESS_LABELS,
 	SubmitError,
 	loadFormLookups,
+	isDraftRecord,
 	loadNcrForEdit,
 	nextNcrNumber,
+	parseDraft,
+	saveDraft,
 	submitNcr,
 	updateNcr,
 	type FormLookups,
@@ -137,6 +140,8 @@ function addEditOptions(l: FormLookups, ed: NcrEditData | null): FormLookups {
 }
 
 const CREATE_PREFIX = "ncr-draft-v2";
+const savedAll = (value: boolean) =>
+	Object.fromEntries(SAVED_IDS.map((id) => [id, value])) as Record<SectionId, boolean>;
 const sectionKey = (prefix: string, id: SectionId) => `${prefix}:${id}`;
 
 function readSection(prefix: string, id: SectionId): unknown {
@@ -323,6 +328,9 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const [lookupError, setLookupError] = useState("");
 	const [editData, setEditData] = useState<NcrEditData | null>(null);
 	const isArchived = edit && editData?.isArchived === true;
+	const isDraft = !edit && !!data && isDraftRecord(data);
+	const draftIdRef = useRef<number | string | null>(null);
+	const [savingDraft, setSavingDraft] = useState(false);
 
 	const headingRef = useRef<HTMLHeadingElement>(null);
 	const summaryRef = useRef<HTMLElement>(null);
@@ -336,13 +344,46 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const editRef = useRef<NcrEditData | null>(null);
 	const baseRef = useRef<FormValues>(makeDefaults(""));
 
-	const prefix = edit && data ? `${CREATE_PREFIX}-edit-${data.id}` : CREATE_PREFIX;
+	const prefix =
+		edit && data
+			? `${CREATE_PREFIX}-edit-${data.id}`
+			: isDraft && data
+				? `${CREATE_PREFIX}-draft-${data.id}`
+				: CREATE_PREFIX;
 
 	const init = useCallback(async () => {
 		setLookupState("loading");
 		setLookupError("");
 		try {
 			if (edit && !dataRef.current) throw new Error("No NCR was given to edit.");
+			const draftRec = !edit && dataRef.current && isDraftRecord(dataRef.current) ? dataRef.current : null;
+			if (draftRec) {
+				const l = await loadFormLookups();
+				const parsed = parseDraft(draftRec);
+				const base = makeDefaults((draftRec.fields.NCRNumber ?? "").trim());
+				const merged: FormValues = JSON.parse(JSON.stringify(base));
+				if (parsed) {
+					for (const id of SAVED_IDS) {
+						const stored = parsed.values[id];
+						if (stored && typeof stored === "object") (merged as Record<SectionId, unknown>)[id] = { ...merged[id], ...stored };
+					}
+				}
+				if (!Array.isArray(merged.evidence.links) || merged.evidence.links.length === 0) merged.evidence.links = [""];
+				if (!Array.isArray(merged.defect.problemTypeIds)) merged.defect.problemTypeIds = [];
+				baseRef.current = base;
+				editRef.current = null;
+				draftIdRef.current = draftRec.id;
+				setEditData(null);
+				setLookups(l);
+				setValues(sanitize(merged, l));
+				setSaved(savedAll(true));
+				setHasDraft(false);
+				setDirtyIds(new Set());
+				setStep(Math.min(Math.max(parsed?.step ?? 0, 0), REVIEW_STEP));
+				setStatus("Your saved draft was loaded. You are on the section where you left off.");
+				setLookupState("ready");
+				return;
+			}
 			const [l, next, ed] = await Promise.all([
 				loadFormLookups(),
 				edit ? Promise.resolve("") : nextNcrNumber(),
@@ -452,6 +493,39 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		setStatus(`This section has ${n} ${n === 1 ? "problem" : "problems"}. Fix them and try again.`);
 	}
 
+	async function saveDraftNow() {
+		if (savingDraft || submitting) return;
+		if (!NCR_NUMBER.test(values.process.ncrNumber)) {
+			setStatus("The draft was not saved. The NCR number is missing. Reload the form to get the next number.");
+			return;
+		}
+		setSavingDraft(true);
+		try {
+			const result = await saveDraft(
+				{ recordId: draftIdRef.current, ncrNumber: values.process.ncrNumber, values, step },
+				lookups.statuses,
+				setStatus,
+			);
+			draftIdRef.current = result.recordId;
+			setSaved(savedAll(true));
+			setDirtyIds(new Set());
+			setStatus(`Draft ${result.ncrNumber} saved. You can close this form and choose Continue on it in the NCR list later. Chosen files are not kept in a draft.`);
+			onSaved?.(result.ncrNumber);
+		} catch (err) {
+			if (err instanceof DuplicateNcrNumberError) {
+				const next = await nextNcrNumber().catch(() => "");
+				if (next) update("process", { ncrNumber: next });
+				setStatus(
+					`The draft was not saved. NCR number ${err.ncrNumber} was already used. ${next ? `Your NCR number is now ${next}. Choose Save draft again.` : "Reload the form to get a new number."}`,
+				);
+			} else {
+				setStatus(`The draft was not saved. ${messageOf(err)} Your answers are still on screen.`);
+			}
+		} finally {
+			setSavingDraft(false);
+		}
+	}
+
 	function saveAndContinue() {
 		const id = SECTIONS[step].id as SectionId;
 		const found = validate(id, values, files, false);
@@ -488,7 +562,8 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			const submission = buildSubmission(values, files, lookups, edit ? editData?.statusId ?? null : null);
 			const result = edit && editData
 				? await updateNcr(editData, submission, setStatus)
-				: await submitNcr(submission, setStatus);
+				: await submitNcr(submission, setStatus, draftIdRef.current);
+			draftIdRef.current = null;
 			clearDrafts(prefix);
 			setHasDraft(false);
 			setDirtyIds(new Set());
@@ -518,7 +593,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	}
 
 	function resetForm(message: string) {
-		const base = edit ? baseRef.current : makeDefaults("");
+		const base = edit ? baseRef.current : makeDefaults(draftIdRef.current !== null ? values.process.ncrNumber : "");
 		setValues(sanitize(JSON.parse(JSON.stringify(base)), lookups));
 		setSaved(Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>);
 		setDirtyIds(new Set());
@@ -900,13 +975,25 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 							Close
 						</button>
 					) : (
-						<button type="submit" className="ncr-btn ncr-btn-primary" aria-disabled={submitting || undefined}>
-							{step === REVIEW_STEP
-								? submitting
-									? edit ? "Saving..." : "Submitting..."
-									: edit ? "Save changes" : "Submit NCR"
-								: "Save and continue"}
-						</button>
+						<>
+							{!edit && (
+								<button
+									type="button"
+									className="ncr-btn"
+									aria-disabled={savingDraft || undefined}
+									onClick={() => void saveDraftNow()}
+								>
+									{savingDraft ? "Saving draft..." : "Save draft"}
+								</button>
+							)}
+							<button type="submit" className="ncr-btn ncr-btn-primary" aria-disabled={submitting || undefined}>
+								{step === REVIEW_STEP
+									? submitting
+										? edit ? "Saving..." : "Submitting..."
+										: edit ? "Save changes" : "Submit NCR"
+									: "Save and continue"}
+							</button>
+						</>
 					)}
 				</div>
 			</div>

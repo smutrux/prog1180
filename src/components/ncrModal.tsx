@@ -3,7 +3,7 @@ import { LuX } from "react-icons/lu";
 import { FaPlus } from "react-icons/fa6";
 import Button from "./button";
 import type { NcRecord } from "./api";
-import { loadNcrForEdit, type NcrEditData, type NcrFields } from "./ncrService";
+import { isDraftRecord, loadNcrForEdit, type NcrEditData, type NcrFields } from "./ncrService";
 import NcrForm from "./submitForm";
 
 export interface NcrModalProps {
@@ -90,7 +90,7 @@ export function NcrModal({
 				</div>
 				{open && (
 					<NcrForm
-						key={edit ? String(data?.id) : "new"}
+						key={data ? String(data.id) : "new"}
 						edit={edit}
 						data={data}
 						onClose={onClose}
@@ -119,6 +119,8 @@ const HIDDEN_FIELDS = new Set([
 	"id",
 	"CreatedAt",
 	"UpdatedAt",
+	"NCRDraftData",
+	"NCRDraftStep",
 	"created_at",
 	"updated_at",
 ]);
@@ -233,6 +235,7 @@ export function NcrDetailsModal({
 			)
 		: [];
 	const number = data?.fields.NCRNumber;
+	const isDraft = !!data && isDraftRecord(data);
 	const settled = related !== null && related.id === data?.id;
 	const values = relatedValues(settled ? related.ed : null, status);
 
@@ -259,6 +262,13 @@ export function NcrDetailsModal({
 						<h2 id="ncr-details-title">
 							{number ? `NCR ${number}` : "NCR details"}
 						</h2>
+
+						{isDraft && (
+							<p className="ncr-details-draft">
+								This NCR is a draft. It has not been submitted yet, and some
+								details below fill in once it is.
+							</p>
+						)}
 
 						<section aria-labelledby="ncr-related-title" aria-busy={!settled}>
 							<h3 id="ncr-related-title" className="ncr-details-heading">
@@ -315,8 +325,8 @@ export function NcrDetailsModal({
 							)}
 							{onEdit && (
 								<Button
-									text="Edit"
-									aria={`Edit NCR ${number ?? ""}`.trim()}
+									text={isDraft ? "Continue" : "Edit"}
+									aria={`${isDraft ? "Continue" : "Edit"} NCR ${number ?? ""}`.trim()}
 									onClick={() => onEdit(data)}
 								/>
 							)}
@@ -409,6 +419,13 @@ function ModalStyles() {
 
 			.ncr-details h2 {
 				margin-bottom: 0;
+			}
+
+			.ncr-details-draft {
+				margin: 0;
+				padding: 0.75rem 1rem;
+				border: 1px dashed var(--border);
+				border-radius: 0.5rem;
 			}
 
 			.ncr-details-heading {
