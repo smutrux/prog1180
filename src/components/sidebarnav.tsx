@@ -49,7 +49,7 @@ const SidebarNav = () => {
 		<>
 			<header className="mobileHeader">
 				<div className="mobileBrand">
-					<img src={crossfireLogo} alt="" />
+					<img src={crossfireLogo} alt="Crossfire logo" />
 					<NavLink to="/dashboard">Crossfire</NavLink>
 				</div>
 
@@ -79,7 +79,7 @@ const SidebarNav = () => {
 				aria-label="Main navigation"
 			>
 				<div className="sidebarBrand">
-					<img src={crossfireLogo} alt="" />
+					<img src={crossfireLogo} alt="Crossfire logo" />
 					<NavLink to="/dashboard">Crossfire</NavLink>
 				</div>
 
@@ -99,7 +99,7 @@ const SidebarNav = () => {
 					<li>
 						<Button
 							text="Refresh page data"
-							aria="Refresh reports"
+							aria="Refresh page data"
 							icon={FaSyncAlt}
 							onClick={() => reload()}
 						/>
@@ -133,8 +133,8 @@ const SidebarNav = () => {
 				}
 
 				.sidebarBrand img {
-					width: 40px;
-					height: 40px;
+					width: 64px;
+					height: 64px;
 				}
 
 				.sidebarBrand a,
