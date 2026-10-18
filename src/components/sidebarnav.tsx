@@ -80,7 +80,7 @@ const SidebarNav = () => {
 			>
 				<div className="sidebarBrand">
 					<img src={crossfireLogo} alt="Crossfire logo" />
-					<NavLink to="/dashboard">Crossfire</NavLink>
+					<NavLink to="/dashboard" style={{padding: "0.5rem 0"}}>Crossfire</NavLink>
 				</div>
 
 				<ul>
