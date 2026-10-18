@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Input from "./input";
+import Button from "./button";
 import type { NcRecord } from "./api";
 import {
 	DuplicateNcrNumberError,
@@ -634,9 +635,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 					<p>{lookupError}</p>
 				</section>
 				<p>
-					<button type="button" className="ncr-btn ncr-btn-primary" onClick={() => void init()}>
-						Try again
-					</button>
+					<Button text="Try again" aria="Try again" bold onClick={() => void init()} />
 				</p>
 				<FormStyles />
 			</div>
@@ -650,9 +649,12 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				<p>{edit ? "The changes were saved to the database." : "The report was saved to the database."}</p>
 				<div className="ncr-actions">
 					{!edit && (
-						<button type="button" className="ncr-btn ncr-btn-primary" onClick={() => { setSubmitted(null); resetForm("Started a new NCR."); }}>
-							Start a new NCR
-						</button>
+						<Button
+							text="Start a new NCR"
+							aria="Start a new NCR"
+							bold
+							onClick={() => { setSubmitted(null); resetForm("Started a new NCR."); }}
+						/>
 					)}
 					{onClose && (
 						<button type="button" className="ncr-btn" onClick={onClose}>
@@ -665,6 +667,13 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			</div>
 		);
 	}
+
+	const primaryLabel =
+		step === REVIEW_STEP
+			? submitting
+				? edit ? "Saving..." : "Submitting..."
+				: edit ? "Save changes" : "Submit NCR"
+			: "Save and continue";
 
 	return (
 		<form
@@ -971,9 +980,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 						</button>
 					)}
 					{isArchived ? (
-						<button type="button" className="ncr-btn ncr-btn-primary" onClick={onClose}>
-							Close
-						</button>
+						<Button text="Close" aria="Close" bold onClick={() => onClose?.()} />
 					) : (
 						<>
 							{!edit && (
@@ -986,13 +993,16 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 									{savingDraft ? "Saving draft..." : "Save draft"}
 								</button>
 							)}
-							<button type="submit" className="ncr-btn ncr-btn-primary" aria-disabled={submitting || undefined}>
-								{step === REVIEW_STEP
-									? submitting
-										? edit ? "Saving..." : "Submitting..."
-										: edit ? "Save changes" : "Submit NCR"
-									: "Save and continue"}
-							</button>
+							<Button
+								text={primaryLabel}
+								aria={primaryLabel}
+								bold
+								enabled={!submitting}
+								onClick={() => {
+									if (step === REVIEW_STEP) void submit();
+									else saveAndContinue();
+								}}
+							/>
 						</>
 					)}
 				</div>
