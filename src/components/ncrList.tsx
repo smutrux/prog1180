@@ -776,7 +776,7 @@ const Ncrs = ({
 											className="ncrs-edit-col"
 											onClick={(e) => e.stopPropagation()}
 										>
-											<Button
+											<Button												
 												text={isDraftRecord(n.record) ? "Continue" : "Edit"}
 												aria={`${isDraftRecord(n.record) ? "Continue" : "Edit"} NCR ${n.ncrNumber}`}
 												onClick={() => setEditing(n.record)}
@@ -903,8 +903,8 @@ const Ncrs = ({
 					--error-line: color-mix(in srgb, var(--error) 45%, transparent);
 					--success-bg: color-mix(in srgb, var(--success) 10%, transparent);
 					--success-line: color-mix(in srgb, var(--success) 45%, transparent);
-					--cols: minmax(5rem, 6rem) minmax(6rem, 12rem) minmax(6rem, 12rem) minmax(10rem, 1fr) minmax(5rem, max-content) minmax(4rem, max-content);
-					--cols-no-defect: minmax(5rem, 6rem) minmax(6rem, 12rem) minmax(6rem, 1fr) minmax(5rem, max-content) minmax(4rem, max-content);
+					--cols: minmax(5rem, 6rem) minmax(6rem, 12rem) minmax(6rem, 12rem) minmax(10rem, 1fr) 6rem minmax(4rem, 7rem);
+					--cols-no-defect: minmax(5rem, 6rem) minmax(6rem, 12rem) minmax(6rem, 1fr) 6rem minmax(4rem, 7rem);
 
 					color: var(--text-h);
 					font-size: 0.9375rem;
@@ -1084,12 +1084,18 @@ const Ncrs = ({
 
 				.ncrs-edit-col {
 					justify-self: end;
-					text-align: right;
+					text-align: right;					
+				}
+				
+				.ncrs-edit-col button {
+					width: 6.5rem;
 				}
 
 				.ncrs-status {
 					display: inline-flex;
+					width: 6rem;
 					align-items: center;
+					justify-content: center;
 					gap: 6px;
 					padding: 3px 10px;
 					border: 1px solid;
