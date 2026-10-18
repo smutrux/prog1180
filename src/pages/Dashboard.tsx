@@ -1,4 +1,5 @@
 import PageHeader from "../components/pageHeader";
+import { NewNcrButton } from "../components/ncrModal";
 
 /** The dashboard: four headline numbers and the list of NCRs. */
 const Dashboard = () => {
@@ -8,6 +9,11 @@ const Dashboard = () => {
 				title="Welcome to NCR Manager"
 				description="Quality Control Dashboard"
 			/>
+
+			
+						<NewNcrButton />
+
+
 		</div>
 	);
 };
