@@ -3,7 +3,7 @@ import { fkValue, listAll, refId, type NcRecord, type TableName } from "./api";
 import { isDraftRecord, loadNcrForEdit, parseDraft, unarchiveNcr, type NcrEditData, type NcrFields } from "./ncrService";
 import { FaSyncAlt } from "react-icons/fa";
 import Button from "./button";
-import { NcrDetailsModal, NcrModal, NewNcrButton } from "./ncrModal";
+import { NcrDetailsModal, NcrModal } from "./ncrModal";
 
 const COLUMN_OVERRIDES = { date: "", status: "" };
 
