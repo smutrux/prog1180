@@ -369,6 +369,9 @@ function ModalStyles() {
 				top: 2rem;
 				right: 2rem;
 				z-index: 1000;
+				border: 0.25rem solid var(--error);	
+				border-radius: 0.75rem;
+				box-shadow: var(--shadow);	
 			}
 
 			.ncr-modal {
