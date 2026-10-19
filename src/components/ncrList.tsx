@@ -1175,7 +1175,7 @@ const Ncrs = ({
 				}
 
 				.ncrs-page-btn {
-					min-width: 40px;
+					min-width: 44px;
 					min-height: 44px;
 					padding: 0 10px;
 					border: 2px solid transparent;
