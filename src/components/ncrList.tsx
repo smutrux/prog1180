@@ -4,6 +4,7 @@ import { isDraftRecord, loadNcrForEdit, parseDraft, unarchiveNcr, type NcrEditDa
 import { FaSyncAlt } from "react-icons/fa";
 import Button from "./button";
 import { NcrDetailsModal, NcrModal } from "./ncrModal";
+import { useCurrentUser } from "./currentUser";
 
 const COLUMN_OVERRIDES = { date: "", status: "" };
 
@@ -478,9 +479,12 @@ const Ncrs = ({
 	show = "all",
 	simple = false,
 	pageSize = 10,
-	editable = true,
+	editable: allowEdit = true,
 	label = "Non-conformance reports",
 }: NcrsProps) => {
+	const me = useCurrentUser();
+	const editable = allowEdit && me.status === "ready" && !me.isPending;
+	
 	const defaultDate = simple || show === "archived" ? ALL_TIME : DEFAULT_DATE;
 
 	const [data, setData] = useState<PageResult>({ rows: [], total: 0 });

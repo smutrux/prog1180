@@ -5,6 +5,7 @@ import Button from "./button";
 import type { NcRecord } from "./api";
 import { isDraftRecord, loadNcrForEdit, type NcrEditData, type NcrFields } from "./ncrService";
 import NcrForm from "./submitForm";
+import { useCurrentUser } from "./currentUser";
 
 export interface NcrModalProps {
 	open: boolean;
@@ -107,6 +108,7 @@ export function NcrModal({
 export interface NcrDetailsModalProps {
 	open: boolean;
 	onClose: () => void;
+	onPrint: () => void;
 	data?: NcRecord<NcrFields>;
 	status?: string;
 	onEdit?: (row: NcRecord<NcrFields>) => void;
@@ -186,6 +188,7 @@ const isShownField = (key: string, value: unknown) =>
 export function NcrDetailsModal({
 	open,
 	onClose,
+	onPrint,
 	data,
 	status,
 	onEdit,
@@ -316,6 +319,7 @@ export function NcrDetailsModal({
 						</section>
 
 						<div className="ncr-details-actions">
+							<Button text="Print" aria="Print" onClick={onPrint} />
 							{onRestore && (
 								<Button
 									text={restoring ? "Restoring..." : "Restore / Make Live"}
@@ -346,6 +350,8 @@ export function NewNcrButton({
 	onSaved?: (ncrNumber: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
+	const me = useCurrentUser();
+	const canEdit = me.status === "ready" && !me.isPending;
 	return (
 		<>
 			<div className="ncr-new-btn">
@@ -353,6 +359,7 @@ export function NewNcrButton({
 					text="New NCR"
 					aria="New NCR"
 					icon={FaPlus}
+					enabled={canEdit}
 					onClick={() => setOpen(true)}
 				/>
 			</div>
