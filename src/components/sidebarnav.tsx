@@ -8,7 +8,9 @@ import { FaSyncAlt } from "react-icons/fa";
 import { IoTrashOutline } from "react-icons/io5";
 import crossfireLogo from "../assets/crossfireLogo.svg";
 import Button from "../components/button";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from "react-router-dom";
+import { Show, useAuth, UserButton } from "@clerk/react";
+import Login from "../components/login";
 
 const links: { to: string; label: string; icon: IconType }[] = [
 	{ to: "/dashboard", label: "Dashboard", icon: LuLayoutDashboard },
@@ -30,6 +32,16 @@ const SidebarNav = () => {
 	const menuButton = useRef<HTMLButtonElement>(null);
 	const navigate = useNavigate();
 
+	const { isSignedIn } = useAuth();
+
+	/** Returns true (and alerts) when the click should be blocked. */
+	const blockIfSignedOut = (e?: React.MouseEvent) => {
+		if (isSignedIn) return false;
+		e?.preventDefault();
+		alert("Please log in first.");
+		return true;
+	};
+
 	useEffect(() => {
 		if (!isOpen) return;
 		const onKeyDown = (e: KeyboardEvent) => {
@@ -42,15 +54,18 @@ const SidebarNav = () => {
 	}, [isOpen]);
 
 	const reload = () => {
-    navigate(0);
-  }
+		if (blockIfSignedOut()) return;
+		navigate(0);
+	};
 
 	return (
 		<>
 			<header className="mobileHeader">
 				<div className="mobileBrand">
 					<img src={crossfireLogo} alt="Crossfire logo" />
-					<NavLink to="/dashboard">Crossfire</NavLink>
+					<NavLink to="/dashboard" onClick={blockIfSignedOut}>
+						Crossfire
+					</NavLink>
 				</div>
 
 				<button
@@ -80,7 +95,13 @@ const SidebarNav = () => {
 			>
 				<div className="sidebarBrand">
 					<img src={crossfireLogo} alt="Crossfire logo" />
-					<NavLink to="/dashboard" style={{padding: "0.5rem 0"}}>Crossfire</NavLink>
+					<NavLink
+						to="/dashboard"
+						style={{ padding: "0.5rem 0" }}
+						onClick={blockIfSignedOut}
+					>
+						Crossfire
+					</NavLink>
 				</div>
 
 				<ul>
@@ -89,7 +110,10 @@ const SidebarNav = () => {
 							<NavLink
 								to={to}
 								className={({ isActive }) => (isActive ? "active" : "")}
-								onClick={() => setIsOpen(false)}
+								onClick={(e) => {
+									if (blockIfSignedOut(e)) return;
+									setIsOpen(false);
+								}}
 							>
 								<Icon aria-hidden="true" />
 								{label}
@@ -105,6 +129,13 @@ const SidebarNav = () => {
 						/>
 					</li>
 				</ul>
+
+				<div style={{ marginTop: "auto" }}>
+					{/* <Login /> */}
+					<Show when="signed-in" fallback={<Login />}>
+						<UserButton />
+					</Show>
+				</div>
 			</nav>
 
 			<style jsx global>{`
