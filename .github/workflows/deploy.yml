@@ -24,6 +24,7 @@ jobs:
         run: |
           echo "NC_BASE_URL=${{ secrets.NC_BASE_URL }}" >> .env
           echo "NC_TOKEN=${{ secrets.NC_TOKEN }}" >> .env
+          echo "VITE_CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}" >> .env
 
       - name: Build project
         run: npm run build
