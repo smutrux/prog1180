@@ -1,5 +1,7 @@
 import PageHeader from "../components/pageHeader";
 import { NewNcrButton } from "../components/ncrModal";
+import { Show } from "@clerk/react";
+import Login from "../components/login";
 
 /** The dashboard: four headline numbers and the list of NCRs. */
 const Dashboard = () => {
@@ -9,11 +11,9 @@ const Dashboard = () => {
 				title="Welcome to NCR Manager"
 				description="Quality Control Dashboard"
 			/>
-
-			
-						<NewNcrButton />
-
-
+			<Show when="signed-in" fallback={<Login />}>
+				<NewNcrButton />
+			</Show>
 		</div>
 	);
 };
