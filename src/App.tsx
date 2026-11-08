@@ -11,7 +11,7 @@ import { Toaster } from 'react-hot-toast';
 const App = () => (
     <BrowserRouter>
         {/* Toast notifications container */}
-        <Toaster position="top-right" />
+        <Toaster position="top-center" />
 
         <a className="skip-link" href="#main-content">
             Skip to main content
