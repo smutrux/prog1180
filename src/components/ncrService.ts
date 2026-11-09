@@ -62,6 +62,11 @@ export interface NcrFields {
 	NCROperationsComments?: string | null;
 	NCROperationsRepresentative?: string | null;
 	NCROperationsDateCompleted?: string | null;
+	NCRQualityFinalInspectionResult?: string | null;
+	NCRQualityFinalComments?: string | null;
+	NCRQualityFinalAcceptanceConfirmed?: boolean | null;
+	NCRQualityDateClosed?: string | null;
+	NCRQualityClosedBy?: string | null;
 	SOLineItemId: number | null;
 	POLineItemId: number | null;
 	NCRRaisedByPersonId: number | null;
@@ -387,6 +392,11 @@ export interface NcrEditData {
 	operationsComments: string;
 	operationsRepresentative: string;
 	operationsDateCompleted: string;
+	qualityFinalInspectionResult: string;
+	qualityFinalComments: string;
+	qualityFinalAcceptanceConfirmed: boolean | null;
+	qualityDateClosed: string;
+	qualityClosedBy: string;
 	inspector: { personId: number; first: string; middle: string; last: string };
 	links: string[];
 	linkRows: { recordId: number | string; url: string }[];
@@ -412,6 +422,11 @@ const PATCHED_COLUMNS = [
 	"NCROperationsComments",
 	"NCROperationsRepresentative",
 	"NCROperationsDateCompleted",
+	"NCRQualityFinalInspectionResult",
+	"NCRQualityFinalComments",
+	"NCRQualityFinalAcceptanceConfirmed",
+	"NCRQualityDateClosed",
+	"NCRQualityClosedBy",
 	"NCRUpdatedAt",
 	"SOLineItemId",
 	"POLineItemId",
@@ -509,6 +524,14 @@ export async function loadNcrForEdit(
 		operationsComments: f.NCROperationsComments ?? "",
 		operationsRepresentative: f.NCROperationsRepresentative ?? "",
 		operationsDateCompleted: f.NCROperationsDateCompleted ?? "",
+		qualityFinalInspectionResult: f.NCRQualityFinalInspectionResult ?? "",
+		qualityFinalComments: f.NCRQualityFinalComments ?? "",
+		qualityFinalAcceptanceConfirmed:
+			typeof f.NCRQualityFinalAcceptanceConfirmed === "boolean"
+				? f.NCRQualityFinalAcceptanceConfirmed
+				: null,
+		qualityDateClosed: f.NCRQualityDateClosed ?? "",
+		qualityClosedBy: f.NCRQualityClosedBy ?? "",
 		inspector: {
 			personId: person
 				? refId("Person", person)
@@ -553,6 +576,11 @@ export interface NcrSubmission {
 	operationsComments: string;
 	operationsRepresentative: string;
 	operationsDateCompleted: string;
+	qualityFinalInspectionResult: string;
+	qualityFinalComments: string;
+	qualityFinalAcceptanceConfirmed: boolean | null;
+	qualityDateClosed: string;
+	qualityClosedBy: string;
 	inspector:
 		| { kind: "existing"; personId: number; rolePersonId: number }
 		| { kind: "new"; first: string; middle: string; last: string };
@@ -834,6 +862,11 @@ export async function submitNcr(
 			NCROperationsComments: s.operationsComments,
 			NCROperationsRepresentative: s.operationsRepresentative,
 			NCROperationsDateCompleted: s.operationsDateCompleted || null,
+			NCRQualityFinalInspectionResult: s.qualityFinalInspectionResult,
+			NCRQualityFinalComments: s.qualityFinalComments,
+			NCRQualityFinalAcceptanceConfirmed: s.qualityFinalAcceptanceConfirmed,
+			NCRQualityDateClosed: s.qualityDateClosed || null,
+			NCRQualityClosedBy: s.qualityClosedBy,
 			...NCR_DEFAULTS,
 			NCRCreatedAtD: now,
 			NCRUpdatedAt: now,
@@ -971,6 +1004,11 @@ export async function updateNcr(
 			NCROperationsComments: s.operationsComments,
 			NCROperationsRepresentative: s.operationsRepresentative,
 			NCROperationsDateCompleted: s.operationsDateCompleted || null,
+			NCRQualityFinalInspectionResult: s.qualityFinalInspectionResult,
+			NCRQualityFinalComments: s.qualityFinalComments,
+			NCRQualityFinalAcceptanceConfirmed: s.qualityFinalAcceptanceConfirmed,
+			NCRQualityDateClosed: s.qualityDateClosed || null,
+			NCRQualityClosedBy: s.qualityClosedBy,
 			NCRUpdatedAt: now,
 			[edit.statusColumn]: s.status.id,
 			NCRClosedAt: closedAt,

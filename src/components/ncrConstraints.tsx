@@ -491,6 +491,12 @@ export async function validateSubmission(
 		out.push({ field, message, value });
 
 	// The answers themselves.
+	if (/clos/i.test(s.status.name) && s.qualityFinalAcceptanceConfirmed !== true)
+		add(
+			"qualityAcceptanceConfirmed",
+			"An NCR cannot be closed unless final acceptance is confirmed Yes.",
+		);
+
 	if (!rules.processLabels.includes(s.processApplicable))
 		add("processType", "Choose which process this report covers.");
 

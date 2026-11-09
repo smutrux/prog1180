@@ -74,6 +74,13 @@ interface FormValues {
 		representative: string;
 		dateCompleted: string;
 	};
+	qualityFinalReview: {
+		inspectionResult: string;
+		comments: string;
+		acceptanceConfirmed: YesNo;
+		dateClosed: string;
+		closedBy: string;
+	};
 	evidence: { links: string[]; fileNames: string[] };
 	inspector: {
 		inspector: string;
@@ -93,12 +100,13 @@ const BASE_SECTIONS: { id: SectionId | "review"; title: string }[] = [
 	{ id: "inspector", title: "Inspector" },
 	{ id: "review", title: "Review and submit" },
 ];
-const SAVED_IDS: SectionId[] = ["process", "item", "defect", "engineering", "operations", "evidence", "inspector"];
+const SAVED_IDS: SectionId[] = ["process", "item", "defect", "engineering", "operations", "qualityFinalReview", "evidence", "inspector"];
 
 function sectionsFor(
 	engineeringRequired: boolean,
 	includeEngineering: boolean,
 	includeOperations: boolean,
+	includeQualityFinalReview: boolean,
 ) {
 	const sections = [...BASE_SECTIONS];
 	if (includeEngineering && engineeringRequired) {
@@ -118,6 +126,13 @@ function sectionsFor(
 			title: "Operations Disposition",
 		});
 	}
+	if (includeQualityFinalReview) {
+		const reviewIndex = sections.findIndex((section) => section.id === "review");
+		sections.splice(reviewIndex, 0, {
+			id: "qualityFinalReview",
+			title: "Quality Final Review",
+		});
+	}
 	return sections;
 }
 
@@ -127,6 +142,7 @@ const makeDefaults = (ncrNumber: string): FormValues => ({
 	defect: { qtyReceived: "", qtyDefective: "", problemTypeIds: [], defectDescription: "", isNonconforming: "", engineeringRequired: "" },
 	engineering: { disposition: "", instructions: "", comments: "", representative: "", dateCompleted: "" },
 	operations: { disposition: "", instructions: "", comments: "", representative: "", dateCompleted: "" },
+	qualityFinalReview: { inspectionResult: "", comments: "", acceptanceConfirmed: "", dateClosed: "", closedBy: "" },
 	evidence: { links: [""], fileNames: [] },
 	inspector: { inspector: "", newFirstName: "", newMiddleName: "", newLastName: "" },
 });
@@ -177,6 +193,18 @@ function toFormValues(ed: NcrEditData): FormValues {
 			comments: ed.operationsComments,
 			representative: ed.operationsRepresentative,
 			dateCompleted: ed.operationsDateCompleted.slice(0, 10),
+		},
+		qualityFinalReview: {
+			inspectionResult: ed.qualityFinalInspectionResult,
+			comments: ed.qualityFinalComments,
+			acceptanceConfirmed:
+				ed.qualityFinalAcceptanceConfirmed === null
+					? ""
+					: ed.qualityFinalAcceptanceConfirmed
+						? "yes"
+						: "no",
+			dateClosed: ed.qualityDateClosed.slice(0, 10),
+			closedBy: ed.qualityClosedBy,
 		},
 		evidence: { links: ed.links.length ? ed.links : [""], fileNames: [] },
 		inspector: { inspector: fullName(ed.inspector), newFirstName: "", newMiddleName: "", newLastName: "" },
@@ -231,6 +259,7 @@ function loadDrafts(
 	base: FormValues,
 	includeEngineering: boolean,
 	includeOperations: boolean,
+	includeQualityFinalReview: boolean,
 ) {
 	const values: FormValues = JSON.parse(JSON.stringify(base));
 	const saved = Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>;
@@ -249,6 +278,8 @@ function loadDrafts(
 		values.defect.engineeringRequired === "yes",
 		includeEngineering,
 		includeOperations,
+		includeQualityFinalReview,
+		includeQualityFinalReview,
 	);
 	const activeIds = sections.flatMap((section) =>
 		section.id === "review" ? [] : [section.id],
@@ -313,6 +344,11 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 		case "engineering":
 		case "operations":
 			break;
+		case "qualityFinalReview":
+			if (!v.qualityFinalReview.acceptanceConfirmed) {
+				e.qualityAcceptanceConfirmed = "Confirm Yes or No for final acceptance.";
+			}
+			break;
 		case "evidence": {
 			v.evidence.links.forEach((link, i) => {
 				const t = link.trim();
@@ -353,7 +389,7 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 }
 
 const focusIdFor = (key: string) =>
-	key === "processType" ? "processType-supplier" : key === "isNonconforming" ? "isNonconforming-yes" : key === "engineeringRequired" ? "engineeringRequired-yes" : key;
+	key === "processType" ? "processType-supplier" : key === "isNonconforming" ? "isNonconforming-yes" : key === "engineeringRequired" ? "engineeringRequired-yes" : key === "qualityAcceptanceConfirmed" ? "qualityAcceptanceConfirmed-yes" : key;
 
 const formatSize = (bytes: number) =>
 	bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -459,7 +495,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				setDirtyIds(new Set());
 				setStep(Math.min(
 					Math.max(parsed?.step ?? 0, 0),
-					sectionsFor(merged.defect.engineeringRequired === "yes", true, true).length - 1,
+					sectionsFor(merged.defect.engineeringRequired === "yes", true, true, true).length - 1,
 				));
 				setStatus("Your saved draft was loaded. You are on the section where you left off.");
 				setLookupState("ready");
@@ -472,7 +508,13 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			]);
 			const withExtras = addEditOptions(l, ed);
 			const base = ed ? toFormValues(ed) : makeDefaults(next);
-			const d = loadDrafts(prefix, base, edit || isDraft, edit || isDraft);
+			const d = loadDrafts(
+				prefix,
+				base,
+				edit || isDraft,
+				edit || isDraft,
+				edit || isDraft,
+			);
 			baseRef.current = base;
 			editRef.current = ed;
 			setEditData(ed);
@@ -612,6 +654,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			values.defect.engineeringRequired === "yes",
 			edit || isDraft,
 			edit || isDraft,
+			edit || isDraft,
 		);
 		const current = sections[step];
 		if (!current || current.id === "review") return;
@@ -641,6 +684,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			values.defect.engineeringRequired === "yes",
 			edit || isDraft,
 			edit || isDraft,
+			edit || isDraft,
 		);
 		for (let i = 0; i < sections.length; i++) {
 			const section = sections[i];
@@ -660,6 +704,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				files,
 				lookups,
 				edit ? editData?.statusId ?? null : null,
+				edit || isDraft,
 				edit || isDraft,
 				edit || isDraft,
 			);
@@ -708,7 +753,13 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	}
 
 	function restoreSaved() {
-		const d = loadDrafts(prefix, baseRef.current, edit || isDraft, edit || isDraft);
+		const d = loadDrafts(
+			prefix,
+			baseRef.current,
+			edit || isDraft,
+			edit || isDraft,
+			edit || isDraft,
+		);
 		setValues(sanitize(d.values, lookups));
 		setSaved(d.saved);
 		setDirtyIds(new Set());
@@ -724,6 +775,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const links = values.evidence.links;
 	const sections = sectionsFor(
 		values.defect.engineeringRequired === "yes",
+		edit || isDraft,
 		edit || isDraft,
 		edit || isDraft,
 	);
@@ -1015,6 +1067,32 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 					</>
 				)}
 
+				{current.id === "qualityFinalReview" && (
+					<>
+						<Input type={Input.TEXT} name="qualityFinalInspectionResult" label="Final inspection result"
+							value={values.qualityFinalReview.inspectionResult}
+							onChange={text("qualityFinalReview", "inspectionResult")} />
+						<Input type={Input.PARAGRAPH} name="qualityFinalComments" label="Quality comments"
+							value={values.qualityFinalReview.comments}
+							onChange={text("qualityFinalReview", "comments")} />
+						<ChoiceGroup id="qualityAcceptanceConfirmed" legend="Final acceptance confirmation" required
+							error={errors.qualityAcceptanceConfirmed}>
+							<Input type={Input.RADIO} name="qualityAcceptanceConfirmed-yes" groupName="qualityAcceptanceConfirmed" value="yes" label="Yes"
+								checked={values.qualityFinalReview.acceptanceConfirmed === "yes"} required
+								onChange={() => update("qualityFinalReview", { acceptanceConfirmed: "yes" })} />
+							<Input type={Input.RADIO} name="qualityAcceptanceConfirmed-no" groupName="qualityAcceptanceConfirmed" value="no" label="No"
+								checked={values.qualityFinalReview.acceptanceConfirmed === "no"} required
+								onChange={() => update("qualityFinalReview", { acceptanceConfirmed: "no" })} />
+						</ChoiceGroup>
+						<Input type={Input.DATE} name="qualityDateClosed" label="Date closed"
+							value={values.qualityFinalReview.dateClosed}
+							onChange={text("qualityFinalReview", "dateClosed")} />
+						<Input type={Input.TEXT} name="qualityClosedBy" label="Closed by"
+							value={values.qualityFinalReview.closedBy}
+							onChange={text("qualityFinalReview", "closedBy")} />
+					</>
+				)}
+
 				{current.id === "evidence" && (
 					<>
 						<Input key={fileInputKey} type={Input.FILE} name="files" label="Pictures, screenshots and PDFs (optional)"
@@ -1106,7 +1184,15 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 							</section>
 						)}
 						<p>Check each part. Choose Change to fix something, then save that section again. {edit ? "The time you save is recorded as the update time." : "The time of submission is recorded as the NCR's creation time."}</p>
-						{reviewGroups(values, files, lookups, editData?.existingFiles ?? [], edit || isDraft, edit || isDraft).map((g) => (
+						{reviewGroups(
+							values,
+							files,
+							lookups,
+							editData?.existingFiles ?? [],
+							edit || isDraft,
+							edit || isDraft,
+							edit || isDraft,
+						).map((g) => (
 							<section key={g.id} className="ncr-review-group" aria-labelledby={`review-${g.id}`}>
 								<div className="ncr-review-head">
 									<h3 id={`review-${g.id}`}>{g.title}</h3>
@@ -1180,6 +1266,7 @@ function reviewGroups(
 	existingFiles: string[],
 	includeEngineering: boolean,
 	includeOperations: boolean,
+	includeQualityFinalReview: boolean,
 ) {
 	const yesNo = v.defect.isNonconforming === "yes" ? "Yes" : v.defect.isNonconforming === "no" ? "No" : "";
 	const fileNames = [...existingFiles, ...(files.length ? files.map((f) => f.name) : v.evidence.fileNames)];
@@ -1215,10 +1302,17 @@ function reviewGroups(
 		{ id: "evidence" as SectionId, title: "Pictures and links", rows: [
 			["Files", fileNames.join(", ")], ["Links", v.evidence.links.filter((x) => x.trim()).join(", ")]] },
 		{ id: "inspector" as SectionId, title: "Inspector", rows: [["Inspector", inspector]] },
+		{ id: "qualityFinalReview" as SectionId, title: "Quality Final Review", rows: [
+			["Final inspection result", v.qualityFinalReview.inspectionResult],
+			["Quality comments", v.qualityFinalReview.comments],
+			["Final acceptance confirmation", v.qualityFinalReview.acceptanceConfirmed === "yes" ? "Yes" : v.qualityFinalReview.acceptanceConfirmed === "no" ? "No" : ""],
+			["Date closed", v.qualityFinalReview.dateClosed],
+			["Closed by", v.qualityFinalReview.closedBy]] },
 	] as { id: SectionId; title: string; rows: [string, string][] }[];
 	return groups.filter((group) =>
 		(group.id !== "engineering" || (includeEngineering && v.defect.engineeringRequired === "yes")) &&
-		(group.id !== "operations" || includeOperations),
+		(group.id !== "operations" || includeOperations) &&
+		(group.id !== "qualityFinalReview" || includeQualityFinalReview),
 	);
 }
 
@@ -1229,6 +1323,7 @@ function buildSubmission(
 	currentStatusId: number | null = null,
 	includeEngineering = false,
 	includeOperations = false,
+	includeQualityFinalReview = false,
 ): NcrSubmission {
 	const p = v.process;
 	const status = (currentStatusId !== null ? l.statuses.find((x) => x.id === currentStatusId) : undefined) ?? defaultStatus(l.statuses);
@@ -1270,6 +1365,14 @@ function buildSubmission(
 		operationsComments: includeOperations ? v.operations.comments.trim() : "",
 		operationsRepresentative: includeOperations ? v.operations.representative.trim() : "",
 		operationsDateCompleted: includeOperations ? v.operations.dateCompleted : "",
+		qualityFinalInspectionResult: includeQualityFinalReview ? v.qualityFinalReview.inspectionResult.trim() : "",
+		qualityFinalComments: includeQualityFinalReview ? v.qualityFinalReview.comments.trim() : "",
+		qualityFinalAcceptanceConfirmed:
+			includeQualityFinalReview && v.qualityFinalReview.acceptanceConfirmed
+				? v.qualityFinalReview.acceptanceConfirmed === "yes"
+				: null,
+		qualityDateClosed: includeQualityFinalReview ? v.qualityFinalReview.dateClosed : "",
+		qualityClosedBy: includeQualityFinalReview ? v.qualityFinalReview.closedBy.trim() : "",
 		inspector,
 		files,
 		links: v.evidence.links.map((x) => x.trim()).filter(Boolean),
