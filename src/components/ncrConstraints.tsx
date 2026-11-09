@@ -79,7 +79,6 @@ const LABELS: Record<string, string> = {
 	NCRClosedAt: "close date",
 	NCRProcurementDelayCommunication: "procurement delay communication",
 	NCRRaisedByPersonId: "inspector",
-	NCRPersonAssignedAt: "assigned date",
 	SOLineItemId: "sales order line",
 	POLineItemId: "purchase order line",
 	PurchaseOrderId: "purchase order",
@@ -91,7 +90,6 @@ const LABELS: Record<string, string> = {
 	NCRId: "NCR",
 	ProblemTypeId: "problem type",
 	RolePersonId: "inspector role",
-	ReviewStatusId: "review status",
 	SupplierName: "supplier name",
 	PurchaseOrderNumber: "purchase order number",
 	PurchaseOrderDate: "purchase order date",
@@ -363,20 +361,6 @@ const RULES: Partial<Record<TableName, TableRules>> = {
 			{ columns: ["NCRId", "ProblemTypeId"], what: "This NCR already has this problem type. It" },
 		],
 		references: { ProblemTypeId: "ProblemType" },
-	},
-	NCRPerson: {
-		required: ["NCRPersonAssignedAt", "NCRId", "RolePersonId", "ReviewStatusId"],
-		unique: [
-			{ columns: ["NCRId", "RolePersonId"], what: "This person is already assigned to this NCR. It" },
-		],
-		references: { RolePersonId: "RolePerson", ReviewStatusId: "ReviewStatus" },
-		check: (c) => {
-			const assigned = wallTime(c.merged.NCRPersonAssignedAt);
-			const reviewed = wallTime(c.merged.NCRPersonReviewedAt);
-			return assigned !== null && reviewed !== null && reviewed < assigned
-				? ["The review date cannot be before the assigned date."]
-				: [];
-		},
 	},
 	Attachment: {
 		required: [

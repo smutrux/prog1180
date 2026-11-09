@@ -21,7 +21,6 @@ export const STATUS_NEW = "Open";
 export const STATUS_DRAFT = "Draft";
 const STATUS_NEW_FALLBACK_ID = 1;
 export const isClosedStatus = (name: string) => /clos/i.test(name);
-export const REVIEW_SUBMITTED = "Submitted";
 export const IN_HOUSE_SUPPLIER = "In-house production";
 export const PROCESS_LABELS = {
 	supplier: "Supplier or Rec-Insp",
@@ -95,9 +94,6 @@ interface RolePersonFields {
 }
 interface StatusFields {
 	NCRStatusName: string | null;
-}
-interface ReviewStatusFields {
-	ReviewStatusName: string | null;
 }
 interface NcrNumberFields {
 	NCRNumber: string | null;
@@ -912,14 +908,6 @@ export async function submitNcr(
 		progress("Checking the answers...");
 		await validateSubmission(s, undefined, SUBMISSION_RULES);
 
-		progress("Loading statuses...");
-		const reviewStatuses = await listAll<ReviewStatusFields>("ReviewStatus");
-		const review = mustFind(
-			reviewStatuses,
-			(r) => same(r.fields.ReviewStatusName, REVIEW_SUBMITTED),
-			`Review status "${REVIEW_SUBMITTED}"`,
-		);
-
 		const inspector = await resolveInspector(s, make);
 		const chain = await resolveChain(s, make, now);
 
@@ -989,14 +977,6 @@ export async function submitNcr(
 			);
 		for (const link of s.links)
 			await addLinkAttachment(make, link, ncrRef, inspector.personId, now);
-
-		await make("NCRPerson", "the inspector's sign-off", {
-			NCRPersonAssignedAt: now,
-			NCRPersonReviewedAt: now,
-			NCRId: ncrRef,
-			RolePersonId: inspector.rolePersonId,
-			ReviewStatusId: refId("ReviewStatus", review),
-		});
 
 		return { ncrNumber: s.ncrNumber, recordId: ncr.id };
 	} catch (err) {

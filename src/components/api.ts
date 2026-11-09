@@ -15,9 +15,9 @@ export const TABLES = {
 	RolePerson: "m5epgvk5qzq09ui",
 	Role: "mawdfj3jgoxahqr",
 	NCRStatus: "mmrmn0gp32ls43j",
-	NCRPerson: "m10intz3j2v4bxj",
-	ReviewStatus: "mzi096idp0c4nb6",
 	NCRProblemType: "moysmsnfgemrnv1",
+	NCRProcessApplicable: "m9dcpoqnykyqx9m",
+	NCRDisposition: "mnydmua2ujnq6ct",
 	ProblemType: "mqa5dc86j9ld0vm",
 	SOLineItem: "m98136e6umqze4t",
 	SalesOrder: "mkjekxim9051b26",
@@ -25,6 +25,12 @@ export const TABLES = {
 	POLineItem: "m6lc7tn4vijqt5p",
 	PurchaseOrder: "m0tbdn2n3e33ouj",
 	Supplier: "m0gvekbgv8kiahd",
+	Engineering: "m8aebsyri6oxous",
+	Purchasing: "mj4pntax4vw12yh",
+	PurchasingDecision: "msbts62k3wb41a7",
+	QA: "mdejy491sqgr0wc",
+	History: "mupcmr5r9cojbx7",
+	HistoryEvent: "ms3esuhu7cxzd5y",
 } as const;
 export type TableName = keyof typeof TABLES;
 
@@ -282,4 +288,54 @@ export async function updateRecord(
 	fields: Record<string, unknown>,
 ): Promise<void> {
 	await request("PATCH", table, "records", { body: { id, fields } });
+}
+
+/** How many records match (GET /count). */
+export async function countRecords(
+	table: TableName,
+	whereClause?: string,
+): Promise<number> {
+	const data = await request<{ count?: number }>("GET", table, "count", {
+		query: { where: whereClause },
+	});
+	return Number(data.count ?? 0);
+}
+
+/** Records linked to one record through a link column (GET /links/{linkFieldId}/{recordId}).
+    linkFieldId is the id of the link column, not a table id. */
+export async function listLinks<F extends object = Record<string, unknown>>(
+	table: TableName,
+	linkFieldId: string,
+	recordId: number | string,
+): Promise<NcRecord<F>[]> {
+	const data = await request<{ records?: NcRecord<F>[] }>(
+		"GET",
+		table,
+		`links/${linkFieldId}/${recordId}`,
+	);
+	return data.records ?? [];
+}
+
+/** Links records to one record (POST /links/{linkFieldId}/{recordId}). */
+export async function linkRecords(
+	table: TableName,
+	linkFieldId: string,
+	recordId: number | string,
+	linkedIds: (number | string)[],
+): Promise<void> {
+	await request("POST", table, `links/${linkFieldId}/${recordId}`, {
+		body: linkedIds.map((id) => ({ id })),
+	});
+}
+
+/** Unlinks records from one record (DELETE /links/{linkFieldId}/{recordId}). */
+export async function unlinkRecords(
+	table: TableName,
+	linkFieldId: string,
+	recordId: number | string,
+	linkedIds: (number | string)[],
+): Promise<void> {
+	await request("DELETE", table, `links/${linkFieldId}/${recordId}`, {
+		body: linkedIds.map((id) => ({ id })),
+	});
 }
