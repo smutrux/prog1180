@@ -57,6 +57,11 @@ export interface NcrFields {
 	NCREngineeringComments?: string | null;
 	NCREngineeringRepresentative?: string | null;
 	NCREngineeringDateCompleted?: string | null;
+	NCROperationsDisposition?: string | null;
+	NCROperationsInstructions?: string | null;
+	NCROperationsComments?: string | null;
+	NCROperationsRepresentative?: string | null;
+	NCROperationsDateCompleted?: string | null;
 	SOLineItemId: number | null;
 	POLineItemId: number | null;
 	NCRRaisedByPersonId: number | null;
@@ -377,6 +382,11 @@ export interface NcrEditData {
 	engineeringComments: string;
 	engineeringRepresentative: string;
 	engineeringDateCompleted: string;
+	operationsDisposition: string;
+	operationsInstructions: string;
+	operationsComments: string;
+	operationsRepresentative: string;
+	operationsDateCompleted: string;
 	inspector: { personId: number; first: string; middle: string; last: string };
 	links: string[];
 	linkRows: { recordId: number | string; url: string }[];
@@ -397,6 +407,11 @@ const PATCHED_COLUMNS = [
 	"NCREngineeringComments",
 	"NCREngineeringRepresentative",
 	"NCREngineeringDateCompleted",
+	"NCROperationsDisposition",
+	"NCROperationsInstructions",
+	"NCROperationsComments",
+	"NCROperationsRepresentative",
+	"NCROperationsDateCompleted",
 	"NCRUpdatedAt",
 	"SOLineItemId",
 	"POLineItemId",
@@ -489,6 +504,11 @@ export async function loadNcrForEdit(
 		engineeringComments: f.NCREngineeringComments ?? "",
 		engineeringRepresentative: f.NCREngineeringRepresentative ?? "",
 		engineeringDateCompleted: f.NCREngineeringDateCompleted ?? "",
+		operationsDisposition: f.NCROperationsDisposition ?? "",
+		operationsInstructions: f.NCROperationsInstructions ?? "",
+		operationsComments: f.NCROperationsComments ?? "",
+		operationsRepresentative: f.NCROperationsRepresentative ?? "",
+		operationsDateCompleted: f.NCROperationsDateCompleted ?? "",
 		inspector: {
 			personId: person
 				? refId("Person", person)
@@ -528,6 +548,11 @@ export interface NcrSubmission {
 	engineeringComments: string;
 	engineeringRepresentative: string;
 	engineeringDateCompleted: string;
+	operationsDisposition: string;
+	operationsInstructions: string;
+	operationsComments: string;
+	operationsRepresentative: string;
+	operationsDateCompleted: string;
 	inspector:
 		| { kind: "existing"; personId: number; rolePersonId: number }
 		| { kind: "new"; first: string; middle: string; last: string };
@@ -804,6 +829,11 @@ export async function submitNcr(
 			NCREngineeringComments: s.engineeringComments,
 			NCREngineeringRepresentative: s.engineeringRepresentative,
 			NCREngineeringDateCompleted: s.engineeringDateCompleted || null,
+			NCROperationsDisposition: s.operationsDisposition,
+			NCROperationsInstructions: s.operationsInstructions,
+			NCROperationsComments: s.operationsComments,
+			NCROperationsRepresentative: s.operationsRepresentative,
+			NCROperationsDateCompleted: s.operationsDateCompleted || null,
 			...NCR_DEFAULTS,
 			NCRCreatedAtD: now,
 			NCRUpdatedAt: now,
@@ -936,6 +966,11 @@ export async function updateNcr(
 			NCREngineeringComments: s.engineeringComments,
 			NCREngineeringRepresentative: s.engineeringRepresentative,
 			NCREngineeringDateCompleted: s.engineeringDateCompleted || null,
+			NCROperationsDisposition: s.operationsDisposition,
+			NCROperationsInstructions: s.operationsInstructions,
+			NCROperationsComments: s.operationsComments,
+			NCROperationsRepresentative: s.operationsRepresentative,
+			NCROperationsDateCompleted: s.operationsDateCompleted || null,
 			NCRUpdatedAt: now,
 			[edit.statusColumn]: s.status.id,
 			NCRClosedAt: closedAt,

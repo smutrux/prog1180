@@ -132,6 +132,13 @@ const ENGINEERING_FIELDS = new Set([
 	"NCREngineeringRepresentative",
 	"NCREngineeringDateCompleted",
 ]);
+const OPERATIONS_FIELDS = new Set([
+	"NCROperationsDisposition",
+	"NCROperationsInstructions",
+	"NCROperationsComments",
+	"NCROperationsRepresentative",
+	"NCROperationsDateCompleted",
+]);
 
 const FIELD_LABELS: Record<string, string> = {
 	NCRNumber: "NCR number",
@@ -141,6 +148,11 @@ const FIELD_LABELS: Record<string, string> = {
 	NCREngineeringComments: "Comments",
 	NCREngineeringRepresentative: "Representative",
 	NCREngineeringDateCompleted: "Date completed",
+	NCROperationsDisposition: "Operations disposition",
+	NCROperationsInstructions: "Rework/repair instructions",
+	NCROperationsComments: "Operations comments",
+	NCROperationsRepresentative: "Operations representative",
+	NCROperationsDateCompleted: "Date completed",
 };
 
 const labelFor = (key: string) =>
@@ -194,6 +206,7 @@ function relatedValues(ed: NcrEditData | null, status?: string): string[] {
 const isShownField = (key: string, value: unknown) =>
 	!HIDDEN_FIELDS.has(key) &&
 	!ENGINEERING_FIELDS.has(key) &&
+	!OPERATIONS_FIELDS.has(key) &&
 	!/Id$/.test(key) &&
 	!(typeof value === "object" && value !== null);
 
@@ -257,6 +270,11 @@ export function NcrDetailsModal({
 		? [...ENGINEERING_FIELDS]
 				.filter((key) => data?.fields[key] !== undefined)
 				.map((key) => [key, data?.fields[key]] as [string, unknown])
+		: [];
+	const operationsEntries = data
+		? [...OPERATIONS_FIELDS]
+				.filter((key) => data.fields[key] !== undefined)
+				.map((key) => [key, data.fields[key]] as [string, unknown])
 		: [];
 	const number = data?.fields.NCRNumber;
 	const isDraft = !!data && isDraftRecord(data);
@@ -346,6 +364,28 @@ export function NcrDetailsModal({
 								</h3>
 								<dl className="ncr-details-list">
 									{engineeringEntries.map(([key, value]) => {
+										const text = formatValue(value);
+										return (
+											<div
+												key={key}
+												className={`ncr-details-row${text.length > 60 ? " wide" : ""}`}
+											>
+												<dt>{labelFor(key)}</dt>
+												<dd>{text}</dd>
+											</div>
+										);
+									})}
+								</dl>
+							</section>
+						)}
+
+						{operationsEntries.length > 0 && (
+							<section aria-labelledby="ncr-operations-title">
+								<h3 id="ncr-operations-title" className="ncr-details-heading">
+									Operations Disposition
+								</h3>
+								<dl className="ncr-details-list">
+									{operationsEntries.map(([key, value]) => {
 										const text = formatValue(value);
 										return (
 											<div

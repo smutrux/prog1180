@@ -67,6 +67,13 @@ interface FormValues {
 		representative: string;
 		dateCompleted: string;
 	};
+	operations: {
+		disposition: string;
+		instructions: string;
+		comments: string;
+		representative: string;
+		dateCompleted: string;
+	};
 	evidence: { links: string[]; fileNames: string[] };
 	inspector: {
 		inspector: string;
@@ -86,15 +93,29 @@ const BASE_SECTIONS: { id: SectionId | "review"; title: string }[] = [
 	{ id: "inspector", title: "Inspector" },
 	{ id: "review", title: "Review and submit" },
 ];
-const SAVED_IDS: SectionId[] = ["process", "item", "defect", "engineering", "evidence", "inspector"];
+const SAVED_IDS: SectionId[] = ["process", "item", "defect", "engineering", "operations", "evidence", "inspector"];
 
-function sectionsFor(engineeringRequired: boolean, includeEngineering: boolean) {
+function sectionsFor(
+	engineeringRequired: boolean,
+	includeEngineering: boolean,
+	includeOperations: boolean,
+) {
 	const sections = [...BASE_SECTIONS];
 	if (includeEngineering && engineeringRequired) {
 		const defectIndex = sections.findIndex((section) => section.id === "defect");
 		sections.splice(defectIndex + 1, 0, {
 			id: "engineering",
 			title: "Engineering Disposition",
+		});
+	}
+	if (includeOperations) {
+		const engineeringIndex = sections.findIndex((section) => section.id === "engineering");
+		const insertAfter = engineeringIndex >= 0
+			? engineeringIndex
+			: sections.findIndex((section) => section.id === "defect");
+		sections.splice(insertAfter + 1, 0, {
+			id: "operations",
+			title: "Operations Disposition",
 		});
 	}
 	return sections;
@@ -105,6 +126,7 @@ const makeDefaults = (ncrNumber: string): FormValues => ({
 	item: { itemName: "", itemSapNumber: "", itemDescription: "" },
 	defect: { qtyReceived: "", qtyDefective: "", problemTypeIds: [], defectDescription: "", isNonconforming: "", engineeringRequired: "" },
 	engineering: { disposition: "", instructions: "", comments: "", representative: "", dateCompleted: "" },
+	operations: { disposition: "", instructions: "", comments: "", representative: "", dateCompleted: "" },
 	evidence: { links: [""], fileNames: [] },
 	inspector: { inspector: "", newFirstName: "", newMiddleName: "", newLastName: "" },
 });
@@ -148,6 +170,13 @@ function toFormValues(ed: NcrEditData): FormValues {
 			comments: ed.engineeringComments,
 			representative: ed.engineeringRepresentative,
 			dateCompleted: ed.engineeringDateCompleted.slice(0, 10),
+		},
+		operations: {
+			disposition: ed.operationsDisposition,
+			instructions: ed.operationsInstructions,
+			comments: ed.operationsComments,
+			representative: ed.operationsRepresentative,
+			dateCompleted: ed.operationsDateCompleted.slice(0, 10),
 		},
 		evidence: { links: ed.links.length ? ed.links : [""], fileNames: [] },
 		inspector: { inspector: fullName(ed.inspector), newFirstName: "", newMiddleName: "", newLastName: "" },
@@ -197,7 +226,12 @@ function clearDrafts(prefix: string) {
 	}
 }
 
-function loadDrafts(prefix: string, base: FormValues, includeEngineering: boolean) {
+function loadDrafts(
+	prefix: string,
+	base: FormValues,
+	includeEngineering: boolean,
+	includeOperations: boolean,
+) {
 	const values: FormValues = JSON.parse(JSON.stringify(base));
 	const saved = Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>;
 	let any = false;
@@ -214,6 +248,7 @@ function loadDrafts(prefix: string, base: FormValues, includeEngineering: boolea
 	const sections = sectionsFor(
 		values.defect.engineeringRequired === "yes",
 		includeEngineering,
+		includeOperations,
 	);
 	const activeIds = sections.flatMap((section) =>
 		section.id === "review" ? [] : [section.id],
@@ -276,6 +311,7 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 			break;
 		}
 		case "engineering":
+		case "operations":
 			break;
 		case "evidence": {
 			v.evidence.links.forEach((link, i) => {
@@ -423,7 +459,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				setDirtyIds(new Set());
 				setStep(Math.min(
 					Math.max(parsed?.step ?? 0, 0),
-					sectionsFor(merged.defect.engineeringRequired === "yes", true).length - 1,
+					sectionsFor(merged.defect.engineeringRequired === "yes", true, true).length - 1,
 				));
 				setStatus("Your saved draft was loaded. You are on the section where you left off.");
 				setLookupState("ready");
@@ -436,7 +472,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			]);
 			const withExtras = addEditOptions(l, ed);
 			const base = ed ? toFormValues(ed) : makeDefaults(next);
-			const d = loadDrafts(prefix, base, edit || isDraft);
+			const d = loadDrafts(prefix, base, edit || isDraft, edit || isDraft);
 			baseRef.current = base;
 			editRef.current = ed;
 			setEditData(ed);
@@ -575,6 +611,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		const sections = sectionsFor(
 			values.defect.engineeringRequired === "yes",
 			edit || isDraft,
+			edit || isDraft,
 		);
 		const current = sections[step];
 		if (!current || current.id === "review") return;
@@ -603,6 +640,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		const sections = sectionsFor(
 			values.defect.engineeringRequired === "yes",
 			edit || isDraft,
+			edit || isDraft,
 		);
 		for (let i = 0; i < sections.length; i++) {
 			const section = sections[i];
@@ -622,6 +660,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				files,
 				lookups,
 				edit ? editData?.statusId ?? null : null,
+				edit || isDraft,
 				edit || isDraft,
 			);
 			const result = edit && editData
@@ -669,7 +708,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	}
 
 	function restoreSaved() {
-		const d = loadDrafts(prefix, baseRef.current, edit);
+		const d = loadDrafts(prefix, baseRef.current, edit || isDraft, edit || isDraft);
 		setValues(sanitize(d.values, lookups));
 		setSaved(d.saved);
 		setDirtyIds(new Set());
@@ -685,6 +724,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const links = values.evidence.links;
 	const sections = sectionsFor(
 		values.defect.engineeringRequired === "yes",
+		edit || isDraft,
 		edit || isDraft,
 	);
 	const reviewStep = sections.length - 1;
@@ -955,6 +995,26 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 					</>
 				)}
 
+				{current.id === "operations" && (
+					<>
+						<Input type={Input.TEXT} name="operationsDisposition" label="Operations disposition"
+							value={values.operations.disposition}
+							onChange={text("operations", "disposition")} />
+						<Input type={Input.PARAGRAPH} name="operationsInstructions" label="Rework/repair instructions"
+							value={values.operations.instructions}
+							onChange={text("operations", "instructions")} />
+						<Input type={Input.PARAGRAPH} name="operationsComments" label="Operations comments"
+							value={values.operations.comments}
+							onChange={text("operations", "comments")} />
+						<Input type={Input.TEXT} name="operationsRepresentative" label="Operations representative"
+							value={values.operations.representative}
+							onChange={text("operations", "representative")} />
+						<Input type={Input.DATE} name="operationsDateCompleted" label="Date completed"
+							value={values.operations.dateCompleted}
+							onChange={text("operations", "dateCompleted")} />
+					</>
+				)}
+
 				{current.id === "evidence" && (
 					<>
 						<Input key={fileInputKey} type={Input.FILE} name="files" label="Pictures, screenshots and PDFs (optional)"
@@ -1046,7 +1106,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 							</section>
 						)}
 						<p>Check each part. Choose Change to fix something, then save that section again. {edit ? "The time you save is recorded as the update time." : "The time of submission is recorded as the NCR's creation time."}</p>
-						{reviewGroups(values, files, lookups, editData?.existingFiles ?? [], edit).map((g) => (
+						{reviewGroups(values, files, lookups, editData?.existingFiles ?? [], edit || isDraft, edit || isDraft).map((g) => (
 							<section key={g.id} className="ncr-review-group" aria-labelledby={`review-${g.id}`}>
 								<div className="ncr-review-head">
 									<h3 id={`review-${g.id}`}>{g.title}</h3>
@@ -1119,6 +1179,7 @@ function reviewGroups(
 	l: FormLookups,
 	existingFiles: string[],
 	includeEngineering: boolean,
+	includeOperations: boolean,
 ) {
 	const yesNo = v.defect.isNonconforming === "yes" ? "Yes" : v.defect.isNonconforming === "no" ? "No" : "";
 	const fileNames = [...existingFiles, ...(files.length ? files.map((f) => f.name) : v.evidence.fileNames)];
@@ -1145,13 +1206,20 @@ function reviewGroups(
 			["Comments", v.engineering.comments],
 			["Engineering representative", v.engineering.representative],
 			["Date completed", v.engineering.dateCompleted]] },
+		{ id: "operations" as SectionId, title: "Operations Disposition", rows: [
+			["Operations disposition", v.operations.disposition],
+			["Rework/repair instructions", v.operations.instructions],
+			["Operations comments", v.operations.comments],
+			["Operations representative", v.operations.representative],
+			["Date completed", v.operations.dateCompleted]] },
 		{ id: "evidence" as SectionId, title: "Pictures and links", rows: [
 			["Files", fileNames.join(", ")], ["Links", v.evidence.links.filter((x) => x.trim()).join(", ")]] },
 		{ id: "inspector" as SectionId, title: "Inspector", rows: [["Inspector", inspector]] },
 	] as { id: SectionId; title: string; rows: [string, string][] }[];
-	return includeEngineering && v.defect.engineeringRequired === "yes"
-		? groups
-		: groups.filter((group) => group.id !== "engineering");
+	return groups.filter((group) =>
+		(group.id !== "engineering" || (includeEngineering && v.defect.engineeringRequired === "yes")) &&
+		(group.id !== "operations" || includeOperations),
+	);
 }
 
 function buildSubmission(
@@ -1160,6 +1228,7 @@ function buildSubmission(
 	l: FormLookups,
 	currentStatusId: number | null = null,
 	includeEngineering = false,
+	includeOperations = false,
 ): NcrSubmission {
 	const p = v.process;
 	const status = (currentStatusId !== null ? l.statuses.find((x) => x.id === currentStatusId) : undefined) ?? defaultStatus(l.statuses);
@@ -1196,6 +1265,11 @@ function buildSubmission(
 		engineeringComments: includeEngineering && v.defect.engineeringRequired === "yes" ? v.engineering.comments.trim() : "",
 		engineeringRepresentative: includeEngineering && v.defect.engineeringRequired === "yes" ? v.engineering.representative.trim() : "",
 		engineeringDateCompleted: includeEngineering && v.defect.engineeringRequired === "yes" ? v.engineering.dateCompleted : "",
+		operationsDisposition: includeOperations ? v.operations.disposition.trim() : "",
+		operationsInstructions: includeOperations ? v.operations.instructions.trim() : "",
+		operationsComments: includeOperations ? v.operations.comments.trim() : "",
+		operationsRepresentative: includeOperations ? v.operations.representative.trim() : "",
+		operationsDateCompleted: includeOperations ? v.operations.dateCompleted : "",
 		inspector,
 		files,
 		links: v.evidence.links.map((x) => x.trim()).filter(Boolean),
