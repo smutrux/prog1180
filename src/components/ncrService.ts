@@ -51,6 +51,12 @@ export interface NcrFields {
 	NCRQuantityReceived: number | null;
 	NCRQuantityDefective: number | null;
 	NCRIsNonconforming: boolean | null;
+	NCRIsEngineeringRequired?: boolean | null;
+	NCREngineeringDisposition?: string | null;
+	NCREngineeringInstructions?: string | null;
+	NCREngineeringComments?: string | null;
+	NCREngineeringRepresentative?: string | null;
+	NCREngineeringDateCompleted?: string | null;
 	SOLineItemId: number | null;
 	POLineItemId: number | null;
 	NCRRaisedByPersonId: number | null;
@@ -365,6 +371,12 @@ export interface NcrEditData {
 	problemTypeRows: { recordId: number | string; problemTypeId: number }[];
 	defectDescription: string;
 	isNonconforming: boolean | null;
+	engineeringRequired: boolean | null;
+	engineeringDisposition: string;
+	engineeringInstructions: string;
+	engineeringComments: string;
+	engineeringRepresentative: string;
+	engineeringDateCompleted: string;
 	inspector: { personId: number; first: string; middle: string; last: string };
 	links: string[];
 	linkRows: { recordId: number | string; url: string }[];
@@ -379,6 +391,12 @@ const PATCHED_COLUMNS = [
 	"NCRQuantityReceived",
 	"NCRQuantityDefective",
 	"NCRIsNonconforming",
+	"NCRIsEngineeringRequired",
+	"NCREngineeringDisposition",
+	"NCREngineeringInstructions",
+	"NCREngineeringComments",
+	"NCREngineeringRepresentative",
+	"NCREngineeringDateCompleted",
 	"NCRUpdatedAt",
 	"SOLineItemId",
 	"POLineItemId",
@@ -462,6 +480,15 @@ export async function loadNcrForEdit(
 		problemTypeRows,
 		defectDescription: (f.NCRDefectDescription ?? "").trim(),
 		isNonconforming: f.NCRIsNonconforming ?? null,
+		engineeringRequired:
+			typeof f.NCRIsEngineeringRequired === "boolean"
+				? f.NCRIsEngineeringRequired
+				: null,
+		engineeringDisposition: f.NCREngineeringDisposition ?? "",
+		engineeringInstructions: f.NCREngineeringInstructions ?? "",
+		engineeringComments: f.NCREngineeringComments ?? "",
+		engineeringRepresentative: f.NCREngineeringRepresentative ?? "",
+		engineeringDateCompleted: f.NCREngineeringDateCompleted ?? "",
 		inspector: {
 			personId: person
 				? refId("Person", person)
@@ -495,6 +522,12 @@ export interface NcrSubmission {
 	problemTypeIds: number[];
 	defectDescription: string;
 	isNonconforming: boolean;
+	engineeringRequired: boolean;
+	engineeringDisposition: string;
+	engineeringInstructions: string;
+	engineeringComments: string;
+	engineeringRepresentative: string;
+	engineeringDateCompleted: string;
 	inspector:
 		| { kind: "existing"; personId: number; rolePersonId: number }
 		| { kind: "new"; first: string; middle: string; last: string };
@@ -765,6 +798,12 @@ export async function submitNcr(
 			NCRQuantityReceived: s.quantityReceived,
 			NCRQuantityDefective: s.quantityDefective,
 			NCRIsNonconforming: s.isNonconforming,
+			NCRIsEngineeringRequired: s.engineeringRequired,
+			NCREngineeringDisposition: s.engineeringDisposition,
+			NCREngineeringInstructions: s.engineeringInstructions,
+			NCREngineeringComments: s.engineeringComments,
+			NCREngineeringRepresentative: s.engineeringRepresentative,
+			NCREngineeringDateCompleted: s.engineeringDateCompleted || null,
 			...NCR_DEFAULTS,
 			NCRCreatedAtD: now,
 			NCRUpdatedAt: now,
@@ -891,6 +930,12 @@ export async function updateNcr(
 			NCRQuantityReceived: s.quantityReceived,
 			NCRQuantityDefective: s.quantityDefective,
 			NCRIsNonconforming: s.isNonconforming,
+			NCRIsEngineeringRequired: s.engineeringRequired,
+			NCREngineeringDisposition: s.engineeringDisposition,
+			NCREngineeringInstructions: s.engineeringInstructions,
+			NCREngineeringComments: s.engineeringComments,
+			NCREngineeringRepresentative: s.engineeringRepresentative,
+			NCREngineeringDateCompleted: s.engineeringDateCompleted || null,
 			NCRUpdatedAt: now,
 			[edit.statusColumn]: s.status.id,
 			NCRClosedAt: closedAt,

@@ -70,6 +70,7 @@ const LABELS: Record<string, string> = {
 	NCRDefectDescription: "description of the defect",
 	NCRProcessApplicable: "process applicable",
 	NCRIsNonconforming: "nonconforming answer",
+	NCRIsEngineeringRequired: "engineering required answer",
 	NCRQuantityReceived: "quantity received",
 	NCRQuantityDefective: "quantity defective",
 	NCRUpdatedAt: "update date",
@@ -230,6 +231,11 @@ async function ncrChecks(c: Ctx): Promise<string[]> {
 
 	if (!isBlank(f.NCRIsNonconforming) && typeof f.NCRIsNonconforming !== "boolean")
 		out.push("The nonconforming answer must be Yes or No.");
+	if (
+		!isBlank(f.NCRIsEngineeringRequired) &&
+		typeof f.NCRIsEngineeringRequired !== "boolean"
+	)
+		out.push("The engineering required answer must be Yes or No.");
 
 	if (
 		!isBlank(f.NCRDisposition) &&
@@ -270,6 +276,7 @@ const RULES: Partial<Record<TableName, TableRules>> = {
 			"NCRDefectDescription",
 			"NCRProcessApplicable",
 			"NCRIsNonconforming",
+			"NCRIsEngineeringRequired",
 			"NCRQuantityReceived",
 			"NCRQuantityDefective",
 			"SOLineItemId",
