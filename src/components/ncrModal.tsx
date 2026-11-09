@@ -125,9 +125,22 @@ const HIDDEN_FIELDS = new Set([
 	"updated_at",
 ]);
 
+const ENGINEERING_FIELDS = new Set([
+	"NCREngineeringDisposition",
+	"NCREngineeringInstructions",
+	"NCREngineeringComments",
+	"NCREngineeringRepresentative",
+	"NCREngineeringDateCompleted",
+]);
+
 const FIELD_LABELS: Record<string, string> = {
 	NCRNumber: "NCR number",
 	NCRDefectDescription: "Description of defect",
+	NCREngineeringDisposition: "Disposition",
+	NCREngineeringInstructions: "Engineering instructions",
+	NCREngineeringComments: "Comments",
+	NCREngineeringRepresentative: "Representative",
+	NCREngineeringDateCompleted: "Date completed",
 };
 
 const labelFor = (key: string) =>
@@ -180,8 +193,12 @@ function relatedValues(ed: NcrEditData | null, status?: string): string[] {
 
 const isShownField = (key: string, value: unknown) =>
 	!HIDDEN_FIELDS.has(key) &&
+	!ENGINEERING_FIELDS.has(key) &&
 	!/Id$/.test(key) &&
 	!(typeof value === "object" && value !== null);
+
+const isEngineeringRequired = (value: unknown) =>
+	value === true || (typeof value === "string" && /^(yes|true)$/i.test(value.trim()));
 
 export function NcrDetailsModal({
 	open,
@@ -233,6 +250,13 @@ export function NcrDetailsModal({
 		? Object.entries(data.fields).filter(([key, value]) =>
 				isShownField(key, value),
 			)
+		: [];
+	const showEngineering =
+		!!data && isEngineeringRequired(data.fields.NCRIsEngineeringRequired);
+	const engineeringEntries = showEngineering
+		? [...ENGINEERING_FIELDS]
+				.filter((key) => data?.fields[key] !== undefined)
+				.map((key) => [key, data?.fields[key]] as [string, unknown])
 		: [];
 	const number = data?.fields.NCRNumber;
 	const isDraft = !!data && isDraftRecord(data);
@@ -314,6 +338,28 @@ export function NcrDetailsModal({
 								})}
 							</dl>
 						</section>
+
+						{showEngineering && (
+							<section aria-labelledby="ncr-engineering-title">
+								<h3 id="ncr-engineering-title" className="ncr-details-heading">
+									Engineering Disposition
+								</h3>
+								<dl className="ncr-details-list">
+									{engineeringEntries.map(([key, value]) => {
+										const text = formatValue(value);
+										return (
+											<div
+												key={key}
+												className={`ncr-details-row${text.length > 60 ? " wide" : ""}`}
+											>
+												<dt>{labelFor(key)}</dt>
+												<dd>{text}</dd>
+											</div>
+										);
+									})}
+								</dl>
+							</section>
+						)}
 
 						<div className="ncr-details-actions">
 							{onRestore && (
