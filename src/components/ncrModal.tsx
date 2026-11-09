@@ -182,7 +182,58 @@ const isShownField = (key: string, value: unknown) =>
 	!HIDDEN_FIELDS.has(key) &&
 	!/Id$/.test(key) &&
 	!(typeof value === "object" && value !== null);
+function escapeHtml(text: string): string {
+	return text
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;");
+}
 
+function printRow(label: string, value: string): string {
+	const wide = value.length > 60 ? " wide" : "";
+	return `<div class="row${wide}"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`;
+}
+
+
+function printNcrDetails(args: {
+	number: unknown;
+	isDraft: boolean;
+	related: [string, string][];
+	report: [string, string][];
+}) {
+	const title = args.number ? `NCR ${args.number}` : "NCR details";
+	const win = window.open("", "_blank");
+	if (!win) return;
+	win.document.write(`<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(title)}</title>
+<style>
+	body { font-family: system-ui, sans-serif; margin: 2rem; color: #111; }
+	h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+	h2 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; border-bottom: 1px solid #ccc; padding-bottom: 0.25rem; }
+	.draft { border: 1px solid #999; padding: 0.5rem 0.75rem; }
+	dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem 1.5rem; }
+	.row { min-width: 0; page-break-inside: avoid; }
+	.row.wide { grid-column: 1 / -1; }
+	dt { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; }
+	dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<h1>${escapeHtml(title)}</h1>
+${args.isDraft ? `<p class="draft">This NCR is a draft. It has not been submitted yet, and some details below fill in once it is.</p>` : ""}
+<h2>Related details</h2>
+<dl>${args.related.map(([label, value]) => printRow(label, value)).join("")}</dl>
+<h2>Report</h2>
+<dl>${args.report.map(([label, value]) => printRow(label, value)).join("")}</dl>
+<script>window.onload = () => window.print();</script>
+</body>
+</html>`);
+	win.document.close();
+}
 export function NcrDetailsModal({
 	open,
 	onClose,
@@ -330,6 +381,29 @@ export function NcrDetailsModal({
 									onClick={() => onEdit(data)}
 								/>
 							)}
+							<Button
+								text="Print / PDF"
+								aria={`Print NCR ${number ?? ""}`.trim()}
+								enabled={settled}
+								onClick={() =>
+									printNcrDetails({
+										number,
+										isDraft,
+										related: RELATED_LABELS.map(
+											(label, i): [string, string] => [
+												label,
+												formatValue(values[i]),
+											],
+										),
+										report: entries.map(
+											([key, value]): [string, string] => [
+												labelFor(key),
+												formatValue(value),
+											],
+										),
+									})
+								}
+							/>
 							<Button text="Close" aria="Close" onClick={onClose} />
 						</div>
 					</div>
