@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Input from "./input";
 import Button from "./button";
-import type { NcRecord } from "./api";
+import { readRecord, type NcRecord } from "./api";
 import {
 	DuplicateNcrNumberError,
 	PROCESS_LABELS,
@@ -74,6 +74,7 @@ interface FormValues {
 		representative: string;
 		dateCompleted: string;
 	};
+	procurement: { delayCommunication: string };
 	qualityFinalReview: {
 		inspectionResult: string;
 		comments: string;
@@ -100,37 +101,45 @@ const BASE_SECTIONS: { id: SectionId | "review"; title: string }[] = [
 	{ id: "inspector", title: "Inspector" },
 	{ id: "review", title: "Review and submit" },
 ];
-const SAVED_IDS: SectionId[] = ["process", "item", "defect", "engineering", "operations", "qualityFinalReview", "evidence", "inspector"];
+const SAVED_IDS: SectionId[] = ["process", "item", "defect", "engineering", "operations", "procurement", "qualityFinalReview", "evidence", "inspector"];
 
 function sectionsFor(
 	engineeringRequired: boolean,
 	includeEngineering: boolean,
 	includeOperations: boolean,
+	includeProcurement: boolean,
 	includeQualityFinalReview: boolean,
 ) {
 	const sections = [...BASE_SECTIONS];
-	if (includeEngineering && engineeringRequired) {
-		const defectIndex = sections.findIndex((section) => section.id === "defect");
-		sections.splice(defectIndex + 1, 0, {
-			id: "engineering",
-			title: "Engineering Disposition",
-		});
-	}
-	if (includeOperations) {
-		const engineeringIndex = sections.findIndex((section) => section.id === "engineering");
-		const insertAfter = engineeringIndex >= 0
-			? engineeringIndex
-			: sections.findIndex((section) => section.id === "defect");
-		sections.splice(insertAfter + 1, 0, {
-			id: "operations",
-			title: "Operations Disposition",
-		});
-	}
 	if (includeQualityFinalReview) {
 		const reviewIndex = sections.findIndex((section) => section.id === "review");
 		sections.splice(reviewIndex, 0, {
 			id: "qualityFinalReview",
 			title: "Quality Final Review",
+		});
+	}
+	let workflowIndex = sections.findIndex((section) => section.id === "qualityFinalReview");
+	if (workflowIndex < 0) {
+		workflowIndex = sections.findIndex((section) => section.id === "review");
+	}
+	if (includeEngineering && engineeringRequired) {
+		sections.splice(workflowIndex, 0, {
+			id: "engineering",
+			title: "Engineering Disposition",
+		});
+		workflowIndex++;
+	}
+	if (includeOperations) {
+		sections.splice(workflowIndex, 0, {
+			id: "operations",
+			title: "Operations Disposition",
+		});
+		workflowIndex++;
+	}
+	if (includeProcurement) {
+		sections.splice(workflowIndex, 0, {
+			id: "procurement",
+			title: "Procurement",
 		});
 	}
 	return sections;
@@ -142,6 +151,7 @@ const makeDefaults = (ncrNumber: string): FormValues => ({
 	defect: { qtyReceived: "", qtyDefective: "", problemTypeIds: [], defectDescription: "", isNonconforming: "", engineeringRequired: "" },
 	engineering: { disposition: "", instructions: "", comments: "", representative: "", dateCompleted: "" },
 	operations: { disposition: "", instructions: "", comments: "", representative: "", dateCompleted: "" },
+	procurement: { delayCommunication: "" },
 	qualityFinalReview: { inspectionResult: "", comments: "", acceptanceConfirmed: "", dateClosed: "", closedBy: "" },
 	evidence: { links: [""], fileNames: [] },
 	inspector: { inspector: "", newFirstName: "", newMiddleName: "", newLastName: "" },
@@ -154,6 +164,22 @@ function sanitize(v: FormValues, l: FormLookups): FormValues {
 	return {
 		...v,
 		defect: { ...v.defect, problemTypeIds: v.defect.problemTypeIds.filter((id) => validIds.has(id)) },
+		engineering: {
+			...v.engineering,
+			instructions: sanitizeTextbox(v.engineering.instructions),
+		},
+		operations: {
+			...v.operations,
+			instructions: sanitizeTextbox(v.operations.instructions),
+		},
+		procurement: {
+			...v.procurement,
+			delayCommunication: sanitizeTextbox(v.procurement.delayCommunication),
+		},
+		qualityFinalReview: {
+			...v.qualityFinalReview,
+			comments: sanitizeTextbox(v.qualityFinalReview.comments),
+		},
 		inspector: keep ? v.inspector : { ...v.inspector, inspector: names[0] ?? "" },
 	};
 }
@@ -194,6 +220,7 @@ function toFormValues(ed: NcrEditData): FormValues {
 			representative: ed.operationsRepresentative,
 			dateCompleted: ed.operationsDateCompleted.slice(0, 10),
 		},
+		procurement: { delayCommunication: ed.procurementDelayCommunication },
 		qualityFinalReview: {
 			inspectionResult: ed.qualityFinalInspectionResult,
 			comments: ed.qualityFinalComments,
@@ -259,17 +286,21 @@ function loadDrafts(
 	base: FormValues,
 	includeEngineering: boolean,
 	includeOperations: boolean,
+	includeProcurement: boolean,
 	includeQualityFinalReview: boolean,
+	restoreLocalSections = true,
 ) {
 	const values: FormValues = JSON.parse(JSON.stringify(base));
 	const saved = Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>;
 	let any = false;
-	for (const id of SAVED_IDS) {
-		const stored = readSection(prefix, id);
-		if (stored && typeof stored === "object") {
-			(values as Record<SectionId, unknown>)[id] = { ...values[id], ...stored };
-			saved[id] = true;
-			any = true;
+	if (restoreLocalSections) {
+		for (const id of SAVED_IDS) {
+			const stored = readSection(prefix, id);
+			if (stored && typeof stored === "object") {
+				(values as Record<SectionId, unknown>)[id] = { ...values[id], ...stored };
+				saved[id] = true;
+				any = true;
+			}
 		}
 	}
 	if (!Array.isArray(values.evidence.links) || values.evidence.links.length === 0) values.evidence.links = [""];
@@ -278,7 +309,7 @@ function loadDrafts(
 		values.defect.engineeringRequired === "yes",
 		includeEngineering,
 		includeOperations,
-		includeQualityFinalReview,
+		includeProcurement,
 		includeQualityFinalReview,
 	);
 	const activeIds = sections.flatMap((section) =>
@@ -296,9 +327,21 @@ const POSITIVE_INT = /^[1-9]\d{0,8}$/;
 const NCR_NUMBER = /^\d{4}-\d{3,}$/;
 const blank = (s: string) => !s.trim();
 const DIGIT_MSG = "Use digits only, up to 18. Remove spaces, dashes and letters.";
+const DEPARTMENT_TEXT_MAX_LENGTH = 2000;
+const INVALID_TEXT_CONTROLS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+const sanitizeTextbox = (value: string) => value.replace(INVALID_TEXT_CONTROLS, "");
 
 function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolean): Errors {
 	const e: Errors = {};
+	const validateDepartmentTextbox = (key: string, value: string) => {
+		if (value.length > DEPARTMENT_TEXT_MAX_LENGTH) {
+			e[key] = `Use ${DEPARTMENT_TEXT_MAX_LENGTH} characters or fewer.`;
+		} else if (INVALID_TEXT_CONTROLS.test(value)) {
+			INVALID_TEXT_CONTROLS.lastIndex = 0;
+			e[key] = "Remove unsupported control characters.";
+		}
+		INVALID_TEXT_CONTROLS.lastIndex = 0;
+	};
 	switch (id) {
 		case "process": {
 			const p = v.process;
@@ -342,9 +385,16 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 			break;
 		}
 		case "engineering":
+			validateDepartmentTextbox("engineeringInstructions", v.engineering.instructions);
+			break;
 		case "operations":
+			validateDepartmentTextbox("operationsInstructions", v.operations.instructions);
+			break;
+		case "procurement":
+			validateDepartmentTextbox("procurementDelayCommunication", v.procurement.delayCommunication);
 			break;
 		case "qualityFinalReview":
+			validateDepartmentTextbox("qualityFinalComments", v.qualityFinalReview.comments);
 			if (!v.qualityFinalReview.acceptanceConfirmed) {
 				e.qualityAcceptanceConfirmed = "Confirm Yes or No for final acceptance.";
 			}
@@ -472,9 +522,13 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			if (edit && !dataRef.current) throw new Error("No NCR was given to edit.");
 			const draftRec = !edit && dataRef.current && isDraftRecord(dataRef.current) ? dataRef.current : null;
 			if (draftRec) {
+				const freshDraft = await readRecord<NcrFields>("NCR", draftRec.id);
+				if (!freshDraft) {
+					throw new Error(`Draft ${String(draftRec.fields.NCRNumber ?? draftRec.id)} could not be found in the database.`);
+				}
 				const l = await loadFormLookups();
-				const parsed = parseDraft(draftRec);
-				const base = makeDefaults((draftRec.fields.NCRNumber ?? "").trim());
+				const parsed = parseDraft(freshDraft);
+				const base = makeDefaults((freshDraft.fields.NCRNumber ?? "").trim());
 				const merged: FormValues = JSON.parse(JSON.stringify(base));
 				if (parsed) {
 					for (const id of SAVED_IDS) {
@@ -482,11 +536,30 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 						if (stored && typeof stored === "object") (merged as Record<SectionId, unknown>)[id] = { ...merged[id], ...stored };
 					}
 				}
+				if (typeof freshDraft.fields.NCRIsEngineeringRequired === "boolean") {
+					merged.defect.engineeringRequired = freshDraft.fields.NCRIsEngineeringRequired ? "yes" : "no";
+				}
+				if (typeof freshDraft.fields.NCREngineeringInstructions === "string") {
+					merged.engineering.instructions = freshDraft.fields.NCREngineeringInstructions;
+				}
+				if (typeof freshDraft.fields.NCROperationsInstructions === "string") {
+					merged.operations.instructions = freshDraft.fields.NCROperationsInstructions;
+				}
+				if (typeof freshDraft.fields.NCRProcurementDelayCommunication === "string") {
+					merged.procurement.delayCommunication = freshDraft.fields.NCRProcurementDelayCommunication;
+				}
+				if (typeof freshDraft.fields.NCRQualityFinalComments === "string") {
+					merged.qualityFinalReview.comments = freshDraft.fields.NCRQualityFinalComments;
+				}
+				if (typeof freshDraft.fields.NCRQualityFinalAcceptanceConfirmed === "boolean") {
+					merged.qualityFinalReview.acceptanceConfirmed =
+						freshDraft.fields.NCRQualityFinalAcceptanceConfirmed ? "yes" : "no";
+				}
 				if (!Array.isArray(merged.evidence.links) || merged.evidence.links.length === 0) merged.evidence.links = [""];
 				if (!Array.isArray(merged.defect.problemTypeIds)) merged.defect.problemTypeIds = [];
 				baseRef.current = base;
 				editRef.current = null;
-				draftIdRef.current = draftRec.id;
+				draftIdRef.current = freshDraft.id;
 				setEditData(null);
 				setLookups(l);
 				setValues(sanitize(merged, l));
@@ -495,7 +568,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				setDirtyIds(new Set());
 				setStep(Math.min(
 					Math.max(parsed?.step ?? 0, 0),
-					sectionsFor(merged.defect.engineeringRequired === "yes", true, true, true).length - 1,
+					sectionsFor(merged.defect.engineeringRequired === "yes", true, true, true, true).length - 1,
 				));
 				setStatus("Your saved draft was loaded. You are on the section where you left off.");
 				setLookupState("ready");
@@ -514,6 +587,8 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				edit || isDraft,
 				edit || isDraft,
 				edit || isDraft,
+				edit || isDraft,
+				!edit,
 			);
 			baseRef.current = base;
 			editRef.current = ed;
@@ -597,6 +672,16 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			const next = { ...prev };
 			for (const key of Object.keys(patch)) {
 				delete next[key];
+				if (section === "engineering" && key === "instructions")
+					delete next.engineeringInstructions;
+				if (section === "operations" && key === "instructions")
+					delete next.operationsInstructions;
+				if (section === "procurement" && key === "delayCommunication")
+					delete next.procurementDelayCommunication;
+				if (section === "qualityFinalReview" && key === "comments")
+					delete next.qualityFinalComments;
+				if (section === "qualityFinalReview" && key === "acceptanceConfirmed")
+					delete next.qualityAcceptanceConfirmed;
 				if (key === "links") Object.keys(next).filter((k) => k.startsWith("link-")).forEach((k) => delete next[k]);
 				if (key === "fileNames") delete next.files;
 			}
@@ -606,8 +691,15 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 
 	const text =
 		<K extends SectionId>(section: K, key: keyof FormValues[K]) =>
-		(e: ChangeEvt) =>
-			update(section, { [key]: e.target.value } as Partial<FormValues[K]>);
+		(e: ChangeEvt) => {
+			const cleanInput =
+				(section === "engineering" && key === "instructions") ||
+				(section === "operations" && key === "instructions") ||
+				(section === "procurement" && key === "delayCommunication") ||
+				(section === "qualityFinalReview" && key === "comments");
+			const value = cleanInput ? sanitizeTextbox(e.target.value) : e.target.value;
+			update(section, { [key]: value } as Partial<FormValues[K]>);
+		};
 
 	function showErrors(found: Errors) {
 		setErrors(found);
@@ -655,6 +747,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			edit || isDraft,
 			edit || isDraft,
 			edit || isDraft,
+			edit || isDraft,
 		);
 		const current = sections[step];
 		if (!current || current.id === "review") return;
@@ -685,6 +778,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			edit || isDraft,
 			edit || isDraft,
 			edit || isDraft,
+			edit || isDraft,
 		);
 		for (let i = 0; i < sections.length; i++) {
 			const section = sections[i];
@@ -704,6 +798,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				files,
 				lookups,
 				edit ? editData?.statusId ?? null : null,
+				edit || isDraft,
 				edit || isDraft,
 				edit || isDraft,
 				edit || isDraft,
@@ -759,6 +854,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			edit || isDraft,
 			edit || isDraft,
 			edit || isDraft,
+			edit || isDraft,
 		);
 		setValues(sanitize(d.values, lookups));
 		setSaved(d.saved);
@@ -775,6 +871,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const links = values.evidence.links;
 	const sections = sectionsFor(
 		values.defect.engineeringRequired === "yes",
+		edit || isDraft,
 		edit || isDraft,
 		edit || isDraft,
 		edit || isDraft,
@@ -1029,51 +1126,39 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 
 				{current.id === "engineering" && (
 					<>
-						<Input type={Input.TEXT} name="engineeringDisposition" label="Engineering Disposition"
-							value={values.engineering.disposition}
-							onChange={text("engineering", "disposition")} />
 						<Input type={Input.PARAGRAPH} name="engineeringInstructions" label="Engineering instructions"
 							value={values.engineering.instructions}
+							maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
+							error={errors.engineeringInstructions}
 							onChange={text("engineering", "instructions")} />
-						<Input type={Input.PARAGRAPH} name="engineeringComments" label="Comments"
-							value={values.engineering.comments}
-							onChange={text("engineering", "comments")} />
-						<Input type={Input.TEXT} name="engineeringRepresentative" label="Engineering representative"
-							value={values.engineering.representative}
-							onChange={text("engineering", "representative")} />
-						<Input type={Input.DATE} name="engineeringDateCompleted" label="Date completed"
-							value={values.engineering.dateCompleted}
-							onChange={text("engineering", "dateCompleted")} />
 					</>
 				)}
 
 				{current.id === "operations" && (
 					<>
-						<Input type={Input.TEXT} name="operationsDisposition" label="Operations disposition"
-							value={values.operations.disposition}
-							onChange={text("operations", "disposition")} />
 						<Input type={Input.PARAGRAPH} name="operationsInstructions" label="Rework/repair instructions"
 							value={values.operations.instructions}
+							maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
+							error={errors.operationsInstructions}
 							onChange={text("operations", "instructions")} />
-						<Input type={Input.PARAGRAPH} name="operationsComments" label="Operations comments"
-							value={values.operations.comments}
-							onChange={text("operations", "comments")} />
-						<Input type={Input.TEXT} name="operationsRepresentative" label="Operations representative"
-							value={values.operations.representative}
-							onChange={text("operations", "representative")} />
-						<Input type={Input.DATE} name="operationsDateCompleted" label="Date completed"
-							value={values.operations.dateCompleted}
-							onChange={text("operations", "dateCompleted")} />
 					</>
+				)}
+
+				{current.id === "procurement" && (
+					<Input type={Input.PARAGRAPH} name="procurementDelayCommunication"
+						label="Communication of a delay due to quality rejection"
+						value={values.procurement.delayCommunication}
+						maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
+						error={errors.procurementDelayCommunication}
+						onChange={text("procurement", "delayCommunication")} />
 				)}
 
 				{current.id === "qualityFinalReview" && (
 					<>
-						<Input type={Input.TEXT} name="qualityFinalInspectionResult" label="Final inspection result"
-							value={values.qualityFinalReview.inspectionResult}
-							onChange={text("qualityFinalReview", "inspectionResult")} />
 						<Input type={Input.PARAGRAPH} name="qualityFinalComments" label="Quality comments"
 							value={values.qualityFinalReview.comments}
+							maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
+							error={errors.qualityFinalComments}
 							onChange={text("qualityFinalReview", "comments")} />
 						<ChoiceGroup id="qualityAcceptanceConfirmed" legend="Final acceptance confirmation" required
 							error={errors.qualityAcceptanceConfirmed}>
@@ -1084,12 +1169,6 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 								checked={values.qualityFinalReview.acceptanceConfirmed === "no"} required
 								onChange={() => update("qualityFinalReview", { acceptanceConfirmed: "no" })} />
 						</ChoiceGroup>
-						<Input type={Input.DATE} name="qualityDateClosed" label="Date closed"
-							value={values.qualityFinalReview.dateClosed}
-							onChange={text("qualityFinalReview", "dateClosed")} />
-						<Input type={Input.TEXT} name="qualityClosedBy" label="Closed by"
-							value={values.qualityFinalReview.closedBy}
-							onChange={text("qualityFinalReview", "closedBy")} />
 					</>
 				)}
 
@@ -1192,6 +1271,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 							edit || isDraft,
 							edit || isDraft,
 							edit || isDraft,
+							edit || isDraft,
 						).map((g) => (
 							<section key={g.id} className="ncr-review-group" aria-labelledby={`review-${g.id}`}>
 								<div className="ncr-review-head">
@@ -1266,6 +1346,7 @@ function reviewGroups(
 	existingFiles: string[],
 	includeEngineering: boolean,
 	includeOperations: boolean,
+	includeProcurement: boolean,
 	includeQualityFinalReview: boolean,
 ) {
 	const yesNo = v.defect.isNonconforming === "yes" ? "Yes" : v.defect.isNonconforming === "no" ? "No" : "";
@@ -1287,31 +1368,23 @@ function reviewGroups(
 			["Problem types", problems.join(", ")], ["Description of defect", v.defect.defectDescription],
 			["Marked nonconforming", yesNo],
 			["Engineering required", v.defect.engineeringRequired === "yes" ? "Yes" : v.defect.engineeringRequired === "no" ? "No" : ""]] },
-		{ id: "engineering" as SectionId, title: "Engineering Disposition", rows: [
-			["Engineering Disposition", v.engineering.disposition],
-			["Engineering instructions", v.engineering.instructions],
-			["Comments", v.engineering.comments],
-			["Engineering representative", v.engineering.representative],
-			["Date completed", v.engineering.dateCompleted]] },
-		{ id: "operations" as SectionId, title: "Operations Disposition", rows: [
-			["Operations disposition", v.operations.disposition],
-			["Rework/repair instructions", v.operations.instructions],
-			["Operations comments", v.operations.comments],
-			["Operations representative", v.operations.representative],
-			["Date completed", v.operations.dateCompleted]] },
 		{ id: "evidence" as SectionId, title: "Pictures and links", rows: [
-			["Files", fileNames.join(", ")], ["Links", v.evidence.links.filter((x) => x.trim()).join(", ")]] },
+			["Files", fileNames.join(", ")], ["Links", v.evidence.links.filter((x) => x.trim()).join(", ")] ] },
 		{ id: "inspector" as SectionId, title: "Inspector", rows: [["Inspector", inspector]] },
+		{ id: "engineering" as SectionId, title: "Engineering Disposition", rows: [
+			["Engineering instructions", v.engineering.instructions]] },
+		{ id: "operations" as SectionId, title: "Operations Disposition", rows: [
+			["Rework/repair instructions", v.operations.instructions]] },
+		{ id: "procurement" as SectionId, title: "Procurement", rows: [
+			["Communication of a delay due to quality rejection", v.procurement.delayCommunication]] },
 		{ id: "qualityFinalReview" as SectionId, title: "Quality Final Review", rows: [
-			["Final inspection result", v.qualityFinalReview.inspectionResult],
 			["Quality comments", v.qualityFinalReview.comments],
-			["Final acceptance confirmation", v.qualityFinalReview.acceptanceConfirmed === "yes" ? "Yes" : v.qualityFinalReview.acceptanceConfirmed === "no" ? "No" : ""],
-			["Date closed", v.qualityFinalReview.dateClosed],
-			["Closed by", v.qualityFinalReview.closedBy]] },
+			["Final acceptance confirmation", v.qualityFinalReview.acceptanceConfirmed === "yes" ? "Yes" : v.qualityFinalReview.acceptanceConfirmed === "no" ? "No" : ""]] },
 	] as { id: SectionId; title: string; rows: [string, string][] }[];
 	return groups.filter((group) =>
 		(group.id !== "engineering" || (includeEngineering && v.defect.engineeringRequired === "yes")) &&
 		(group.id !== "operations" || includeOperations) &&
+		(group.id !== "procurement" || includeProcurement) &&
 		(group.id !== "qualityFinalReview" || includeQualityFinalReview),
 	);
 }
@@ -1323,6 +1396,7 @@ function buildSubmission(
 	currentStatusId: number | null = null,
 	includeEngineering = false,
 	includeOperations = false,
+	includeProcurement = false,
 	includeQualityFinalReview = false,
 ): NcrSubmission {
 	const p = v.process;
@@ -1356,17 +1430,20 @@ function buildSubmission(
 		isNonconforming: v.defect.isNonconforming === "yes",
 		engineeringRequired: v.defect.engineeringRequired === "yes",
 		engineeringDisposition: includeEngineering && v.defect.engineeringRequired === "yes" ? v.engineering.disposition.trim() : "",
-		engineeringInstructions: includeEngineering && v.defect.engineeringRequired === "yes" ? v.engineering.instructions.trim() : "",
+		engineeringInstructions: includeEngineering && v.defect.engineeringRequired === "yes" ? sanitizeTextbox(v.engineering.instructions).trim() : "",
 		engineeringComments: includeEngineering && v.defect.engineeringRequired === "yes" ? v.engineering.comments.trim() : "",
 		engineeringRepresentative: includeEngineering && v.defect.engineeringRequired === "yes" ? v.engineering.representative.trim() : "",
 		engineeringDateCompleted: includeEngineering && v.defect.engineeringRequired === "yes" ? v.engineering.dateCompleted : "",
 		operationsDisposition: includeOperations ? v.operations.disposition.trim() : "",
-		operationsInstructions: includeOperations ? v.operations.instructions.trim() : "",
+		operationsInstructions: includeOperations ? sanitizeTextbox(v.operations.instructions).trim() : "",
 		operationsComments: includeOperations ? v.operations.comments.trim() : "",
 		operationsRepresentative: includeOperations ? v.operations.representative.trim() : "",
 		operationsDateCompleted: includeOperations ? v.operations.dateCompleted : "",
+		procurementDelayCommunication: includeProcurement
+			? sanitizeTextbox(v.procurement.delayCommunication).trim()
+			: "",
 		qualityFinalInspectionResult: includeQualityFinalReview ? v.qualityFinalReview.inspectionResult.trim() : "",
-		qualityFinalComments: includeQualityFinalReview ? v.qualityFinalReview.comments.trim() : "",
+		qualityFinalComments: includeQualityFinalReview ? sanitizeTextbox(v.qualityFinalReview.comments).trim() : "",
 		qualityFinalAcceptanceConfirmed:
 			includeQualityFinalReview && v.qualityFinalReview.acceptanceConfirmed
 				? v.qualityFinalReview.acceptanceConfirmed === "yes"

@@ -63,6 +63,8 @@ type Loader = (table: TableName) => Promise<Row[]>;
 const NCR_NUMBER = /^\d{4}-\d{3,}$/;
 const ORDER_NUMBER = /^\d{1,18}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DEPARTMENT_TEXT_MAX_LENGTH = 2000;
+const INVALID_TEXT_CONTROLS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
 
 /** Plain names for the columns, used in messages. Anything not listed falls back to the column name. */
 const LABELS: Record<string, string> = {
@@ -75,6 +77,7 @@ const LABELS: Record<string, string> = {
 	NCRQuantityDefective: "quantity defective",
 	NCRUpdatedAt: "update date",
 	NCRClosedAt: "close date",
+	NCRProcurementDelayCommunication: "procurement delay communication",
 	NCRRaisedByPersonId: "inspector",
 	NCRPersonAssignedAt: "assigned date",
 	SOLineItemId: "sales order line",
@@ -282,7 +285,13 @@ const RULES: Partial<Record<TableName, TableRules>> = {
 			"SOLineItemId",
 			"NCRRaisedByPersonId",
 		],
-		maxLength: { NCRDefectDescription: 400 },
+		maxLength: {
+			NCRDefectDescription: 400,
+			NCREngineeringInstructions: DEPARTMENT_TEXT_MAX_LENGTH,
+			NCROperationsInstructions: DEPARTMENT_TEXT_MAX_LENGTH,
+			NCRProcurementDelayCommunication: DEPARTMENT_TEXT_MAX_LENGTH,
+			NCRQualityFinalComments: DEPARTMENT_TEXT_MAX_LENGTH,
+		},
 		unique: [{ columns: ["NCRNumber"], what: "NCR number" }],
 		references: {
 			SOLineItemId: "SOLineItem",
@@ -535,6 +544,19 @@ export async function validateSubmission(
 	const defect = s.defectDescription.trim();
 	if (!defect) add("defectDescription", "Describe the defect.");
 	else if (defect.length > 400) add("defectDescription", "Use 400 characters or fewer.");
+
+	const departmentTextFields = [
+		["engineeringInstructions", s.engineeringInstructions],
+		["operationsInstructions", s.operationsInstructions],
+		["procurementDelayCommunication", s.procurementDelayCommunication],
+		["qualityFinalComments", s.qualityFinalComments],
+	] as const;
+	for (const [field, value] of departmentTextFields) {
+		if (value.length > DEPARTMENT_TEXT_MAX_LENGTH)
+			add(field, `Use ${DEPARTMENT_TEXT_MAX_LENGTH} characters or fewer.`);
+		if (INVALID_TEXT_CONTROLS.test(value))
+			add(field, "Remove unsupported control characters.");
+	}
 
 	if (s.inspector.kind === "new") {
 		const { first, middle, last } = s.inspector;

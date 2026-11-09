@@ -62,6 +62,7 @@ export interface NcrFields {
 	NCROperationsComments?: string | null;
 	NCROperationsRepresentative?: string | null;
 	NCROperationsDateCompleted?: string | null;
+	NCRProcurementDelayCommunication?: string | null;
 	NCRQualityFinalInspectionResult?: string | null;
 	NCRQualityFinalComments?: string | null;
 	NCRQualityFinalAcceptanceConfirmed?: boolean | null;
@@ -327,10 +328,24 @@ export interface DraftToSave {
 	step: number;
 }
 
+function draftSectionText(values: unknown, sectionName: string, fieldName: string): string {
+	if (!values || typeof values !== "object") return "";
+	const section = (values as Record<string, unknown>)[sectionName];
+	if (!section || typeof section !== "object") return "";
+	const value = (section as Record<string, unknown>)[fieldName];
+	if (typeof value !== "string") return "";
+	return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+}
+
+function draftSectionChoice(values: unknown, sectionName: string, fieldName: string): boolean | null {
+	const value = draftSectionText(values, sectionName, fieldName);
+	return value === "yes" ? true : value === "no" ? false : null;
+}
+
 /**
  * Saves the form answers as a draft NCR. The first save creates the NCR record
  * (so the NCR number is reserved). Later saves update it.
- * Nothing is validated: a draft can be incomplete.
+ * Drafts can be incomplete, but department text is sanitized and length checked.
  */
 export async function saveDraft(
 	d: DraftToSave,
@@ -338,10 +353,66 @@ export async function saveDraft(
 	progress: (message: string) => void = () => {},
 ): Promise<{ ncrNumber: string; recordId: number | string }> {
 	const now = ncDateTime();
+	const departmentFields = {
+		NCREngineeringInstructions: draftSectionText(d.values, "engineering", "instructions"),
+		NCROperationsInstructions: draftSectionText(d.values, "operations", "instructions"),
+		NCRProcurementDelayCommunication: draftSectionText(d.values, "procurement", "delayCommunication"),
+		NCRQualityFinalComments: draftSectionText(d.values, "qualityFinalReview", "comments"),
+		NCRQualityFinalAcceptanceConfirmed: draftSectionChoice(
+			d.values,
+			"qualityFinalReview",
+			"acceptanceConfirmed",
+		),
+	};
+	for (const [field, value] of Object.entries(departmentFields)) {
+		if (typeof value === "string" && value.length > 2000) {
+			throw new Error(`${field} must be 2,000 characters or fewer before the draft can be saved.`);
+		}
+	}
+	const formValues =
+		d.values && typeof d.values === "object"
+			? (d.values as Record<string, unknown>)
+			: {};
+	const sectionValues = (name: string) => {
+		const value = formValues[name];
+		return value && typeof value === "object"
+			? (value as Record<string, unknown>)
+			: {};
+	};
+	const defect = formValues.defect;
+	const engineeringRequired =
+		defect && typeof defect === "object"
+			? (defect as Record<string, unknown>).engineeringRequired
+			: undefined;
+	const sanitizedValues = {
+		...formValues,
+		engineering: {
+			...sectionValues("engineering"),
+			instructions: departmentFields.NCREngineeringInstructions,
+		},
+		operations: {
+			...sectionValues("operations"),
+			instructions: departmentFields.NCROperationsInstructions,
+		},
+		procurement: {
+			...sectionValues("procurement"),
+			delayCommunication: departmentFields.NCRProcurementDelayCommunication,
+		},
+		qualityFinalReview: {
+			...sectionValues("qualityFinalReview"),
+			comments: departmentFields.NCRQualityFinalComments,
+		},
+	};
 	const draftFields = {
-		NCRDraftData: JSON.stringify({ v: 1, values: d.values }),
+		NCRDraftData: JSON.stringify({ v: 1, values: sanitizedValues }),
 		NCRDraftStep: String(d.step),
 		NCRUpdatedAt: now,
+		...departmentFields,
+		...(engineeringRequired === "yes"
+			? { NCRIsEngineeringRequired: true }
+			: engineeringRequired === "no"
+				? { NCRIsEngineeringRequired: false }
+				: {}),
 	};
 	if (d.recordId !== null) {
 		progress("Saving the draft...");
@@ -392,6 +463,7 @@ export interface NcrEditData {
 	operationsComments: string;
 	operationsRepresentative: string;
 	operationsDateCompleted: string;
+	procurementDelayCommunication: string;
 	qualityFinalInspectionResult: string;
 	qualityFinalComments: string;
 	qualityFinalAcceptanceConfirmed: boolean | null;
@@ -422,6 +494,7 @@ const PATCHED_COLUMNS = [
 	"NCROperationsComments",
 	"NCROperationsRepresentative",
 	"NCROperationsDateCompleted",
+	"NCRProcurementDelayCommunication",
 	"NCRQualityFinalInspectionResult",
 	"NCRQualityFinalComments",
 	"NCRQualityFinalAcceptanceConfirmed",
@@ -449,8 +522,12 @@ async function listForNcr<F extends { NCRId?: unknown }>(
 export async function loadNcrForEdit(
 	rec: NcRecord<NcrFields>,
 ): Promise<NcrEditData> {
-	const f = rec.fields;
-	const ncrRef = refId("NCR", rec);
+	const freshRec = await readRecord<NcrFields>("NCR", rec.id);
+	if (!freshRec) {
+		throw new Error(`NCR ${String(rec.fields.NCRNumber ?? rec.id)} could not be found in the database.`);
+	}
+	const f = freshRec.fields;
+	const ncrRef = refId("NCR", freshRec);
 	const [soLine, poLine, person, problemRows, attachments] = await Promise.all([
 		getByRef<SOLineItemFields>("SOLineItem", f.SOLineItemId),
 		getByRef<POLineItemFields>("POLineItem", f.POLineItemId),
@@ -485,7 +562,7 @@ export async function loadNcrForEdit(
 
 	const statusColumn = statusColumnOf(f);
 	return {
-		recordId: rec.id,
+		recordId: freshRec.id,
 		ncrRef,
 		ncrNumber: (f.NCRNumber ?? "").trim(),
 		processApplicable: (f.NCRProcessApplicable ?? "").trim(),
@@ -524,6 +601,7 @@ export async function loadNcrForEdit(
 		operationsComments: f.NCROperationsComments ?? "",
 		operationsRepresentative: f.NCROperationsRepresentative ?? "",
 		operationsDateCompleted: f.NCROperationsDateCompleted ?? "",
+		procurementDelayCommunication: f.NCRProcurementDelayCommunication ?? "",
 		qualityFinalInspectionResult: f.NCRQualityFinalInspectionResult ?? "",
 		qualityFinalComments: f.NCRQualityFinalComments ?? "",
 		qualityFinalAcceptanceConfirmed:
@@ -576,6 +654,7 @@ export interface NcrSubmission {
 	operationsComments: string;
 	operationsRepresentative: string;
 	operationsDateCompleted: string;
+	procurementDelayCommunication: string;
 	qualityFinalInspectionResult: string;
 	qualityFinalComments: string;
 	qualityFinalAcceptanceConfirmed: boolean | null;
@@ -862,6 +941,7 @@ export async function submitNcr(
 			NCROperationsComments: s.operationsComments,
 			NCROperationsRepresentative: s.operationsRepresentative,
 			NCROperationsDateCompleted: s.operationsDateCompleted || null,
+			NCRProcurementDelayCommunication: s.procurementDelayCommunication,
 			NCRQualityFinalInspectionResult: s.qualityFinalInspectionResult,
 			NCRQualityFinalComments: s.qualityFinalComments,
 			NCRQualityFinalAcceptanceConfirmed: s.qualityFinalAcceptanceConfirmed,
@@ -1004,6 +1084,7 @@ export async function updateNcr(
 			NCROperationsComments: s.operationsComments,
 			NCROperationsRepresentative: s.operationsRepresentative,
 			NCROperationsDateCompleted: s.operationsDateCompleted || null,
+			NCRProcurementDelayCommunication: s.procurementDelayCommunication,
 			NCRQualityFinalInspectionResult: s.qualityFinalInspectionResult,
 			NCRQualityFinalComments: s.qualityFinalComments,
 			NCRQualityFinalAcceptanceConfirmed: s.qualityFinalAcceptanceConfirmed,

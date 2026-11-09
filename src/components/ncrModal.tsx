@@ -139,6 +139,7 @@ const OPERATIONS_FIELDS = new Set([
 	"NCROperationsRepresentative",
 	"NCROperationsDateCompleted",
 ]);
+const PROCUREMENT_FIELDS = new Set(["NCRProcurementDelayCommunication"]);
 const QUALITY_FINAL_FIELDS = new Set([
 	"NCRQualityFinalInspectionResult",
 	"NCRQualityFinalComments",
@@ -160,6 +161,7 @@ const FIELD_LABELS: Record<string, string> = {
 	NCROperationsComments: "Operations comments",
 	NCROperationsRepresentative: "Operations representative",
 	NCROperationsDateCompleted: "Date completed",
+	NCRProcurementDelayCommunication: "Communication of a delay due to quality rejection",
 	NCRQualityFinalInspectionResult: "Final inspection result",
 	NCRQualityFinalComments: "Quality comments",
 	NCRQualityFinalAcceptanceConfirmed: "Final acceptance confirmation",
@@ -219,6 +221,7 @@ const isShownField = (key: string, value: unknown) =>
 	!HIDDEN_FIELDS.has(key) &&
 	!ENGINEERING_FIELDS.has(key) &&
 	!OPERATIONS_FIELDS.has(key) &&
+	!PROCUREMENT_FIELDS.has(key) &&
 	!QUALITY_FINAL_FIELDS.has(key) &&
 	!/Id$/.test(key) &&
 	!(typeof value === "object" && value !== null);
@@ -286,6 +289,11 @@ export function NcrDetailsModal({
 		: [];
 	const operationsEntries = data
 		? [...OPERATIONS_FIELDS]
+				.filter((key) => data.fields[key] !== undefined)
+				.map((key) => [key, data.fields[key]] as [string, unknown])
+		: [];
+	const procurementEntries = data
+		? [...PROCUREMENT_FIELDS]
 				.filter((key) => data.fields[key] !== undefined)
 				.map((key) => [key, data.fields[key]] as [string, unknown])
 		: [];
@@ -404,6 +412,28 @@ export function NcrDetailsModal({
 								</h3>
 								<dl className="ncr-details-list">
 									{operationsEntries.map(([key, value]) => {
+										const text = formatValue(value);
+										return (
+											<div
+												key={key}
+												className={`ncr-details-row${text.length > 60 ? " wide" : ""}`}
+											>
+												<dt>{labelFor(key)}</dt>
+												<dd>{text}</dd>
+											</div>
+										);
+									})}
+								</dl>
+							</section>
+						)}
+
+						{procurementEntries.length > 0 && (
+							<section aria-labelledby="ncr-procurement-title">
+								<h3 id="ncr-procurement-title" className="ncr-details-heading">
+									Procurement
+								</h3>
+								<dl className="ncr-details-list">
+									{procurementEntries.map(([key, value]) => {
 										const text = formatValue(value);
 										return (
 											<div
