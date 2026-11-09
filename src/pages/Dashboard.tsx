@@ -4,6 +4,7 @@ import { NewNcrButton } from "../components/ncrModal";
 import { useAuth, useClerk } from "@clerk/react";
 import Button from "../components/button";
 import { notifySuccess, notifyError } from "../components/toast";
+import clerkSignInAppearance from "../components/clerkSignInAppearance";
 
 /** The dashboard: four headline numbers and the list of NCRs. */
 const Dashboard = () => {
@@ -15,7 +16,7 @@ const Dashboard = () => {
 		if (!isLoaded || isSignedIn || signInOpened.current) return;
 
 		signInOpened.current = true;
-		void openSignIn();
+		void openSignIn({appearance: clerkSignInAppearance});
 	}, [isLoaded, isSignedIn, openSignIn]);
 
 	if (!isSignedIn) return null;
