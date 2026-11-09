@@ -104,7 +104,7 @@ const SidebarNav = () => {
 					</NavLink>
 				</div>
 
-				<ul>
+				<ul style={{ display: isSignedIn ? undefined : "none" }}>
 					{links.map(({ to, label, icon: Icon }) => (
 						<li key={to} className="sidebarLink">
 							<NavLink
