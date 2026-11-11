@@ -2,15 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LuX } from "react-icons/lu";
 import { FaPlus } from "react-icons/fa6";
 import Button from "./button";
-import type { NcRecord } from "./api";
-import { isDraftRecord, loadNcrForEdit, type NcrEditData, type NcrFields } from "./ncrService";
+import { isDraftRecord, loadNcrForEdit, type NcrEditData, type NcrRecord } from "./ncrService";
 import NcrForm from "./submitForm";
+import { useCurrentUser } from "./currentUser";
 
 export interface NcrModalProps {
 	open: boolean;
 	onClose: () => void;
 	edit?: boolean;
-	data?: NcRecord<NcrFields>;
+	data?: NcrRecord;
 	onSaved?: (ncrNumber: string) => void;
 }
 
@@ -90,7 +90,7 @@ export function NcrModal({
 				</div>
 				{open && (
 					<NcrForm
-						key={data ? String(data.id) : "new"}
+						key={data ? String(data.ncr_id) : "new"}
 						edit={edit}
 						data={data}
 						onClose={onClose}
@@ -107,35 +107,13 @@ export function NcrModal({
 export interface NcrDetailsModalProps {
 	open: boolean;
 	onClose: () => void;
-	data?: NcRecord<NcrFields>;
+	onPrint: () => void;
+	data?: NcrRecord;
 	status?: string;
-	onEdit?: (row: NcRecord<NcrFields>) => void;
-	onRestore?: (row: NcRecord<NcrFields>) => void;
+	onEdit?: (row: NcrRecord) => void;
+	onRestore?: (row: NcrRecord) => void;
 	restoring?: boolean;
 }
-
-const HIDDEN_FIELDS = new Set([
-	"Id",
-	"id",
-	"CreatedAt",
-	"UpdatedAt",
-	"NCRDraftData",
-	"NCRDraftStep",
-	"created_at",
-	"updated_at",
-]);
-
-const FIELD_LABELS: Record<string, string> = {
-	NCRNumber: "NCR number",
-	NCRDefectDescription: "Description of defect",
-};
-
-const labelFor = (key: string) =>
-	FIELD_LABELS[key] ??
-	key
-		.replace(/([a-z])([A-Z])/g, "$1 $2")
-		.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-		.replace(/_/g, " ");
 
 function formatValue(value: unknown): string {
 	if (value === null || value === undefined || value === "") return "—";
@@ -178,14 +156,40 @@ function relatedValues(ed: NcrEditData | null, status?: string): string[] {
 	];
 }
 
-const isShownField = (key: string, value: unknown) =>
-	!HIDDEN_FIELDS.has(key) &&
-	!/Id$/.test(key) &&
-	!(typeof value === "object" && value !== null);
+const REPORT_LABELS = [
+	"NCR number",
+	"Created",
+	"Closed",
+	"Process",
+	"Quantity ordered",
+	"Quantity defective",
+	"Problem types",
+	"Description of defect",
+	"Marked nonconforming",
+	"Reinspectable",
+] as const;
+/** Rows 3 to 8 come from the QA section and fill in once the NCR has loaded. */
+const needsDetails = (i: number) => i >= 3 && i <= 8;
+
+function reportValues(data: NcrRecord, ed: NcrEditData | null): unknown[] {
+	return [
+		data.ncr_number,
+		data.ncr_created_at,
+		data.ncr_closed_at,
+		ed?.processApplicable,
+		ed?.quantityOrdered,
+		ed?.quantityDefective,
+		ed?.problemTypeLabels.join(", "),
+		ed?.defectDescription,
+		ed?.isNonconforming,
+		data.ncr_is_reinspectable,
+	];
+}
 
 export function NcrDetailsModal({
 	open,
 	onClose,
+	onPrint,
 	data,
 	status,
 	onEdit,
@@ -194,7 +198,7 @@ export function NcrDetailsModal({
 }: NcrDetailsModalProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
 	const [related, setRelated] = useState<{
-		id: unknown;
+		id: number;
 		ed: NcrEditData | null;
 	} | null>(null);
 
@@ -219,25 +223,21 @@ export function NcrDetailsModal({
 		let cancelled = false;
 		loadNcrForEdit(data)
 			.then((ed) => {
-				if (!cancelled) setRelated({ id: data.id, ed });
+				if (!cancelled) setRelated({ id: data.ncr_id, ed });
 			})
 			.catch(() => {
-				if (!cancelled) setRelated({ id: data.id, ed: null });
+				if (!cancelled) setRelated({ id: data.ncr_id, ed: null });
 			});
 		return () => {
 			cancelled = true;
 		};
 	}, [open, data]);
 
-	const entries = data
-		? Object.entries(data.fields).filter(([key, value]) =>
-				isShownField(key, value),
-			)
-		: [];
-	const number = data?.fields.NCRNumber;
+	const number = data?.ncr_number;
 	const isDraft = !!data && isDraftRecord(data);
-	const settled = related !== null && related.id === data?.id;
+	const settled = related !== null && related.id === data?.ncr_id;
 	const values = relatedValues(settled ? related.ed : null, status);
+	const reportRows = data ? reportValues(data, settled ? related.ed : null) : [];
 
 	return (
 		<>
@@ -300,15 +300,20 @@ export function NcrDetailsModal({
 								Report
 							</h3>
 							<dl className="ncr-details-list">
-								{entries.map(([key, value]) => {
-									const text = formatValue(value);
+								{REPORT_LABELS.map((label, i) => {
+									const text = formatValue(reportRows[i]);
+									const waiting = !settled && needsDetails(i);
 									return (
 										<div
-											key={key}
-											className={`ncr-details-row${text.length > 60 ? " wide" : ""}`}
+											key={label}
+											className={`ncr-details-row${!waiting && text.length > 60 ? " wide" : ""}`}
 										>
-											<dt>{labelFor(key)}</dt>
-											<dd>{text}</dd>
+											<dt>{label}</dt>
+											{waiting ? (
+												<dd className="ncr-skeleton" aria-hidden="true" />
+											) : (
+												<dd>{text}</dd>
+											)}
 										</div>
 									);
 								})}
@@ -316,6 +321,7 @@ export function NcrDetailsModal({
 						</section>
 
 						<div className="ncr-details-actions">
+							<Button text="Print" aria="Print" onClick={onPrint} />
 							{onRestore && (
 								<Button
 									text={restoring ? "Restoring..." : "Restore / Make Live"}
@@ -346,6 +352,8 @@ export function NewNcrButton({
 	onSaved?: (ncrNumber: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
+	const me = useCurrentUser();
+	const canEdit = me.status === "ready" && !me.isPending;
 	return (
 		<>
 			<div className="ncr-new-btn">
@@ -353,6 +361,7 @@ export function NewNcrButton({
 					text="New NCR"
 					aria="New NCR"
 					icon={FaPlus}
+					enabled={canEdit}
 					onClick={() => setOpen(true)}
 				/>
 			</div>
