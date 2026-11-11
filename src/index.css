@@ -61,7 +61,7 @@
 	padding: 0;
 }
 
-:focus-visible {
+#root :focus-visible {
 	outline: 3px solid var(--focus);
 	outline-offset: 2px;
 }

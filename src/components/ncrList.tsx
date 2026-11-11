@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fkValue, listAll, refId, type NcRecord, type TableName } from "./api";
-import { isDraftRecord, loadNcrForEdit, parseDraft, unarchiveNcr, type NcrEditData, type NcrFields } from "./ncrService";
+import { looseSupabase, supabase } from "../utils/supabase";
+import {
+	IN_HOUSE_SUPPLIER,
+	isDraftRecord,
+	loadNcrForEdit,
+	loadStatuses,
+	parseDraft,
+	unarchiveNcr,
+	type NcrListRow,
+	type NcrRecord,
+} from "./ncrService";
 import { FaSyncAlt } from "react-icons/fa";
 import Button from "./button";
 import { NcrDetailsModal, NcrModal } from "./ncrModal";
 import { useCurrentUser } from "./currentUser";
-
-const COLUMN_OVERRIDES = { date: "", status: "" };
 
 export type NcrShow = "all" | "archived";
 
@@ -18,25 +25,16 @@ interface NcrsProps {
 	label?: string;
 }
 
-type AnyFields = Record<string, unknown>;
-type NameMap = Map<string, string>;
-
 interface NcrRow {
-	record: NcRecord<NcrFields>;
+	record: NcrRecord;
 	ncrNumber: string;
 	date: Date | null;
 	supplier: string;
 	product: string;
-	qtyReceived: string;
+	qtyOrdered: string;
 	qtyDefective: string;
 	defect: string;
 	status: string;
-}
-
-interface StatusData {
-	ncrNames: NameMap;
-	reviewNames: NameMap;
-	history: NcRecord<AnyFields>[];
 }
 
 interface Filters {
@@ -62,6 +60,8 @@ const DATE_OPTIONS = [
 ];
 const ALL_SUPPLIERS = "All Suppliers";
 const DEFAULT_DATE = "Last 30 Days";
+/** How in-house production is named in the list and the Supplier filter. */
+const IN_HOUSE_LABEL = "In-house";
 /** Which colour a status pill gets. */
 const statusTone = (s: string) =>
 	/clos|complet|resolv|approv|archive/i.test(s)
@@ -72,127 +72,19 @@ const statusTone = (s: string) =>
 
 const isArchived = (status: string) => statusTone(status) === "closed";
 
-async function mapPool<T, R>(
-	items: T[],
-	size: number,
-	fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-	const out = new Array<R>(items.length);
-	let next = 0;
-	const workers = Array.from(
-		{ length: Math.min(size, items.length) },
-		async () => {
-			while (next < items.length) {
-				const i = next++;
-				out[i] = await fn(items[i]);
-			}
-		},
-	);
-	await Promise.all(workers);
-	return out;
-}
-
 function parseDate(v: unknown): Date | null {
 	if (typeof v !== "string" || !v.trim()) return null;
-	const s = v.trim();
-	const d = new Date(
-		s.length === 10
-			? `${s}T00:00:00`
-			: s.includes("T")
-				? s
-				: s.replace(" ", "T"),
-	);
+	const d = new Date(v.trim().replace(" ", "T"));
 	return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function findDate(fields: AnyFields): Date | null {
-	if (COLUMN_OVERRIDES.date) return parseDate(fields[COLUMN_OVERRIDES.date]);
-	const keys = Object.keys(fields);
-	const ordered = [
-		...keys.filter((k) => /creat/i.test(k)),
-		...keys.filter((k) => /date|submit/i.test(k)),
-	];
-	for (const k of ordered) {
-		const d = parseDate(fields[k]);
-		if (d) return d;
-	}
-	return null;
-}
-
-function displayName(fields: AnyFields): string {
-	const texts = Object.entries(fields).filter(
-		([k, v]) => typeof v === "string" && v.trim() && !/id$/i.test(k),
-	);
-	const best =
-		texts.find(([k]) => /name|status|label|title/i.test(k)) ?? texts[0];
-	return best ? String(best[1]).trim() : "";
-}
-
-function buildNames(table: TableName, recs: NcRecord<AnyFields>[]): NameMap {
-	const map: NameMap = new Map();
-	for (const r of recs) {
-		const name = displayName(r.fields);
-		if (name) map.set(String(refId(table, r)), name);
-	}
-	return map;
-}
-
-function textOrLookup(raw: unknown, maps: NameMap[]): string {
-	if (typeof raw === "string" && raw.trim() && Number.isNaN(Number(raw)))
-		return raw.trim();
-	const id = fkValue(raw);
-	if (id === null) return "";
-	for (const m of maps) {
-		const hit = m.get(String(id));
-		if (hit) return hit;
-	}
-	return "";
-}
-
-function findStatus(rec: NcRecord<NcrFields>, sd: StatusData): string {
-	const fields = rec.fields as unknown as AnyFields;
-
-	const key =
-		COLUMN_OVERRIDES.status ||
-		Object.keys(fields).find((k) => /status/i.test(k));
-	if (key) {
-		const order = /review/i.test(key)
-			? [sd.reviewNames, sd.ncrNames]
-			: [sd.ncrNames, sd.reviewNames];
-		const hit = textOrLookup(fields[key], order);
-		if (hit) return hit;
-	}
-
-	const ncrId = refId("NCR", rec);
-	const mine = sd.history
-		.filter((h) =>
-			Object.entries(h.fields).some(
-				([k, v]) =>
-					/ncr/i.test(k) && !/status/i.test(k) && fkValue(v) === ncrId,
-			),
-		)
-		.sort((a, b) => Number(b.id) - Number(a.id));
-	for (const h of mine) {
-		for (const [k, v] of Object.entries(h.fields)) {
-			if (!/review|status|state/i.test(k) || /^ncr/i.test(k)) continue;
-			const hit = textOrLookup(v, [sd.reviewNames, sd.ncrNames]);
-			if (hit) return hit;
-		}
-	}
-	return "";
 }
 
 /** The status shown for an NCR. Drafts always show "Draft". */
 const STATUS_DRAFT_LABEL = "Draft";
 const NEW_SUPPLIER_CHOICE = "Not listed: add a new supplier";
-function statusOf(rec: NcRecord<NcrFields>, sd: StatusData): string {
-	return isDraftRecord(rec) ? STATUS_DRAFT_LABEL : findStatus(rec, sd);
-}
 
 /** A list row built from the answers saved in a draft. */
-function draftRow(record: NcRecord<NcrFields>): NcrRow {
-	const fields = record.fields as unknown as AnyFields;
-	const v = parseDraft(record)?.values ?? {};
+function draftRow(r: NcrListRow): NcrRow {
+	const v = parseDraft(r)?.values ?? {};
 	const str = (section: string, key: string) => {
 		const x = v[section]?.[key];
 		return typeof x === "string" ? x.trim() : "";
@@ -201,167 +93,114 @@ function draftRow(record: NcRecord<NcrFields>): NcrRow {
 	const chosen = str("process", "supplier");
 	const supplier =
 		(chosen === NEW_SUPPLIER_CHOICE ? str("process", "newSupplierName") : chosen) ||
-		(process ? "In-house" : "-");
+		(process ? IN_HOUSE_LABEL : "-");
 	return {
-		record,
-		ncrNumber: String(fields.NCRNumber ?? ""),
-		date: findDate(fields),
+		record: r,
+		ncrNumber: r.ncr_number,
+		date: parseDate(r.ncr_created_at),
 		supplier,
 		product: str("item", "itemName") || "-",
-		qtyReceived: str("defect", "qtyReceived") || "-",
+		qtyOrdered: str("defect", "qtyOrdered") || "-",
 		qtyDefective: str("defect", "qtyDefective") || "-",
 		defect: str("defect", "defectDescription") || "-",
 		status: STATUS_DRAFT_LABEL,
 	};
 }
 
-function toRow(
-    record: NcRecord<NcrFields>,
-    ed: NcrEditData | null,
-    sd: StatusData,
-): NcrRow {
-    if (isDraftRecord(record)) return draftRow(record);
-
-    const fields = record.fields as unknown as AnyFields;
-    const num = (n: number | null | undefined) =>
-        n === null || n === undefined ? "-" : String(n);
-
-    return {
-        record,
-        ncrNumber: ed?.ncrNumber || String(fields.NCRNumber ?? ""),
-        date: findDate(fields),
-        supplier: ed ? (ed.supplier ?? "In-house") : "-",
-        product: ed ? ed.item.name : "-",
-        qtyReceived: num(ed?.quantityReceived),
-        qtyDefective: num(ed?.quantityDefective),
-        defect: ed?.defectDescription ?? "-",
-        status: findStatus(record, sd),
-    };
+function toRow(r: NcrListRow): NcrRow {
+	if (r.is_draft) return draftRow(r);
+	const num = (n: number | null) => (n === null || n === undefined ? "-" : String(n));
+	const supplier = (r.supplier_name ?? "").trim();
+	return {
+		record: r,
+		ncrNumber: r.ncr_number,
+		date: parseDate(r.ncr_created_at),
+		supplier: !supplier
+			? "-"
+			: supplier.toLowerCase() === IN_HOUSE_SUPPLIER.toLowerCase()
+				? IN_HOUSE_LABEL
+				: supplier,
+		product: r.item_name || "-",
+		qtyOrdered: num(r.quantity_ordered),
+		qtyDefective: num(r.quantity_defective),
+		defect: r.defect_description || "-",
+		status: r.status_label,
+	};
 }
-
-let lookups: Promise<StatusData> | null = null;
-function getLookups(): Promise<StatusData> {
-	const p = (lookups ??= (async () => {
-		const none = [] as NcRecord<AnyFields>[];
-		const [ncrStatus, reviewStatus] = await Promise.all([
-			listAll<AnyFields>("NCRStatus").catch(() => none),
-			listAll<AnyFields>("ReviewStatus").catch(() => none),
-		]);
-		return {
-			ncrNames: buildNames("NCRStatus", ncrStatus),
-			reviewNames: buildNames("ReviewStatus", reviewStatus),
-			history: ncrStatus,
-		};
-	})());
-	p.catch(() => {
-		if (lookups === p) lookups = null;
-	});
-	return p;
-}
-
-let allNcrs: Promise<NcRecord<NcrFields>[]> | null = null;
-function getAllNcrs(): Promise<NcRecord<NcrFields>[]> {
-	const p = (allNcrs ??= listAll<NcrFields>("NCR").then((recs) =>
-		[...recs].sort((a, b) => Number(b.id) - Number(a.id)),
-	));
-	p.catch(() => {
-		if (allNcrs === p) allNcrs = null;
-	});
-	return p;
-}
-
-const rowCache = new Map<string, NcrRow>();
 
 const listeners = new Set<() => void>();
 
+/** Tells every mounted list to load again. */
 function resetLoaders() {
-	lookups = null;
-	allNcrs = null;
-	rowCache.clear();
 	listeners.forEach((l) => l());
 }
 
-function enrich(
-	records: NcRecord<NcrFields>[],
-	sd: StatusData,
-): Promise<NcrRow[]> {
-	return mapPool(records, 6, async (rec) => {
-		if (isDraftRecord(rec)) return draftRow(rec);
-		const key = String(rec.id);
-		const cached = rowCache.get(key);
-		if (cached) return cached;
-		let ed: NcrEditData | null = null;
-		try {
-			ed = await loadNcrForEdit(rec);
-		} catch {
-			ed = null;
-		}
-		const row = toRow(rec, ed, sd);
-		if (ed) rowCache.set(key, row);
-		return row;
-	});
+/** Wraps a search term for a PostgREST `ilike` inside an `or(...)` filter. */
+function likePattern(term: string): string {
+	const escaped = term.replace(/[\\%_]/g, "\\$&").replace(/[\\"]/g, "\\$&");
+	return `"*${escaped}*"`;
 }
 
+async function loadSupplierNames(): Promise<string[]> {
+	const { data, error } = await supabase
+		.from("supplier")
+		.select("supplier_name")
+		.order("supplier_name");
+	if (error) throw new Error(error.message);
+	return data.map((r: { supplier_name: string; }) =>
+		r.supplier_name.trim().toLowerCase() === IN_HOUSE_SUPPLIER.toLowerCase()
+			? IN_HOUSE_LABEL
+			: r.supplier_name.trim(),
+	);
+}
+
+/**
+ * One page of NCRs. The database does the filtering, searching, counting and
+ * paging (see the `ncr_list` view in sql/01_ncr_functions.sql). Draft rows are
+ * found by NCR number only, because their other answers are stored as text.
+ */
 async function fetchNcrPage(
 	page: number,
 	pageSize: number,
 	filters: Filters,
 ): Promise<PageResult> {
-	const [all, sd] = await Promise.all([getAllNcrs(), getLookups()]);
+	let q = looseSupabase.from("ncr_list").select("*", { count: "exact" });
 
-	const days =
-		DATE_OPTIONS.find((d) => d.label === filters.dateRange)?.days ?? null;
-	const cutoff =
-		days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-	const candidates = all.filter((rec) => {
-		const status = statusOf(rec, sd);
-		if (filters.show === "archived" && !isArchived(status)) return false;
-		if (filters.status !== ALL_STATUSES && status !== filters.status)
-			return false;
-		if (cutoff) {
-			const d = findDate(rec.fields as unknown as AnyFields);
-			if (d && d < cutoff) return false;
-		}
-		return true;
-	});
+	if (filters.show === "archived") q = q.eq("is_archived", true);
+	if (filters.status === STATUS_DRAFT_LABEL) q = q.eq("is_draft", true);
+	else if (filters.status !== ALL_STATUSES)
+		q = q.eq("is_draft", false).eq("status_label", filters.status);
 
-	const start = page * pageSize;
-	const term = filters.search.trim().toLowerCase();
-	const needsDetails = term !== "" || filters.supplier !== ALL_SUPPLIERS;
+	const days = DATE_OPTIONS.find((d) => d.label === filters.dateRange)?.days ?? null;
+	if (days !== null)
+		q = q.gte("ncr_created_at", new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
 
-	let rows: NcrRow[];
-	let total: number;
+	if (filters.supplier !== ALL_SUPPLIERS)
+		q = q.eq(
+			"supplier_name",
+			filters.supplier === IN_HOUSE_LABEL ? IN_HOUSE_SUPPLIER : filters.supplier,
+		);
 
-	if (needsDetails) {
-		const detailed = await enrich(candidates, sd);
-		const matches = detailed.filter((r) => {
-			if (filters.supplier !== ALL_SUPPLIERS && r.supplier !== filters.supplier)
-				return false;
-			if (term) {
-				const haystack = [r.ncrNumber, r.supplier, r.product, r.defect]
-					.join(" ")
-					.toLowerCase();
-				if (!haystack.includes(term)) return false;
-			}
-			return true;
-		});
-		total = matches.length;
-		rows = matches.slice(start, start + pageSize);
-	} else {
-		total = candidates.length;
-		rows = await enrich(candidates.slice(start, start + pageSize), sd);
-	}
-
-	if (
-		rows.length > 0 &&
-		(rows.some((r) => !r.date) || rows.some((r) => !r.status))
-	) {
-		console.warn(
-			"NCRs: could not find a date or status for some rows. First NCR record:",
-			all[0]?.fields,
+	const term = filters.search.trim();
+	if (term) {
+		const pattern = likePattern(term);
+		q = q.or(
+			["ncr_number", "supplier_name", "item_name", "defect_description"]
+				.map((col) => `${col}.ilike.${pattern}`)
+				.join(","),
 		);
 	}
-	return { rows, total };
+
+	const from = page * pageSize;
+	const { data, error, count } = await q
+		.order("ncr_id", { ascending: false })
+		.range(from, from + pageSize - 1);
+	if (error) throw new Error(error.message);
+
+	const rows = (data as NcrListRow[]).map(toRow);
+	if (rows.length > 0 && rows.some((r) => !r.date))
+		console.warn("NCRs: some rows have no created date.", rows.find((r) => !r.date)?.record);
+	return { rows, total: count ?? rows.length };
 }
 
 function SearchIcon() {
@@ -501,7 +340,7 @@ const Ncrs = ({
 	const [supplier, setSupplier] = useState<string>(ALL_SUPPLIERS);
 	const dateRange = dateChoice ?? defaultDate;
 
-	const [editing, setEditing] = useState<NcRecord<NcrFields> | null>(null);
+	const [editing, setEditing] = useState<NcrRecord | null>(null);
 	const [viewing, setViewing] = useState<NcrRow | null>(null);
 	const [restoring, setRestoring] = useState(false);
 
@@ -510,17 +349,13 @@ const Ncrs = ({
 		setViewing(row);
 	};
 
-	const restoreNcr = async (row: NcRecord<NcrFields>) => {
-		if (restoring) return;
+	const restoreNcr = async (row: NcrRecord) => {
+		if (restoring || me.status !== "ready") return;
 		setRestoring(true);
 		try {
 			const edit = await loadNcrForEdit(row);
-			const sd = await getLookups();
-			const statuses = [...sd.ncrNames.entries()].map(([id, name]) => ({
-				id: Number(id),
-				name,
-			}));
-			await unarchiveNcr(edit, statuses);
+			const statuses = await loadStatuses();
+			await unarchiveNcr(edit, statuses, me.personId);
 			resetLoaders();
 			setViewing(null);
 		} catch (err) {
@@ -595,12 +430,6 @@ const Ncrs = ({
 				if (cancelled) return;
 				setData(res);
 				setLoadState("ready");
-				const names = res.rows
-					.map((r) => r.supplier)
-					.filter((s) => s && s !== "-");
-				if (names.length > 0) {
-					setKnownSuppliers((prev) => Array.from(new Set([...prev, ...names])));
-				}
 			})
 			.catch((err) => {
 				if (cancelled) return;
@@ -619,11 +448,15 @@ const Ncrs = ({
 	useEffect(() => {
 		if (simple) return;
 		let cancelled = false;
-		getLookups()
-			.then((sd) => {
+		loadStatuses()
+			.then((list) => {
 				if (cancelled) return;
-				const all = [...sd.ncrNames.values(), ...sd.reviewNames.values()];
-				setStatusNames(Array.from(new Set(all)).sort());
+				setStatusNames(Array.from(new Set(list.map((s) => s.name))).sort());
+			})
+			.catch(() => {});
+		loadSupplierNames()
+			.then((names) => {
+				if (!cancelled) setKnownSuppliers(names);
 			})
 			.catch(() => {});
 		return () => {
@@ -742,7 +575,7 @@ const Ncrs = ({
 						{showRows &&
 							data.rows.map((n) => (
 								<div
-									key={String(n.record.id)}
+									key={String(n.record.ncr_id)}
 									className="ncrs-row ncrs-card ncrs-clickable"
 									role="row"
 									onClick={() => openDetails(n)}
@@ -871,21 +704,18 @@ const Ncrs = ({
 				data={viewing?.record}
 				status={viewing?.status}
 				onClose={() => setViewing(null)}
-				onEdit={
-					editable && viewing && !isArchived(viewing.status)
-						? (row) => {
-								setViewing(null);
-								setEditing(row);
-							}
-						: undefined
-				}
-				onRestore={
-					editable && viewing && isArchived(viewing.status)
-						? (row) => void restoreNcr(row)
-						: undefined
-				}
-				restoring={restoring}
-			/>
+				onEdit={editable && viewing && !isArchived(viewing.status)
+					? (row) => {
+						setViewing(null);
+						setEditing(row);
+					}
+					: undefined}
+				onRestore={editable && viewing && isArchived(viewing.status)
+					? (row) => void restoreNcr(row)
+					: undefined}
+				restoring={restoring} onPrint={function (): void {
+					throw new Error("Function not implemented.");
+				} }			/>
 
 			{editable && (
 				<>
