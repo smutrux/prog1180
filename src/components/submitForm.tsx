@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Input from "./input";
 import Button from "./button";
-import { readRecord, type NcRecord } from "./api";
+import { useCurrentUser } from "./currentUser";
 import {
 	DuplicateNcrNumberError,
 	PROCESS_LABELS,
@@ -17,14 +17,14 @@ import {
 	type FormLookups,
 	type InspectorOption,
 	type NcrEditData,
-	type NcrFields,
+	type NcrRecord,
 	type NcrSubmission,
 	defaultStatus,
 } from "./ncrService";
 
 export interface NcrFormProps {
 	edit?: boolean;
-	data?: NcRecord<NcrFields>;
+	data?: NcrRecord;
 	onClose?: () => void;
 	onSaved?: (ncrNumber: string) => void;
 	onDirtyChange?: (dirty: boolean) => void;
@@ -53,7 +53,7 @@ interface FormValues {
 	};
 	item: { itemName: string; itemSapNumber: string; itemDescription: string };
 	defect: {
-		qtyReceived: string;
+		qtyOrdered: string;
 		qtyDefective: string;
 		problemTypeIds: string[];
 		defectDescription: string;
@@ -148,11 +148,7 @@ function sectionsFor(
 const makeDefaults = (ncrNumber: string): FormValues => ({
 	process: { ncrNumber, processType: "", supplier: "", newSupplierName: "", poNumber: "", salesOrderNumber: "" },
 	item: { itemName: "", itemSapNumber: "", itemDescription: "" },
-	defect: { qtyReceived: "", qtyDefective: "", problemTypeIds: [], defectDescription: "", isNonconforming: "", engineeringRequired: "" },
-	engineering: { disposition: "", instructions: "", comments: "", representative: "", dateCompleted: "" },
-	operations: { disposition: "", instructions: "", comments: "", representative: "", dateCompleted: "" },
-	procurement: { delayCommunication: "" },
-	qualityFinalReview: { inspectionResult: "", comments: "", acceptanceConfirmed: "", dateClosed: "", closedBy: "" },
+	defect: { qtyOrdered: "", qtyDefective: "", problemTypeIds: [], defectDescription: "", isNonconforming: "" },
 	evidence: { links: [""], fileNames: [] },
 	inspector: { inspector: "", newFirstName: "", newMiddleName: "", newLastName: "" },
 });
@@ -199,7 +195,7 @@ function toFormValues(ed: NcrEditData): FormValues {
 		},
 		item: { itemName: ed.item.name, itemSapNumber: ed.item.sapNumber, itemDescription: ed.item.description },
 		defect: {
-			qtyReceived: ed.quantityReceived === null ? "" : String(ed.quantityReceived),
+			qtyOrdered: ed.quantityOrdered === null ? "" : String(ed.quantityOrdered),
 			qtyDefective: ed.quantityDefective === null ? "" : String(ed.quantityDefective),
 			problemTypeIds: ed.problemTypeIds.map(String),
 			defectDescription: ed.defectDescription,
@@ -247,12 +243,12 @@ function addEditOptions(l: FormLookups, ed: NcrEditData | null): FormLookups {
 	const label = fullName(ed.inspector);
 	const inspectors =
 		label && !l.inspectors.some((i) => fullName(i) === label)
-			? [...l.inspectors, { personId: ed.inspector.personId, rolePersonId: 0, first: ed.inspector.first, middle: ed.inspector.middle, last: ed.inspector.last }]
+			? [...l.inspectors, { personId: ed.inspector.personId, first: ed.inspector.first, middle: ed.inspector.middle, last: ed.inspector.last }]
 			: l.inspectors;
 	return { ...l, suppliers, inspectors };
 }
 
-const CREATE_PREFIX = "ncr-draft-v2";
+const CREATE_PREFIX = "ncr-draft-v3";
 const savedAll = (value: boolean) =>
 	Object.fromEntries(SAVED_IDS.map((id) => [id, value])) as Record<SectionId, boolean>;
 const sectionKey = (prefix: string, id: SectionId) => `${prefix}:${id}`;
@@ -370,12 +366,12 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 		}
 		case "defect": {
 			const d = v.defect;
-			const received = d.qtyReceived.trim();
+			const ordered = d.qtyOrdered.trim();
 			const defective = d.qtyDefective.trim();
-			if (!POSITIVE_INT.test(received)) e.qtyReceived = "Enter a whole number of 1 or more.";
+			if (!POSITIVE_INT.test(ordered)) e.qtyOrdered = "Enter a whole number of 1 or more.";
 			if (!POSITIVE_INT.test(defective)) e.qtyDefective = "Enter a whole number of 1 or more.";
-			else if (POSITIVE_INT.test(received) && Number(defective) > Number(received)) {
-				e.qtyDefective = "This cannot be more than the quantity received.";
+			else if (POSITIVE_INT.test(ordered) && Number(defective) > Number(ordered)) {
+				e.qtyDefective = "This cannot be more than the quantity ordered.";
 			}
 			if (d.problemTypeIds.length === 0) e.problemTypeIds = "Tick at least one problem type.";
 			if (blank(d.defectDescription)) e.defectDescription = "Describe the defect.";
@@ -473,6 +469,8 @@ function ChoiceGroup(props: {
 }
 
 export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyChange }: NcrFormProps) {
+	const me = useCurrentUser();
+	const personId = me.status === "ready" ? me.personId : null;
 	const [values, setValues] = useState<FormValues>(() => makeDefaults(""));
 	const [saved, setSaved] = useState<Record<SectionId, boolean>>(
 		() => Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>,
@@ -493,7 +491,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const [editData, setEditData] = useState<NcrEditData | null>(null);
 	const isArchived = edit && editData?.isArchived === true;
 	const isDraft = !edit && !!data && isDraftRecord(data);
-	const draftIdRef = useRef<number | string | null>(null);
+	const draftIdRef = useRef<number | null>(null);
 	const [savingDraft, setSavingDraft] = useState(false);
 
 	const headingRef = useRef<HTMLHeadingElement>(null);
@@ -510,9 +508,9 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 
 	const prefix =
 		edit && data
-			? `${CREATE_PREFIX}-edit-${data.id}`
+			? `${CREATE_PREFIX}-edit-${data.ncr_id}`
 			: isDraft && data
-				? `${CREATE_PREFIX}-draft-${data.id}`
+				? `${CREATE_PREFIX}-draft-${data.ncr_id}`
 				: CREATE_PREFIX;
 
 	const init = useCallback(async () => {
@@ -527,8 +525,8 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 					throw new Error(`Draft ${String(draftRec.fields.NCRNumber ?? draftRec.id)} could not be found in the database.`);
 				}
 				const l = await loadFormLookups();
-				const parsed = parseDraft(freshDraft);
-				const base = makeDefaults((freshDraft.fields.NCRNumber ?? "").trim());
+				const parsed = parseDraft(draftRec);
+				const base = makeDefaults(draftRec.ncr_number.trim());
 				const merged: FormValues = JSON.parse(JSON.stringify(base));
 				if (parsed) {
 					for (const id of SAVED_IDS) {
@@ -559,7 +557,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				if (!Array.isArray(merged.defect.problemTypeIds)) merged.defect.problemTypeIds = [];
 				baseRef.current = base;
 				editRef.current = null;
-				draftIdRef.current = freshDraft.id;
+				draftIdRef.current = draftRec.ncr_id;
 				setEditData(null);
 				setLookups(l);
 				setValues(sanitize(merged, l));
@@ -577,7 +575,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			const [l, next, ed] = await Promise.all([
 				loadFormLookups(),
 				edit ? Promise.resolve("") : nextNcrNumber(),
-				edit ? loadNcrForEdit(dataRef.current as NcRecord<NcrFields>) : Promise.resolve(null),
+				edit ? loadNcrForEdit(dataRef.current as NcrRecord) : Promise.resolve(null),
 			]);
 			const withExtras = addEditOptions(l, ed);
 			const base = ed ? toFormValues(ed) : makeDefaults(next);
@@ -717,7 +715,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		setSavingDraft(true);
 		try {
 			const result = await saveDraft(
-				{ recordId: draftIdRef.current, ncrNumber: values.process.ncrNumber, values, step },
+				{ recordId: draftIdRef.current, ncrNumber: values.process.ncrNumber, values, step, createdByPersonId: personId },
 				lookups.statuses,
 				setStatus,
 			);
@@ -793,16 +791,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		setSubmitting(true);
 		setSubmitError("");
 		try {
-			const submission = buildSubmission(
-				values,
-				files,
-				lookups,
-				edit ? editData?.statusId ?? null : null,
-				edit || isDraft,
-				edit || isDraft,
-				edit || isDraft,
-				edit || isDraft,
-			);
+			const submission = buildSubmission(values, files, lookups, edit ? editData?.statusId ?? null : null, personId);
 			const result = edit && editData
 				? await updateNcr(editData, submission, setStatus)
 				: await submitNcr(submission, setStatus, draftIdRef.current);
@@ -1072,11 +1061,11 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 
 				{current.id === "defect" && (
 					<>
-						<Input type={Input.NUMBER} name="qtyReceived" label="Quantity received" value={values.defect.qtyReceived}
+						<Input type={Input.NUMBER} name="qtyOrdered" label="Quantity ordered" value={values.defect.qtyOrdered}
 							required min={1} step={1} inputMode="numeric" placeholder="e.g. 50"
-							onChange={text("defect", "qtyReceived")} error={errors.qtyReceived} />
+							onChange={text("defect", "qtyOrdered")} error={errors.qtyOrdered} />
 						<Input type={Input.NUMBER} name="qtyDefective" label="Quantity defective" value={values.defect.qtyDefective}
-							required min={1} max={values.defect.qtyReceived || undefined} step={1} inputMode="numeric" placeholder="e.g. 3"
+							required min={1} max={values.defect.qtyOrdered || undefined} step={1} inputMode="numeric" placeholder="e.g. 3"
 							helpText="Count only the items that do not meet requirements."
 							onChange={text("defect", "qtyDefective")} error={errors.qtyDefective} />
 						<ChoiceGroup id="problemTypeIds" legend="Problem types" required
@@ -1364,7 +1353,7 @@ function reviewGroups(
 		{ id: "item" as SectionId, title: "Item", rows: [
 			["Item name", v.item.itemName], ["SAP number", v.item.itemSapNumber], ["Description", v.item.itemDescription]] },
 		{ id: "defect" as SectionId, title: "Defect details", rows: [
-			["Quantity received", v.defect.qtyReceived], ["Quantity defective", v.defect.qtyDefective],
+			["Quantity ordered", v.defect.qtyOrdered], ["Quantity defective", v.defect.qtyDefective],
 			["Problem types", problems.join(", ")], ["Description of defect", v.defect.defectDescription],
 			["Marked nonconforming", yesNo],
 			["Engineering required", v.defect.engineeringRequired === "yes" ? "Yes" : v.defect.engineeringRequired === "no" ? "No" : ""]] },
@@ -1389,16 +1378,7 @@ function reviewGroups(
 	);
 }
 
-function buildSubmission(
-	v: FormValues,
-	files: File[],
-	l: FormLookups,
-	currentStatusId: number | null = null,
-	includeEngineering = false,
-	includeOperations = false,
-	includeProcurement = false,
-	includeQualityFinalReview = false,
-): NcrSubmission {
+function buildSubmission(v: FormValues, files: File[], l: FormLookups, currentStatusId: number | null = null, createdByPersonId: number | null = null): NcrSubmission {
 	const p = v.process;
 	const status = (currentStatusId !== null ? l.statuses.find((x) => x.id === currentStatusId) : undefined) ?? defaultStatus(l.statuses);
 	if (!status) throw new Error("No NCR statuses were found in the database, so the NCR cannot be saved.");
@@ -1413,7 +1393,7 @@ function buildSubmission(
 	} else {
 		const known: InspectorOption | undefined = l.inspectors.find((i) => fullName(i) === v.inspector.inspector);
 		if (!known) throw new Error("The chosen inspector is no longer in the database. Go back and choose the inspector again.");
-		inspector = { kind: "existing", personId: known.personId, rolePersonId: known.rolePersonId };
+		inspector = { kind: "existing", personId: known.personId };
 	}
 	return {
 		ncrNumber: p.ncrNumber,
@@ -1423,7 +1403,7 @@ function buildSubmission(
 		purchaseOrderNumber: p.poNumber.trim(),
 		salesOrderNumber: p.salesOrderNumber.trim(),
 		item: { name: v.item.itemName.trim(), description: v.item.itemDescription.trim(), sapNumber: v.item.itemSapNumber.trim() },
-		quantityReceived: Number(v.defect.qtyReceived),
+		quantityOrdered: Number(v.defect.qtyOrdered),
 		quantityDefective: Number(v.defect.qtyDefective),
 		problemTypeIds: v.defect.problemTypeIds.map(Number),
 		defectDescription: v.defect.defectDescription.trim(),
@@ -1453,6 +1433,7 @@ function buildSubmission(
 		inspector,
 		files,
 		links: v.evidence.links.map((x) => x.trim()).filter(Boolean),
+		createdByPersonId,
 	};
 }
 

@@ -1,131 +1,52 @@
+import type { PostgrestError } from "@supabase/supabase-js";
+import type { Tables } from "../../database.types";
+import { looseSupabase as db, supabase } from "../utils/supabase";
 import {
-	ApiError,
-	createRecord,
-	deleteRecord,
-	findFirst,
-	fkValue,
-	getByRef,
-	listAll,
-	ncDateTime,
-	readRecord,
-	refId,
-	updateRecord,
-	where,
-	type NcRecord,
-	type TableName,
-} from "./api";
-import { ConstraintError, assertRecord, validateSubmission } from "./ncrConstraints";
+	ConstraintError,
+	explainDbError,
+	validateSubmission,
+} from "./ncrConstraints";
 
 export const QUALITY_ROLE = "Quality Representative";
 export const STATUS_NEW = "Open";
 export const STATUS_DRAFT = "Draft";
-const STATUS_NEW_FALLBACK_ID = 1;
 export const isClosedStatus = (name: string) => /clos/i.test(name);
 export const IN_HOUSE_SUPPLIER = "In-house production";
 export const PROCESS_LABELS = {
 	supplier: "Supplier or Rec-Insp",
 	wip: "WIP (Production Order)",
 } as const;
-const SUBMISSION_RULES = {
-	inHouseSupplier: IN_HOUSE_SUPPLIER,
-	processLabels: Object.values(PROCESS_LABELS),
-};
+const SUBMISSION_RULES = { processLabels: Object.values(PROCESS_LABELS) };
 
-const NCR_DEFAULTS = {
-	NCRDisposition: "Pending",
-	NCRIsNotificationRequired: false,
-	NCRIsDrawingUpdateRequired: "Pending",
-	NCROriginalRevNumber: "",
-	NCRUpdatedRevNumber: "",
-	NCRClosedAt: null as string | null,
-};
-const PLACEHOLDER_PRICE = 0;
-const PERSON_CONTACT_DEFAULT = "";
+/** The NCR columns the list, the form and the modals read. */
+export type NcrRecord = Pick<
+	Tables<"ncr">,
+	| "ncr_id"
+	| "ncr_number"
+	| "ncr_created_at"
+	| "ncr_closed_at"
+	| "ncr_draft_data"
+	| "ncr_draft_step"
+	| "ncr_is_reinspectable"
+>;
 
-export interface NcrFields {
-	NCRId?: number | null;
-	NCRNumber: string | null;
-	NCRProcessApplicable: string | null;
-	NCRDefectDescription: string | null;
-	NCRQuantityReceived: number | null;
-	NCRQuantityDefective: number | null;
-	NCRIsNonconforming: boolean | null;
-	NCRIsEngineeringRequired?: boolean | null;
-	NCREngineeringDisposition?: string | null;
-	NCREngineeringInstructions?: string | null;
-	NCREngineeringComments?: string | null;
-	NCREngineeringRepresentative?: string | null;
-	NCREngineeringDateCompleted?: string | null;
-	NCROperationsDisposition?: string | null;
-	NCROperationsInstructions?: string | null;
-	NCROperationsComments?: string | null;
-	NCROperationsRepresentative?: string | null;
-	NCROperationsDateCompleted?: string | null;
-	NCRProcurementDelayCommunication?: string | null;
-	NCRQualityFinalInspectionResult?: string | null;
-	NCRQualityFinalComments?: string | null;
-	NCRQualityFinalAcceptanceConfirmed?: boolean | null;
-	NCRQualityDateClosed?: string | null;
-	NCRQualityClosedBy?: string | null;
-	SOLineItemId: number | null;
-	POLineItemId: number | null;
-	NCRRaisedByPersonId: number | null;
-	NCRUpdatedAt?: string | null;
-	[column: string]: unknown;
-}
-interface SupplierFields {
-	SupplierName: string | null;
-}
-interface ProblemTypeFields {
-	ProblemTypeLabel: string | null;
-	ProblemTypeDesc: string | null;
-}
-interface PersonFields {
-	PersonFirstName: string | null;
-	PersonMiddleName: string | null;
-	PersonLastName: string | null;
-}
-interface RoleFields {
-	RoleName: string | null;
-}
-interface RolePersonFields {
-	RoleId: number | null;
-	PersonId: number | null;
-}
-interface StatusFields {
-	NCRStatusName: string | null;
-}
-interface NcrNumberFields {
-	NCRNumber: string | null;
-}
-interface PurchaseOrderFields {
-	PurchaseOrderNumber: string | null;
-	SupplierId: number | null;
-}
-interface SalesOrderFields {
-	SalesOrderNumber: string | null;
-	ItemSapNumber: string | null;
-}
-interface ItemFields {
-	ItemName: string | null;
-	ItemDesc: string | null;
-}
-interface SOLineItemFields {
-	ItemId: number | null;
-	SalesOrderId: number | null;
-}
-interface POLineItemFields {
-	PurchaseOrderId: number | null;
-}
-interface NCRProblemTypeFields {
-	NCRId?: unknown;
-	ProblemTypeId: number | null;
-}
-interface AttachmentFields {
-	NCRId?: unknown;
-	AttachmentType: string | null;
-	AttachmentFileName: string | null;
-	AttachmentFilePath: string | null;
+/** One row of the `ncr_list` view: an NCR with its status, item, supplier and QA answers. */
+export interface NcrListRow extends NcrRecord {
+	ncr_status_id: number;
+	status_label: string;
+	is_draft: boolean;
+	is_archived: boolean;
+	supplier_name: string | null;
+	item_name: string | null;
+	sales_order_number: string | null;
+	purchase_order_number: string | null;
+	quantity_ordered: number | null;
+	quantity_defective: number | null;
+	defect_description: string | null;
+	process_label: string | null;
+	has_engineering: boolean;
+	has_purchasing: boolean;
+	disposition_label: string | null;
 }
 
 export interface SupplierOption {
@@ -143,26 +64,22 @@ export interface StatusOption {
 }
 export interface InspectorOption {
 	personId: number;
-	rolePersonId: number;
 	first: string;
 	middle: string;
 	last: string;
 }
 export interface FormLookups {
+	statuses: StatusOption[];
 	suppliers: SupplierOption[];
 	problemTypes: ProblemTypeOption[];
 	inspectors: InspectorOption[];
-	statuses: StatusOption[];
 }
 
-export function defaultStatus(
-	statuses: StatusOption[],
-): StatusOption | undefined {
-	return (
-		statuses.find((s) => same(s.name, STATUS_NEW)) ??
-		statuses.find((s) => s.id === STATUS_NEW_FALLBACK_ID) ??
-		statuses[0]
-	);
+const same = (a: string | null | undefined, b: string) =>
+	(a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
+
+export function defaultStatus(statuses: StatusOption[]): StatusOption | undefined {
+	return statuses.find((s) => same(s.name, STATUS_NEW)) ?? statuses[0];
 }
 
 export class DuplicateNcrNumberError extends Error {
@@ -175,119 +92,88 @@ export class DuplicateNcrNumberError extends Error {
 }
 export class MissingSeedError extends Error {
 	constructor(what: string) {
-		super(
-			`${what} is missing from the database. Run the seed script (scripts/seed.mjs) or add it by hand.`,
-		);
+		super(`${what} is missing from the database. Run sql/01_ncr_functions.sql or add it by hand.`);
 		this.name = "MissingSeedError";
 	}
 }
+/** A save failed for a reason that is not a broken rule. `leftovers` is always empty: saves are atomic now. */
 export class SubmitError extends Error {
 	leftovers: string[];
-	constructor(message: string, leftovers: string[]) {
+	constructor(message: string, leftovers: string[] = []) {
 		super(message);
 		this.name = "SubmitError";
 		this.leftovers = leftovers;
 	}
 }
 
-export const STATUS_COLUMN = "NCRStatusId";
-
-function statusColumnOf(fields: Record<string, unknown>): string {
-	if (STATUS_COLUMN in fields) return STATUS_COLUMN;
-	return (
-		Object.keys(fields).find((k) => /status/i.test(k) && !/review/i.test(k)) ??
-		STATUS_COLUMN
-	);
+/** Throws a readable error when a request failed. */
+function throwIfError(res: { error: PostgrestError | null }, ncrNumber = ""): void {
+	const { error } = res;
+	if (!error) return;
+	if (error.code === "23505" && /\(ncr_number\)/.test(error.details ?? ""))
+		throw new DuplicateNcrNumberError(ncrNumber);
+	const explained = explainDbError(error);
+	throw explained instanceof ConstraintError ? explained : new SubmitError(explained.message);
 }
 
-const same = (a: string | null | undefined, b: string) =>
-	(a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
+/** Throws a readable error for a failed request. Returns the data otherwise. */
+function unwrap<T>(res: { data: T | null; error: PostgrestError | null }, ncrNumber = ""): T {
+	throwIfError(res, ncrNumber);
+	return res.data as T;
+}
 
-function mustFind<T>(list: T[], test: (item: T) => boolean, what: string): T {
-	const hit = list.find(test);
-	if (!hit) throw new MissingSeedError(what);
-	return hit;
+export async function loadStatuses(): Promise<StatusOption[]> {
+	const rows = unwrap(
+		await supabase.from("ncr_status").select("ncr_status_id, ncr_status_label").order("ncr_status_id"),
+	);
+	return rows
+		.map((r) => ({ id: r.ncr_status_id, name: r.ncr_status_label.trim() }))
+		.filter((r) => r.name);
 }
 
 export async function loadFormLookups(): Promise<FormLookups> {
-	const [suppliers, problemTypes, roles, rolePersons, people, statuses] =
-		await Promise.all([
-			listAll<SupplierFields>("Supplier"),
-			listAll<ProblemTypeFields>("ProblemType"),
-			listAll<RoleFields>("Role"),
-			listAll<RolePersonFields>("RolePerson"),
-			listAll<PersonFields>("Person"),
-			listAll<StatusFields>("NCRStatus"),
-		]);
-
-	const quality = roles.find((r) => same(r.fields.RoleName, QUALITY_ROLE));
-	const inspectors: InspectorOption[] = [];
-	if (quality) {
-		for (const rp of rolePersons) {
-			if (fkValue(rp.fields.RoleId) !== refId("Role", quality)) continue;
-			const person = people.find(
-				(p) => refId("Person", p) === fkValue(rp.fields.PersonId),
-			);
-			if (!person) continue;
-			inspectors.push({
-				personId: refId("Person", person),
-				rolePersonId: refId("RolePerson", rp),
-				first: (person.fields.PersonFirstName ?? "").trim(),
-				middle: (person.fields.PersonMiddleName ?? "").trim(),
-				last: (person.fields.PersonLastName ?? "").trim(),
-			});
-		}
-	}
+	const [statuses, suppliers, problemTypes, inspectors] = await Promise.all([
+		loadStatuses(),
+		supabase.from("supplier").select("supplier_id, supplier_name").order("supplier_name"),
+		supabase
+			.from("problem_type")
+			.select("problem_type_id, problem_type_label, problem_type_desc")
+			.order("problem_type_id"),
+		supabase
+			.from("person")
+			.select("person_id, person_first_name, person_middle_name, person_last_name, role!inner(role_name)")
+			.ilike("role.role_name", QUALITY_ROLE)
+			.order("person_last_name")
+			.order("person_first_name"),
+	]);
 
 	return {
-		suppliers: suppliers
-			.map((s) => ({
-				id: refId("Supplier", s),
-				name: (s.fields.SupplierName ?? "").trim(),
-			}))
-			.filter((s) => s.name && !same(s.name, IN_HOUSE_SUPPLIER))
-			.sort((a, b) => a.name.localeCompare(b.name)),
-		problemTypes: problemTypes.map((t) => ({
-			id: refId("ProblemType", t),
-			label: (t.fields.ProblemTypeLabel ?? "").trim(),
-			description: (t.fields.ProblemTypeDesc ?? "").trim(),
+		statuses,
+		suppliers: unwrap(suppliers)
+			.map((s) => ({ id: s.supplier_id, name: s.supplier_name.trim() }))
+			.filter((s) => s.name && !same(s.name, IN_HOUSE_SUPPLIER)),
+		problemTypes: unwrap(problemTypes).map((t) => ({
+			id: t.problem_type_id,
+			label: t.problem_type_label.trim(),
+			description: (t.problem_type_desc ?? "").trim(),
 		})),
-		inspectors,
-		statuses: statuses
-			.map((r) => ({
-				id: refId("NCRStatus", r),
-				name: (r.fields.NCRStatusName ?? "").trim(),
-			}))
-			.filter((r) => r.name)
-			.sort((a, b) => a.id - b.id),
+		inspectors: unwrap(inspectors).map((p) => ({
+			personId: p.person_id,
+			first: p.person_first_name.trim(),
+			middle: (p.person_middle_name ?? "").trim(),
+			last: p.person_last_name.trim(),
+		})),
 	};
 }
 
+/** The next free NCR number for this year, for example 2026-001. */
 export async function nextNcrNumber(): Promise<string> {
-	const year = new Date().getFullYear();
-	const rows = await listAll<NcrNumberFields>("NCR", { fields: ["NCRNumber"] });
-	const pattern = new RegExp(`^${year}-(\\d{3,})$`);
-	let highest = 0;
-	for (const r of rows) {
-		const m = (r.fields.NCRNumber ?? "").trim().match(pattern);
-		if (m) highest = Math.max(highest, Number(m[1]));
-	}
-	return `${year}-${String(highest + 1).padStart(3, "0")}`;
+	return unwrap<string>(await db.rpc("next_ncr_number"));
 }
 
-async function ncrNumberExists(ncrNumber: string): Promise<boolean> {
-	return (
-		(await findFirst<NcrNumberFields>(
-			"NCR",
-			where(["NCRNumber", "eq", ncrNumber]),
-		)) !== null
-	);
-}
-
-/** True when an NCR is an unfinished draft (its form answers are stored in NCRDraftData). */
-export function isDraftRecord(rec: { fields: object }): boolean {
-	const raw = (rec.fields as Record<string, unknown>).NCRDraftData;
-	return typeof raw === "string" && raw.trim() !== "";
+/** True when an NCR is an unfinished draft (its form answers are stored in ncr_draft_data). */
+export function isDraftRecord(rec: { ncr_draft_data: string | null }): boolean {
+	return typeof rec.ncr_draft_data === "string" && rec.ncr_draft_data.trim() !== "";
 }
 
 export interface DraftPayload {
@@ -297,15 +183,15 @@ export interface DraftPayload {
 }
 
 /** Reads the saved form answers of a draft. Returns null if there are none or they are unreadable. */
-export function parseDraft(rec: { fields: object }): DraftPayload | null {
-	const f = rec.fields as Record<string, unknown>;
-	const raw = f.NCRDraftData;
+export function parseDraft(
+	rec: Pick<NcrRecord, "ncr_draft_data" | "ncr_draft_step">,
+): DraftPayload | null {
+	const raw = rec.ncr_draft_data;
 	if (typeof raw !== "string" || !raw.trim()) return null;
 	try {
 		const parsed = JSON.parse(raw) as { values?: unknown };
-		if (!parsed || typeof parsed.values !== "object" || parsed.values === null)
-			return null;
-		const step = Number(f.NCRDraftStep);
+		if (!parsed || typeof parsed.values !== "object" || parsed.values === null) return null;
+		const step = Number(rec.ncr_draft_step);
 		return {
 			values: parsed.values as DraftPayload["values"],
 			step: Number.isFinite(step) ? Math.trunc(step) : 0,
@@ -316,30 +202,18 @@ export function parseDraft(rec: { fields: object }): DraftPayload | null {
 }
 
 export interface DraftToSave {
-	/** The NCR record id of an existing draft, or null for the first save. */
-	recordId: number | string | null;
+	/** The NCR id of an existing draft, or null for the first save. */
+	recordId: number | null;
 	ncrNumber: string;
 	/** The form answers, stored as they are. */
 	values: unknown;
 	step: number;
-}
-
-function draftSectionText(values: unknown, sectionName: string, fieldName: string): string {
-	if (!values || typeof values !== "object") return "";
-	const section = (values as Record<string, unknown>)[sectionName];
-	if (!section || typeof section !== "object") return "";
-	const value = (section as Record<string, unknown>)[fieldName];
-	if (typeof value !== "string") return "";
-	return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
-}
-
-function draftSectionChoice(values: unknown, sectionName: string, fieldName: string): boolean | null {
-	const value = draftSectionText(values, sectionName, fieldName);
-	return value === "yes" ? true : value === "no" ? false : null;
+	/** The signed-in person (see useCurrentUser). */
+	createdByPersonId: number | null;
 }
 
 /**
- * Saves the form answers as a draft NCR. The first save creates the NCR record
+ * Saves the form answers as a draft NCR. The first save creates the NCR row
  * (so the NCR number is reserved). Later saves update it.
  * Drafts can be incomplete, but department text is sanitized and length checked.
  */
@@ -347,105 +221,44 @@ export async function saveDraft(
 	d: DraftToSave,
 	statuses: StatusOption[],
 	progress: (message: string) => void = () => {},
-): Promise<{ ncrNumber: string; recordId: number | string }> {
-	const now = ncDateTime();
-	const departmentFields = {
-		NCREngineeringInstructions: draftSectionText(d.values, "engineering", "instructions"),
-		NCROperationsInstructions: draftSectionText(d.values, "operations", "instructions"),
-		NCRProcurementDelayCommunication: draftSectionText(d.values, "procurement", "delayCommunication"),
-		NCRQualityFinalComments: draftSectionText(d.values, "qualityFinalReview", "comments"),
-		NCRQualityFinalAcceptanceConfirmed: draftSectionChoice(
-			d.values,
-			"qualityFinalReview",
-			"acceptanceConfirmed",
-		),
-	};
-	for (const [field, value] of Object.entries(departmentFields)) {
-		if (typeof value === "string" && value.length > 2000) {
-			throw new Error(`${field} must be 2,000 characters or fewer before the draft can be saved.`);
-		}
-	}
-	const formValues =
-		d.values && typeof d.values === "object"
-			? (d.values as Record<string, unknown>)
-			: {};
-	const sectionValues = (name: string) => {
-		const value = formValues[name];
-		return value && typeof value === "object"
-			? (value as Record<string, unknown>)
-			: {};
-	};
-	const defect = formValues.defect;
-	const engineeringRequired =
-		defect && typeof defect === "object"
-			? (defect as Record<string, unknown>).engineeringRequired
-			: undefined;
-	const sanitizedValues = {
-		...formValues,
-		engineering: {
-			...sectionValues("engineering"),
-			instructions: departmentFields.NCREngineeringInstructions,
-		},
-		operations: {
-			...sectionValues("operations"),
-			instructions: departmentFields.NCROperationsInstructions,
-		},
-		procurement: {
-			...sectionValues("procurement"),
-			delayCommunication: departmentFields.NCRProcurementDelayCommunication,
-		},
-		qualityFinalReview: {
-			...sectionValues("qualityFinalReview"),
-			comments: departmentFields.NCRQualityFinalComments,
-		},
-	};
-	const draftFields = {
-		NCRDraftData: JSON.stringify({ v: 1, values: sanitizedValues }),
-		NCRDraftStep: String(d.step),
-		NCRUpdatedAt: now,
-		...departmentFields,
-		...(engineeringRequired === "yes"
-			? { NCRIsEngineeringRequired: true }
-			: engineeringRequired === "no"
-				? { NCRIsEngineeringRequired: false }
-				: {}),
-	};
-	if (d.recordId !== null) {
-		progress("Saving the draft...");
-		await updateRecord("NCR", d.recordId, draftFields);
-		return { ncrNumber: d.ncrNumber, recordId: d.recordId };
-	}
-	progress("Checking the NCR number...");
-	if (await ncrNumberExists(d.ncrNumber))
-		throw new DuplicateNcrNumberError(d.ncrNumber);
-	const status =
-		statuses.find((s) => same(s.name, STATUS_DRAFT)) ?? defaultStatus(statuses);
+): Promise<{ ncrNumber: string; recordId: number }> {
+	if (d.recordId === null && d.createdByPersonId === null)
+		throw new SubmitError("Your account is not loaded yet. Reload the page and try again.");
+	const status = statuses.find((s) => same(s.name, STATUS_DRAFT)) ?? defaultStatus(statuses);
+	if (!status) throw new MissingSeedError("An NCR status");
 	progress("Saving the draft...");
-	const rec = await createRecord("NCR", {
-		NCRNumber: d.ncrNumber,
-		...NCR_DEFAULTS,
-		NCRCreatedAtD: now,
-		...draftFields,
-		...(status ? { [STATUS_COLUMN]: status.id } : {}),
-	});
-	return { ncrNumber: d.ncrNumber, recordId: rec.id };
+	const res = unwrap<{ ncr_id: number }>(
+		await db.rpc("save_ncr_draft", {
+			p: {
+				ncr_id: d.recordId,
+				ncr_number: d.ncrNumber,
+				status_id: status.id,
+				created_by_person_id: d.createdByPersonId,
+				draft_data: JSON.stringify({ v: 1, values: d.values }),
+				draft_step: String(d.step),
+			},
+		}),
+		d.ncrNumber,
+	);
+	return { ncrNumber: d.ncrNumber, recordId: res.ncr_id };
 }
 
 export interface NcrEditData {
-	recordId: number | string;
-	ncrRef: number;
+	ncrId: number;
 	ncrNumber: string;
+	createdAt: string;
+	closedAt: string | null;
+	isReinspectable: boolean;
 	processApplicable: string;
 	statusId: number | null;
-	statusColumn: string;
 	supplier: string | null;
 	purchaseOrderNumber: string;
 	salesOrderNumber: string;
 	item: { name: string; description: string; sapNumber: string };
-	quantityReceived: number | null;
+	quantityOrdered: number | null;
 	quantityDefective: number | null;
 	problemTypeIds: number[];
-	problemTypeRows: { recordId: number | string; problemTypeId: number }[];
+	problemTypeLabels: string[];
 	defectDescription: string;
 	isNonconforming: boolean | null;
 	engineeringRequired: boolean | null;
@@ -467,162 +280,86 @@ export interface NcrEditData {
 	qualityClosedBy: string;
 	inspector: { personId: number; first: string; middle: string; last: string };
 	links: string[];
-	linkRows: { recordId: number | string; url: string }[];
 	existingFiles: string[];
-	originalFields: Record<string, unknown>;
-  isArchived?: boolean;
+	isArchived?: boolean;
 }
 
-const PATCHED_COLUMNS = [
-	"NCRProcessApplicable",
-	"NCRDefectDescription",
-	"NCRQuantityReceived",
-	"NCRQuantityDefective",
-	"NCRIsNonconforming",
-	"NCRIsEngineeringRequired",
-	"NCREngineeringDisposition",
-	"NCREngineeringInstructions",
-	"NCREngineeringComments",
-	"NCREngineeringRepresentative",
-	"NCREngineeringDateCompleted",
-	"NCROperationsDisposition",
-	"NCROperationsInstructions",
-	"NCROperationsComments",
-	"NCROperationsRepresentative",
-	"NCROperationsDateCompleted",
-	"NCRProcurementDelayCommunication",
-	"NCRQualityFinalInspectionResult",
-	"NCRQualityFinalComments",
-	"NCRQualityFinalAcceptanceConfirmed",
-	"NCRQualityDateClosed",
-	"NCRQualityClosedBy",
-	"NCRUpdatedAt",
-	"SOLineItemId",
-	"POLineItemId",
-	"NCRRaisedByPersonId",
-	"NCRClosedAt",
-] as const;
+/** Everything the form and the details window show about one NCR, in one request. */
+const EDIT_SELECT = `
+	ncr_id, ncr_number, ncr_status_id, ncr_created_at, ncr_closed_at, ncr_is_reinspectable,
+	qa (
+		qa_defect_desc, qa_quantity_defective, qa_is_non_conforming,
+		ncr_process_applicable ( ncr_process_applicable_label ),
+		person ( person_id, person_first_name, person_middle_name, person_last_name )
+	),
+	so_line_item (
+		so_line_item_quantity_ordered,
+		item ( item_name, item_desc ),
+		sales_order ( sales_order_number, item_sap_number ),
+		po_line_item ( po_line_item_id, purchase_order ( purchase_order_number, supplier ( supplier_name ) ) )
+	),
+	ncr_problem_type ( problem_type_id, problem_type ( problem_type_label ) ),
+	attachment ( attachment_type, attachment_file_name, attachment_file_path )
+`;
 
-async function listForNcr<F extends { NCRId?: unknown }>(
-	table: TableName,
-	ncrRef: number,
-): Promise<NcRecord<F>[]> {
-	const filtered = await listAll<F>(table, {
-		where: where(["NCRId", "eq", ncrRef]),
-	});
-	if (filtered.length > 0) return filtered;
-	const everything = await listAll<F>(table);
-	return everything.filter((r) => fkValue(r.fields.NCRId) === ncrRef);
-}
+export async function loadNcrForEdit(rec: Pick<NcrRecord, "ncr_id">): Promise<NcrEditData> {
+	const res = await supabase
+		.from("ncr")
+		.select(EDIT_SELECT)
+		.eq("ncr_id", rec.ncr_id)
+		.maybeSingle();
+	throwIfError(res);
+	const row = res.data;
+	if (!row) throw new SubmitError("This NCR no longer exists. Close the form and reload the list.");
 
-export async function loadNcrForEdit(
-	rec: NcRecord<NcrFields>,
-): Promise<NcrEditData> {
-	const freshRec = await readRecord<NcrFields>("NCR", rec.id);
-	if (!freshRec) {
-		throw new Error(`NCR ${String(rec.fields.NCRNumber ?? rec.id)} could not be found in the database.`);
-	}
-	const f = freshRec.fields;
-	const ncrRef = refId("NCR", freshRec);
-	const [soLine, poLine, person, problemRows, attachments] = await Promise.all([
-		getByRef<SOLineItemFields>("SOLineItem", f.SOLineItemId),
-		getByRef<POLineItemFields>("POLineItem", f.POLineItemId),
-		getByRef<PersonFields>("Person", f.NCRRaisedByPersonId),
-		listForNcr<NCRProblemTypeFields>("NCRProblemType", ncrRef),
-		listForNcr<AttachmentFields>("Attachment", ncrRef),
-	]);
-	const [item, salesOrder, purchaseOrder] = await Promise.all([
-		getByRef<ItemFields>("Item", soLine?.fields.ItemId),
-		getByRef<SalesOrderFields>("SalesOrder", soLine?.fields.SalesOrderId),
-		getByRef<PurchaseOrderFields>(
-			"PurchaseOrder",
-			poLine?.fields.PurchaseOrderId,
-		),
-	]);
-	const supplier = await getByRef<SupplierFields>(
-		"Supplier",
-		purchaseOrder?.fields.SupplierId,
-	);
-	const supplierName = (supplier?.fields.SupplierName ?? "").trim();
+	const qa = row.qa;
+	const line = row.so_line_item;
+	// Several purchase orders can point at one sales order line. Use the newest.
+	const poLine = [...(line?.po_line_item ?? [])].sort(
+		(a, b) => b.po_line_item_id - a.po_line_item_id,
+	)[0];
+	const supplierName = (poLine?.purchase_order?.supplier?.supplier_name ?? "").trim();
+	const attachments = row.attachment;
+	const person = qa?.person;
 
-	const linkRows = attachments
-		.filter((a) => same(a.fields.AttachmentType, "Link"))
-		.map((a) => ({
-			recordId: a.id,
-			url: (a.fields.AttachmentFilePath ?? "").trim(),
-		}));
-	const problemTypeRows = problemRows.flatMap((r) => {
-		const problemTypeId = fkValue(r.fields.ProblemTypeId);
-		return problemTypeId === null ? [] : [{ recordId: r.id, problemTypeId }];
-	});
-
-	const statusColumn = statusColumnOf(f);
 	return {
-		recordId: freshRec.id,
-		ncrRef,
-		ncrNumber: (f.NCRNumber ?? "").trim(),
-		processApplicable: (f.NCRProcessApplicable ?? "").trim(),
-		statusId: fkValue(f[statusColumn]),
-		statusColumn,
-		supplier:
-			supplierName && !same(supplierName, IN_HOUSE_SUPPLIER)
-				? supplierName
-				: null,
-		purchaseOrderNumber: (
-			purchaseOrder?.fields.PurchaseOrderNumber ?? ""
-		).trim(),
-		salesOrderNumber: (salesOrder?.fields.SalesOrderNumber ?? "").trim(),
+		ncrId: row.ncr_id,
+		ncrNumber: row.ncr_number.trim(),
+		createdAt: row.ncr_created_at,
+		closedAt: row.ncr_closed_at,
+		isReinspectable: row.ncr_is_reinspectable,
+		processApplicable: (qa?.ncr_process_applicable?.ncr_process_applicable_label ?? "").trim(),
+		statusId: row.ncr_status_id,
+		supplier: supplierName && !same(supplierName, IN_HOUSE_SUPPLIER) ? supplierName : null,
+		purchaseOrderNumber: (poLine?.purchase_order?.purchase_order_number ?? "").trim(),
+		salesOrderNumber: (line?.sales_order?.sales_order_number ?? "").trim(),
 		item: {
-			name: (item?.fields.ItemName ?? "").trim(),
-			description: (item?.fields.ItemDesc ?? "").trim(),
-			sapNumber: (salesOrder?.fields.ItemSapNumber ?? "").trim(),
+			name: (line?.item?.item_name ?? "").trim(),
+			description: (line?.item?.item_desc ?? "").trim(),
+			sapNumber: (line?.sales_order?.item_sap_number ?? "").trim(),
 		},
-		quantityReceived: f.NCRQuantityReceived ?? null,
-		quantityDefective: f.NCRQuantityDefective ?? null,
-		problemTypeIds: problemTypeRows.map((r) => r.problemTypeId),
-		problemTypeRows,
-		defectDescription: (f.NCRDefectDescription ?? "").trim(),
-		isNonconforming: f.NCRIsNonconforming ?? null,
-		engineeringRequired:
-			typeof f.NCRIsEngineeringRequired === "boolean"
-				? f.NCRIsEngineeringRequired
-				: null,
-		engineeringDisposition: f.NCREngineeringDisposition ?? "",
-		engineeringInstructions: f.NCREngineeringInstructions ?? "",
-		engineeringComments: f.NCREngineeringComments ?? "",
-		engineeringRepresentative: f.NCREngineeringRepresentative ?? "",
-		engineeringDateCompleted: f.NCREngineeringDateCompleted ?? "",
-		operationsDisposition: f.NCROperationsDisposition ?? "",
-		operationsInstructions: f.NCROperationsInstructions ?? "",
-		operationsComments: f.NCROperationsComments ?? "",
-		operationsRepresentative: f.NCROperationsRepresentative ?? "",
-		operationsDateCompleted: f.NCROperationsDateCompleted ?? "",
-		procurementDelayCommunication: f.NCRProcurementDelayCommunication ?? "",
-		qualityFinalInspectionResult: f.NCRQualityFinalInspectionResult ?? "",
-		qualityFinalComments: f.NCRQualityFinalComments ?? "",
-		qualityFinalAcceptanceConfirmed:
-			typeof f.NCRQualityFinalAcceptanceConfirmed === "boolean"
-				? f.NCRQualityFinalAcceptanceConfirmed
-				: null,
-		qualityDateClosed: f.NCRQualityDateClosed ?? "",
-		qualityClosedBy: f.NCRQualityClosedBy ?? "",
-		inspector: {
-			personId: person
-				? refId("Person", person)
-				: (fkValue(f.NCRRaisedByPersonId) ?? 0),
-			first: (person?.fields.PersonFirstName ?? "").trim(),
-			middle: (person?.fields.PersonMiddleName ?? "").trim(),
-			last: (person?.fields.PersonLastName ?? "").trim(),
-		},
-		links: linkRows.map((r) => r.url).filter(Boolean),
-		linkRows,
-		existingFiles: attachments
-			.filter((a) => !same(a.fields.AttachmentType, "Link"))
-			.map((a) => (a.fields.AttachmentFileName ?? "").trim())
+		quantityOrdered: line?.so_line_item_quantity_ordered ?? null,
+		quantityDefective: qa?.qa_quantity_defective ?? null,
+		problemTypeIds: row.ncr_problem_type.map((r) => r.problem_type_id),
+		problemTypeLabels: row.ncr_problem_type
+			.map((r) => (r.problem_type?.problem_type_label ?? "").trim())
 			.filter(Boolean),
-		originalFields: Object.fromEntries(
-			[...PATCHED_COLUMNS, statusColumn].map((k) => [k, f[k] ?? null]),
-		),
+		defectDescription: (qa?.qa_defect_desc ?? "").trim(),
+		isNonconforming: qa?.qa_is_non_conforming ?? null,
+		inspector: {
+			personId: person?.person_id ?? 0,
+			first: (person?.person_first_name ?? "").trim(),
+			middle: (person?.person_middle_name ?? "").trim(),
+			last: (person?.person_last_name ?? "").trim(),
+		},
+		links: attachments
+			.filter((a) => same(a.attachment_type, "Link"))
+			.map((a) => a.attachment_file_path.trim())
+			.filter(Boolean),
+		existingFiles: attachments
+			.filter((a) => !same(a.attachment_type, "Link"))
+			.map((a) => a.attachment_file_name.trim())
+			.filter(Boolean),
 	};
 }
 
@@ -634,7 +371,7 @@ export interface NcrSubmission {
 	purchaseOrderNumber: string;
 	salesOrderNumber: string;
 	item: { name: string; description: string; sapNumber: string };
-	quantityReceived: number;
+	quantityOrdered: number;
 	quantityDefective: number;
 	problemTypeIds: number[];
 	defectDescription: string;
@@ -657,486 +394,120 @@ export interface NcrSubmission {
 	qualityDateClosed: string;
 	qualityClosedBy: string;
 	inspector:
-		| { kind: "existing"; personId: number; rolePersonId: number }
+		| { kind: "existing"; personId: number }
 		| { kind: "new"; first: string; middle: string; last: string };
 	files: File[];
 	links: string[];
+	/** The signed-in person (see useCurrentUser). */
+	createdByPersonId: number | null;
 }
 
-type Created = { table: TableName; id: number | string };
-type Make = <F extends object = Record<string, unknown>>(
-	table: TableName,
-	label: string,
-	fields: Record<string, unknown>,
-) => Promise<NcRecord<F>>;
+/** Stand-in until file upload is connected: records where the file would live. */
+const stubFilePath = (file: File, ncrNumber: string) =>
+	`/uploads/ncr/${ncrNumber}/${file.name.replace(/[^\w.-]+/g, "_")}`.slice(0, 500);
 
-function startTracker(progress: (message: string) => void) {
-	const created: Created[] = [];
-	const now = ncDateTime();
-	const make: Make = async <F extends object>(
-		table: TableName,
-		label: string,
-		fields: Record<string, unknown>,
-	) => {
-		await assertRecord(table, fields);
-		progress(`Saving ${label}...`);
-		const rec = await createRecord<F>(table, fields);
-		created.push({ table, id: rec.id });
-		return rec;
+/** The JSON the save functions in sql/01_ncr_functions.sql expect. */
+function payload(s: NcrSubmission, ncrId: number | null) {
+	return {
+		ncr_id: ncrId,
+		ncr_number: s.ncrNumber,
+		created_by_person_id: s.createdByPersonId,
+		process_label: s.processApplicable,
+		status_id: s.status.id,
+		supplier: s.supplier,
+		purchase_order_number: s.purchaseOrderNumber,
+		sales_order_number: s.salesOrderNumber,
+		item: {
+			name: s.item.name,
+			description: s.item.description,
+			sap_number: s.item.sapNumber,
+		},
+		quantity_ordered: s.quantityOrdered,
+		quantity_defective: s.quantityDefective,
+		problem_type_ids: s.problemTypeIds,
+		defect_description: s.defectDescription,
+		is_non_conforming: s.isNonconforming,
+		inspector:
+			s.inspector.kind === "existing"
+				? { kind: "existing", person_id: s.inspector.personId }
+				: { kind: "new", first: s.inspector.first, middle: s.inspector.middle, last: s.inspector.last },
+		links: s.links,
+		files: s.files.map((f) => ({
+			name: f.name,
+			type: f.type.startsWith("image/") ? "Image" : "Document",
+			path: stubFilePath(f, s.ncrNumber),
+		})),
 	};
-	return { created, now, make };
 }
-
-async function rollback(created: Created[]): Promise<string[]> {
-	const leftovers: string[] = [];
-	for (const c of [...created].reverse()) {
-		try {
-			await deleteRecord(c.table, c.id);
-		} catch {
-			leftovers.push(`${c.table} #${c.id}`);
-		}
-	}
-	return leftovers;
-}
-
-async function uploadAttachmentStub(
-	file: File,
-	ncrNumber: string,
-): Promise<string> {
-	const safeName = file.name.replace(/[^\w.-]+/g, "_");
-	return `/uploads/ncr/${ncrNumber}/${safeName}`.slice(0, 500);
-}
-
-async function addFileAttachment(
-	make: Make,
-	file: File,
-	ncrNumber: string,
-	ncrRef: number,
-	personId: number,
-	now: string,
-) {
-	const path = await uploadAttachmentStub(file, ncrNumber);
-	await make("Attachment", `attachment ${file.name}`, {
-		AttachmentType: file.type.startsWith("image/") ? "Image" : "Document",
-		AttachmentFileName: file.name.slice(0, 300),
-		AttachmentFilePath: path,
-		AttachmentUploadedAt: now,
-		NCRId: ncrRef,
-		AttachmentUploadedByPersonId: personId,
-	});
-}
-
-async function addLinkAttachment(
-	make: Make,
-	link: string,
-	ncrRef: number,
-	personId: number,
-	now: string,
-) {
-	await make("Attachment", "a link", {
-		AttachmentType: "Link",
-		AttachmentFileName: new URL(link).hostname.slice(0, 300),
-		AttachmentFilePath: link,
-		AttachmentUploadedAt: now,
-		NCRId: ncrRef,
-		AttachmentUploadedByPersonId: personId,
-	});
-}
-
-async function resolveInspector(s: NcrSubmission, make: Make) {
-	if (s.inspector.kind === "existing") {
-		return {
-			personId: s.inspector.personId,
-			rolePersonId: s.inspector.rolePersonId,
-		};
-	}
-	const roles = await listAll<RoleFields>("Role");
-	const qualityRole = mustFind(
-		roles,
-		(r) => same(r.fields.RoleName, QUALITY_ROLE),
-		`Role "${QUALITY_ROLE}"`,
-	);
-	const person = await make("Person", "the inspector", {
-		PersonFirstName: s.inspector.first,
-		PersonMiddleName: s.inspector.middle,
-		PersonLastName: s.inspector.last,
-		PersonEmail: PERSON_CONTACT_DEFAULT,
-		PersonPhone: PERSON_CONTACT_DEFAULT,
-	});
-	const personId = refId("Person", person);
-	const rp = await make("RolePerson", "the inspector's role", {
-		RoleId: refId("Role", qualityRole),
-		PersonId: personId,
-	});
-	return { personId, rolePersonId: refId("RolePerson", rp) };
-}
-
-async function resolveChain(s: NcrSubmission, make: Make, now: string) {
-	const [suppliers, items] = await Promise.all([
-		listAll<SupplierFields>("Supplier"),
-		listAll<ItemFields>("Item"),
-	]);
-
-	const supplierName = (s.supplier ?? IN_HOUSE_SUPPLIER).trim();
-	const supplier =
-		suppliers.find((r) => same(r.fields.SupplierName, supplierName)) ??
-		(await make("Supplier", "the supplier", { SupplierName: supplierName }));
-
-	const purchaseOrder =
-		(await findFirst<PurchaseOrderFields>(
-			"PurchaseOrder",
-			where(["PurchaseOrderNumber", "eq", s.purchaseOrderNumber]),
-		)) ??
-		(await make("PurchaseOrder", "the purchase order", {
-			PurchaseOrderNumber: s.purchaseOrderNumber,
-			PurchaseOrderDate: now,
-			SupplierId: refId("Supplier", supplier),
-		}));
-
-	const salesOrders = await listAll<SalesOrderFields>("SalesOrder", {
-		where: where(["SalesOrderNumber", "eq", s.salesOrderNumber]),
-	});
-	const salesOrder =
-		salesOrders.find(
-			(r) => (r.fields.ItemSapNumber ?? "").trim() === s.item.sapNumber,
-		) ??
-		(await make("SalesOrder", "the sales order", {
-			SalesOrderNumber: s.salesOrderNumber,
-			ItemSapNumber: s.item.sapNumber,
-			SalesOrderDate: now,
-		}));
-
-	const item =
-		items.find(
-			(r) =>
-				same(r.fields.ItemName, s.item.name) &&
-				same(r.fields.ItemDesc, s.item.description),
-		) ??
-		(await make("Item", "the item", {
-			ItemName: s.item.name,
-			ItemDesc: s.item.description,
-			ItemUnitPrice: PLACEHOLDER_PRICE,
-		}));
-
-	const purchaseOrderId = refId("PurchaseOrder", purchaseOrder);
-	const salesOrderId = refId("SalesOrder", salesOrder);
-	const itemId = refId("Item", item);
-
-	const soLineItem =
-		(await findFirst<object>(
-			"SOLineItem",
-			where(["SalesOrderId", "eq", salesOrderId], ["ItemId", "eq", itemId]),
-		)) ??
-		(await make("SOLineItem", "the sales order line", {
-			SOLineItemQuantityOrdered: s.quantityReceived,
-			SOLineItemUnitPrice: PLACEHOLDER_PRICE,
-			ItemId: itemId,
-			SalesOrderId: salesOrderId,
-		}));
-	const soLineItemId = refId("SOLineItem", soLineItem);
-
-	const poLineItem =
-		(await findFirst<object>(
-			"POLineItem",
-			where(
-				["PurchaseOrderId", "eq", purchaseOrderId],
-				["ItemId", "eq", itemId],
-				["SOLineItemId", "eq", soLineItemId],
-			),
-		)) ??
-		(await make("POLineItem", "the purchase order line", {
-			POLineItemQuantityOrdered: s.quantityReceived,
-			POLineItemUnitPrice: PLACEHOLDER_PRICE,
-			PurchaseOrderId: purchaseOrderId,
-			ItemId: itemId,
-			SOLineItemId: soLineItemId,
-		}));
-
-	return { soLineItemId, poLineItemId: refId("POLineItem", poLineItem) };
-}
-
-const messageOf = (err: unknown) =>
-	err instanceof ApiError || err instanceof Error ? err.message : String(err);
-
-/** Columns put back if turning a draft into a real NCR fails part way. */
-const DRAFT_RESTORE_COLUMNS = [
-	...PATCHED_COLUMNS,
-	"NCRDraftData",
-	"NCRDraftStep",
-	"NCRCreatedAtD",
-] as const;
 
 /**
  * Submits an NCR. Pass `draftId` to turn a saved draft into the real NCR
- * instead of creating a new NCR record.
+ * instead of creating a new one. Everything is saved in one database
+ * transaction: it all succeeds or nothing is saved.
  */
 export async function submitNcr(
 	s: NcrSubmission,
 	progress: (message: string) => void = () => {},
-	draftId: number | string | null = null,
-): Promise<{ ncrNumber: string; recordId: number | string }> {
-	const { created, now, make } = startTracker(progress);
-	let draftRestore: { id: number | string; fields: Record<string, unknown> } | null =
-		null;
-	let draftPatched = false;
-	try {
-		let draftRec: NcRecord<NcrFields> | null = null;
-		if (draftId !== null) {
-			progress("Loading the draft...");
-			draftRec = await readRecord<NcrFields>("NCR", draftId);
-			if (!draftRec)
-				throw new SubmitError(
-					"The saved draft could not be found. It may have been removed.",
-					[],
-				);
-			const df = draftRec.fields as Record<string, unknown>;
-			draftRestore = {
-				id: draftRec.id,
-				fields: Object.fromEntries(
-					[...DRAFT_RESTORE_COLUMNS, statusColumnOf(df)].map((k) => [
-						k,
-						df[k] ?? null,
-					]),
-				),
-			};
-		} else {
-			progress("Checking the NCR number...");
-			if (await ncrNumberExists(s.ncrNumber))
-				throw new DuplicateNcrNumberError(s.ncrNumber);
-		}
-
-		progress("Checking the answers...");
-		await validateSubmission(s, undefined, SUBMISSION_RULES);
-
-		const inspector = await resolveInspector(s, make);
-		const chain = await resolveChain(s, make, now);
-
-		const ncrFields = {
-			NCRNumber: s.ncrNumber,
-			NCRProcessApplicable: s.processApplicable,
-			NCRDefectDescription: s.defectDescription,
-			NCRQuantityReceived: s.quantityReceived,
-			NCRQuantityDefective: s.quantityDefective,
-			NCRIsNonconforming: s.isNonconforming,
-			NCRIsEngineeringRequired: s.engineeringRequired,
-			NCREngineeringDisposition: s.engineeringDisposition,
-			NCREngineeringInstructions: s.engineeringInstructions,
-			NCREngineeringComments: s.engineeringComments,
-			NCREngineeringRepresentative: s.engineeringRepresentative,
-			NCREngineeringDateCompleted: s.engineeringDateCompleted || null,
-			NCROperationsDisposition: s.operationsDisposition,
-			NCROperationsInstructions: s.operationsInstructions,
-			NCROperationsComments: s.operationsComments,
-			NCROperationsRepresentative: s.operationsRepresentative,
-			NCROperationsDateCompleted: s.operationsDateCompleted || null,
-			NCRProcurementDelayCommunication: s.procurementDelayCommunication,
-			NCRQualityFinalInspectionResult: s.qualityFinalInspectionResult,
-			NCRQualityFinalComments: s.qualityFinalComments,
-			NCRQualityFinalAcceptanceConfirmed: s.qualityFinalAcceptanceConfirmed,
-			NCRQualityDateClosed: s.qualityDateClosed || null,
-			NCRQualityClosedBy: s.qualityClosedBy,
-			...NCR_DEFAULTS,
-			NCRCreatedAtD: now,
-			NCRUpdatedAt: now,
-			[STATUS_COLUMN]: s.status.id,
-			NCRClosedAt: isClosedStatus(s.status.name) ? now : null,
-			SOLineItemId: chain.soLineItemId,
-			POLineItemId: chain.poLineItemId,
-			NCRRaisedByPersonId: inspector.personId,
-		};
-		let ncr: NcRecord<object>;
-		if (draftRec) {
-			await assertRecord("NCR", ncrFields, { id: draftRec.id });
-			progress("Saving the NCR...");
-			draftPatched = true;
-			await updateRecord("NCR", draftRec.id, {
-				...ncrFields,
-				NCRDraftData: "",
-				NCRDraftStep: "",
-			});
-			ncr = draftRec;
-		} else {
-			ncr = await make("NCR", "the NCR", ncrFields);
-		}
-		const ncrRef = refId("NCR", ncr);
-
-		for (const problemTypeId of s.problemTypeIds) {
-			await make("NCRProblemType", "a problem type", {
-				NCRId: ncrRef,
-				ProblemTypeId: problemTypeId,
-			});
-		}
-		for (const file of s.files)
-			await addFileAttachment(
-				make,
-				file,
-				s.ncrNumber,
-				ncrRef,
-				inspector.personId,
-				now,
-			);
-		for (const link of s.links)
-			await addLinkAttachment(make, link, ncrRef, inspector.personId, now);
-
-		return { ncrNumber: s.ncrNumber, recordId: ncr.id };
-	} catch (err) {
-		if (draftPatched && draftRestore) {
-			try {
-				await updateRecord("NCR", draftRestore.id, draftRestore.fields);
-			} catch {}
-		}
-		const leftovers = await rollback(created);
-		if (
-			err instanceof DuplicateNcrNumberError ||
-			err instanceof MissingSeedError ||
-			err instanceof ConstraintError
-		)
-			throw err;
-		throw new SubmitError(messageOf(err), leftovers);
-	}
+	draftId: number | null = null,
+): Promise<{ ncrNumber: string; recordId: number }> {
+	progress("Checking the answers...");
+	validateSubmission(s, undefined, SUBMISSION_RULES);
+	progress("Saving the NCR...");
+	const res = unwrap<{ ncr_id: number; ncr_number: string }>(
+		await db.rpc("submit_ncr", { p: payload(s, draftId) }),
+		s.ncrNumber,
+	);
+	return { ncrNumber: res.ncr_number, recordId: res.ncr_id };
 }
 
 export async function updateNcr(
 	edit: NcrEditData,
 	s: NcrSubmission,
 	progress: (message: string) => void = () => {},
-): Promise<{ ncrNumber: string; recordId: number | string }> {
-	const { created, now, make } = startTracker(progress);
-	let patchAttempted = false;
-	try {
-		progress("Checking the answers...");
-		await validateSubmission(s, edit, SUBMISSION_RULES);
-
-		const inspector = await resolveInspector(s, make);
-		const chain = await resolveChain(s, make, now);
-
-		const have = new Set(edit.problemTypeRows.map((r) => r.problemTypeId));
-		for (const problemTypeId of s.problemTypeIds) {
-			if (!have.has(problemTypeId)) {
-				await make("NCRProblemType", "a problem type", {
-					NCRId: edit.ncrRef,
-					ProblemTypeId: problemTypeId,
-				});
-			}
-		}
-		for (const file of s.files)
-			await addFileAttachment(
-				make,
-				file,
-				edit.ncrNumber,
-				edit.ncrRef,
-				inspector.personId,
-				now,
-			);
-		const haveLinks = new Set(edit.linkRows.map((r) => r.url));
-		for (const link of s.links) {
-			if (!haveLinks.has(link))
-				await addLinkAttachment(
-					make,
-					link,
-					edit.ncrRef,
-					inspector.personId,
-					now,
-				);
-		}
-
-		const wasClosedAt = edit.originalFields.NCRClosedAt;
-		const closedAt = isClosedStatus(s.status.name)
-			? typeof wasClosedAt === "string" && wasClosedAt
-				? wasClosedAt
-				: now
-			: null;
-
-		const patch = {
-			NCRProcessApplicable: s.processApplicable,
-			NCRDefectDescription: s.defectDescription,
-			NCRQuantityReceived: s.quantityReceived,
-			NCRQuantityDefective: s.quantityDefective,
-			NCRIsNonconforming: s.isNonconforming,
-			NCRIsEngineeringRequired: s.engineeringRequired,
-			NCREngineeringDisposition: s.engineeringDisposition,
-			NCREngineeringInstructions: s.engineeringInstructions,
-			NCREngineeringComments: s.engineeringComments,
-			NCREngineeringRepresentative: s.engineeringRepresentative,
-			NCREngineeringDateCompleted: s.engineeringDateCompleted || null,
-			NCROperationsDisposition: s.operationsDisposition,
-			NCROperationsInstructions: s.operationsInstructions,
-			NCROperationsComments: s.operationsComments,
-			NCROperationsRepresentative: s.operationsRepresentative,
-			NCROperationsDateCompleted: s.operationsDateCompleted || null,
-			NCRProcurementDelayCommunication: s.procurementDelayCommunication,
-			NCRQualityFinalInspectionResult: s.qualityFinalInspectionResult,
-			NCRQualityFinalComments: s.qualityFinalComments,
-			NCRQualityFinalAcceptanceConfirmed: s.qualityFinalAcceptanceConfirmed,
-			NCRQualityDateClosed: s.qualityDateClosed || null,
-			NCRQualityClosedBy: s.qualityClosedBy,
-			NCRUpdatedAt: now,
-			[edit.statusColumn]: s.status.id,
-			NCRClosedAt: closedAt,
-			SOLineItemId: chain.soLineItemId,
-			POLineItemId: chain.poLineItemId,
-			NCRRaisedByPersonId: inspector.personId,
-		};
-		await assertRecord("NCR", patch, { id: edit.recordId });
-
-		progress("Updating the NCR...");
-		patchAttempted = true;
-		await updateRecord("NCR", edit.recordId, patch);
-	} catch (err) {
-		if (patchAttempted) {
-			try {
-				await updateRecord("NCR", edit.recordId, edit.originalFields);
-			} catch {}
-		}
-		const leftovers = await rollback(created);
-		if (err instanceof MissingSeedError || err instanceof ConstraintError) throw err;
-		throw new SubmitError(messageOf(err), leftovers);
-	}
-
-	const leftovers: string[] = [];
-	const wanted = new Set(s.problemTypeIds);
-	for (const r of edit.problemTypeRows) {
-		if (wanted.has(r.problemTypeId)) continue;
-		progress("Removing a problem type...");
-		try {
-			await deleteRecord("NCRProblemType", r.recordId);
-		} catch {
-			leftovers.push(`NCRProblemType #${r.recordId}`);
-		}
-	}
-	const wantedLinks = new Set(s.links);
-	for (const r of edit.linkRows) {
-		if (wantedLinks.has(r.url)) continue;
-		progress("Removing a link...");
-		try {
-			await deleteRecord("Attachment", r.recordId);
-		} catch {
-			leftovers.push(`Attachment #${r.recordId}`);
-		}
-	}
-	if (leftovers.length) {
-		throw new SubmitError(
-			"The NCR was updated, but some old records could not be removed.",
-			leftovers,
-		);
-	}
-	return { ncrNumber: edit.ncrNumber, recordId: edit.recordId };
+): Promise<{ ncrNumber: string; recordId: number }> {
+	progress("Checking the answers...");
+	validateSubmission(s, edit, SUBMISSION_RULES);
+	progress("Updating the NCR...");
+	const res = unwrap<{ ncr_id: number; ncr_number: string }>(
+		await db.rpc("update_ncr", { p: payload(s, edit.ncrId) }),
+		edit.ncrNumber,
+	);
+	return { ncrNumber: res.ncr_number, recordId: res.ncr_id };
 }
 
 /** Moves an archived (closed) NCR back to the open status, so it can be edited again. */
 export async function unarchiveNcr(
 	edit: NcrEditData,
 	statuses: StatusOption[],
+	personId: number,
 	progress: (message: string) => void = () => {},
-): Promise<{ ncrNumber: string; recordId: number | string }> {
+): Promise<{ ncrNumber: string; recordId: number }> {
 	const target = defaultStatus(statuses);
 	if (!target) throw new MissingSeedError("An open NCR status");
-
 	progress("Restoring the NCR...");
-	await updateRecord("NCR", edit.recordId, {
-		[edit.statusColumn]: target.id,
-		NCRClosedAt: null,
-		NCRUpdatedAt: ncDateTime(),
-	});
-	return { ncrNumber: edit.ncrNumber, recordId: edit.recordId };
+	unwrap(
+		await db.rpc("restore_ncr", {
+			p_ncr_id: edit.ncrId,
+			p_status_id: target.id,
+			p_person_id: personId,
+		}),
+	);
+	return { ncrNumber: edit.ncrNumber, recordId: edit.ncrId };
+}
+
+/** Every `ncr_list` row, in pages (the API returns at most 1000 rows per request). */
+export async function loadAllNcrRows(): Promise<NcrListRow[]> {
+	const PAGE = 1000;
+	const out: NcrListRow[] = [];
+	for (let from = 0; ; from += PAGE) {
+		const rows = unwrap<NcrListRow[]>(
+			await db
+				.from("ncr_list")
+				.select("*")
+				.order("ncr_id", { ascending: false })
+				.range(from, from + PAGE - 1),
+		);
+		out.push(...rows);
+		if (rows.length < PAGE) return out;
+	}
 }
