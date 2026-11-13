@@ -12,6 +12,7 @@ import {
 	nextNcrNumber,
 	parseDraft,
 	saveDraft,
+	saveNcrSection,
 	submitNcr,
 	updateNcr,
 	type FormLookups,
@@ -149,6 +150,28 @@ const makeDefaults = (ncrNumber: string): FormValues => ({
 	process: { ncrNumber, processType: "", supplier: "", newSupplierName: "", poNumber: "", salesOrderNumber: "" },
 	item: { itemName: "", itemSapNumber: "", itemDescription: "" },
 	defect: { qtyOrdered: "", qtyDefective: "", problemTypeIds: [], defectDescription: "", isNonconforming: "" },
+	engineering: {
+		disposition: "",
+		instructions: "",
+		comments: "",
+		representative: "",
+		dateCompleted: "",
+	},
+	operations: {
+		disposition: "",
+		instructions: "",
+		comments: "",
+		representative: "",
+		dateCompleted: "",
+	},
+	procurement: { delayCommunication: "" },
+	qualityFinalReview: {
+		inspectionResult: "",
+		comments: "",
+		acceptanceConfirmed: "",
+		dateClosed: "",
+		closedBy: "",
+	},
 	evidence: { links: [""], fileNames: [] },
 	inspector: { inspector: "", newFirstName: "", newMiddleName: "", newLastName: "" },
 });
@@ -167,6 +190,7 @@ function sanitize(v: FormValues, l: FormLookups): FormValues {
 		operations: {
 			...v.operations,
 			instructions: sanitizeTextbox(v.operations.instructions),
+			comments: sanitizeTextbox(v.operations.comments),
 		},
 		procurement: {
 			...v.procurement,
@@ -182,6 +206,9 @@ function sanitize(v: FormValues, l: FormLookups): FormValues {
 
 const processTypeOf = (label: string): ProcessType =>
 	label === PROCESS_LABELS.supplier ? "supplier" : label === PROCESS_LABELS.wip ? "wip" : "";
+
+const dateForInput = (value: string | null | undefined) =>
+	typeof value === "string" ? value.slice(0, 10) : "";
 
 function toFormValues(ed: NcrEditData): FormValues {
 	return {
@@ -203,31 +230,31 @@ function toFormValues(ed: NcrEditData): FormValues {
 			engineeringRequired: ed.engineeringRequired === null ? "" : ed.engineeringRequired ? "yes" : "no",
 		},
 		engineering: {
-			disposition: ed.engineeringDisposition,
-			instructions: ed.engineeringInstructions,
-			comments: ed.engineeringComments,
-			representative: ed.engineeringRepresentative,
-			dateCompleted: ed.engineeringDateCompleted.slice(0, 10),
+			disposition: ed.engineeringDisposition ?? "",
+			instructions: ed.engineeringInstructions ?? "",
+			comments: ed.engineeringComments ?? "",
+			representative: ed.engineeringRepresentative ?? "",
+			dateCompleted: dateForInput(ed.engineeringDateCompleted),
 		},
 		operations: {
-			disposition: ed.operationsDisposition,
-			instructions: ed.operationsInstructions,
-			comments: ed.operationsComments,
-			representative: ed.operationsRepresentative,
-			dateCompleted: ed.operationsDateCompleted.slice(0, 10),
+			disposition: ed.operationsDisposition ?? "",
+			instructions: ed.operationsInstructions ?? "",
+			comments: ed.operationsComments ?? "",
+			representative: ed.operationsRepresentative ?? "",
+			dateCompleted: dateForInput(ed.operationsDateCompleted),
 		},
-		procurement: { delayCommunication: ed.procurementDelayCommunication },
+		procurement: { delayCommunication: ed.procurementDelayCommunication ?? "" },
 		qualityFinalReview: {
-			inspectionResult: ed.qualityFinalInspectionResult,
-			comments: ed.qualityFinalComments,
+			inspectionResult: ed.qualityFinalInspectionResult ?? "",
+			comments: ed.qualityFinalComments ?? "",
 			acceptanceConfirmed:
 				ed.qualityFinalAcceptanceConfirmed === null
 					? ""
 					: ed.qualityFinalAcceptanceConfirmed
 						? "yes"
 						: "no",
-			dateClosed: ed.qualityDateClosed.slice(0, 10),
-			closedBy: ed.qualityClosedBy,
+			dateClosed: dateForInput(ed.qualityDateClosed),
+			closedBy: ed.qualityClosedBy ?? "",
 		},
 		evidence: { links: ed.links.length ? ed.links : [""], fileNames: [] },
 		inspector: { inspector: fullName(ed.inspector), newFirstName: "", newMiddleName: "", newLastName: "" },
@@ -385,6 +412,7 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 			break;
 		case "operations":
 			validateDepartmentTextbox("operationsInstructions", v.operations.instructions);
+			validateDepartmentTextbox("operationsComments", v.operations.comments);
 			break;
 		case "procurement":
 			validateDepartmentTextbox("procurementDelayCommunication", v.procurement.delayCommunication);
@@ -485,7 +513,13 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const [submitted, setSubmitted] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
 	const [submitError, setSubmitError] = useState("");
-	const [lookups, setLookups] = useState<FormLookups>({ statuses: [], suppliers: [], problemTypes: [], inspectors: [] });
+	const [lookups, setLookups] = useState<FormLookups>({
+		statuses: [],
+		suppliers: [],
+		problemTypes: [],
+		inspectors: [],
+		dispositions: [],
+	});
 	const [lookupState, setLookupState] = useState<"loading" | "ready" | "error">("loading");
 	const [lookupError, setLookupError] = useState("");
 	const [editData, setEditData] = useState<NcrEditData | null>(null);
@@ -520,10 +554,6 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			if (edit && !dataRef.current) throw new Error("No NCR was given to edit.");
 			const draftRec = !edit && dataRef.current && isDraftRecord(dataRef.current) ? dataRef.current : null;
 			if (draftRec) {
-				const freshDraft = await readRecord<NcrFields>("NCR", draftRec.id);
-				if (!freshDraft) {
-					throw new Error(`Draft ${String(draftRec.fields.NCRNumber ?? draftRec.id)} could not be found in the database.`);
-				}
 				const l = await loadFormLookups();
 				const parsed = parseDraft(draftRec);
 				const base = makeDefaults(draftRec.ncr_number.trim());
@@ -533,25 +563,6 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 						const stored = parsed.values[id];
 						if (stored && typeof stored === "object") (merged as Record<SectionId, unknown>)[id] = { ...merged[id], ...stored };
 					}
-				}
-				if (typeof freshDraft.fields.NCRIsEngineeringRequired === "boolean") {
-					merged.defect.engineeringRequired = freshDraft.fields.NCRIsEngineeringRequired ? "yes" : "no";
-				}
-				if (typeof freshDraft.fields.NCREngineeringInstructions === "string") {
-					merged.engineering.instructions = freshDraft.fields.NCREngineeringInstructions;
-				}
-				if (typeof freshDraft.fields.NCROperationsInstructions === "string") {
-					merged.operations.instructions = freshDraft.fields.NCROperationsInstructions;
-				}
-				if (typeof freshDraft.fields.NCRProcurementDelayCommunication === "string") {
-					merged.procurement.delayCommunication = freshDraft.fields.NCRProcurementDelayCommunication;
-				}
-				if (typeof freshDraft.fields.NCRQualityFinalComments === "string") {
-					merged.qualityFinalReview.comments = freshDraft.fields.NCRQualityFinalComments;
-				}
-				if (typeof freshDraft.fields.NCRQualityFinalAcceptanceConfirmed === "boolean") {
-					merged.qualityFinalReview.acceptanceConfirmed =
-						freshDraft.fields.NCRQualityFinalAcceptanceConfirmed ? "yes" : "no";
 				}
 				if (!Array.isArray(merged.evidence.links) || merged.evidence.links.length === 0) merged.evidence.links = [""];
 				if (!Array.isArray(merged.defect.problemTypeIds)) merged.defect.problemTypeIds = [];
@@ -693,6 +704,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			const cleanInput =
 				(section === "engineering" && key === "instructions") ||
 				(section === "operations" && key === "instructions") ||
+				(section === "operations" && key === "comments") ||
 				(section === "procurement" && key === "delayCommunication") ||
 				(section === "qualityFinalReview" && key === "comments");
 			const value = cleanInput ? sanitizeTextbox(e.target.value) : e.target.value;
@@ -739,7 +751,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		}
 	}
 
-	function saveAndContinue() {
+	async function saveAndContinue() {
 		const sections = sectionsFor(
 			values.defect.engineeringRequired === "yes",
 			edit || isDraft,
@@ -752,6 +764,25 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		const id = current.id;
 		const found = validate(id, values, files, false);
 		if (Object.keys(found).length) return showErrors(found);
+		const isDatabaseSection =
+			id === "operations" || id === "procurement" || id === "qualityFinalReview";
+		if (isDatabaseSection) {
+			const ncrId = edit ? editData?.ncrId : draftIdRef.current;
+			if (ncrId === null || ncrId === undefined) {
+				setStatus("Save this NCR as a draft before saving workflow sections.");
+				return;
+			}
+			if (personId === null) {
+				setStatus("Your account is not loaded yet. Reload the page and try again.");
+				return;
+			}
+			try {
+				await saveNcrSection(ncrId, id, values[id], personId, step + 1);
+			} catch (err) {
+				setStatus(`${current.title} was not saved to the database. ${messageOf(err)} Your answers are still on screen.`);
+				return;
+			}
+		}
 		const ok = writeSection(prefix, id, values[id]);
 		setSaved((prev) => ({ ...prev, [id]: ok }));
 		setDirtyIds((prev) => {
@@ -764,8 +795,10 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		const next = sections[step + 1];
 		setStatus(
 			ok && next
-				? `${current.title} saved. Now on section ${step + 2} of ${sections.length}: ${next.title}.`
-				: "Your answers are on screen, but this browser blocked saving. Now on the next section.",
+				? `${current.title} saved${isDatabaseSection ? " to the database and this browser" : ""}. Now on section ${step + 2} of ${sections.length}: ${next.title}.`
+				: isDatabaseSection
+					? `${current.title} was saved to the database, but this browser blocked local saving. Now on the next section.`
+					: "Your answers are on screen, but this browser blocked saving. Now on the next section.",
 		);
 	}
 
@@ -1125,11 +1158,26 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 
 				{current.id === "operations" && (
 					<>
+						<Input type={Input.DROPDOWN} name="operationsDisposition" label="Operations disposition"
+							value={values.operations.disposition} items={lookups.dispositions}
+							onChange={text("operations", "disposition")} />
 						<Input type={Input.PARAGRAPH} name="operationsInstructions" label="Rework/repair instructions"
 							value={values.operations.instructions}
 							maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
 							error={errors.operationsInstructions}
 							onChange={text("operations", "instructions")} />
+						<Input type={Input.PARAGRAPH} name="operationsComments" label="Operations comments"
+							value={values.operations.comments}
+							maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
+							error={errors.operationsComments}
+							onChange={text("operations", "comments")} />
+						<Input type={Input.TEXT} name="operationsRepresentative" label="Operations representative"
+							value={values.operations.representative}
+							maxLength={150}
+							onChange={text("operations", "representative")} />
+						<Input type={Input.DATE} name="operationsDateCompleted" label="Operations date completed"
+							value={values.operations.dateCompleted}
+							onChange={text("operations", "dateCompleted")} />
 					</>
 				)}
 
@@ -1144,6 +1192,10 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 
 				{current.id === "qualityFinalReview" && (
 					<>
+						<Input type={Input.TEXT} name="qualityFinalInspectionResult" label="Final inspection result"
+							value={values.qualityFinalReview.inspectionResult}
+							maxLength={300}
+							onChange={text("qualityFinalReview", "inspectionResult")} />
 						<Input type={Input.PARAGRAPH} name="qualityFinalComments" label="Quality comments"
 							value={values.qualityFinalReview.comments}
 							maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
@@ -1158,6 +1210,13 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 								checked={values.qualityFinalReview.acceptanceConfirmed === "no"} required
 								onChange={() => update("qualityFinalReview", { acceptanceConfirmed: "no" })} />
 						</ChoiceGroup>
+						<Input type={Input.DATE} name="qualityDateClosed" label="Quality review date"
+							value={values.qualityFinalReview.dateClosed}
+							onChange={text("qualityFinalReview", "dateClosed")} />
+						<Input type={Input.TEXT} name="qualityClosedBy" label="Quality reviewer"
+							value={values.qualityFinalReview.closedBy}
+							maxLength={150}
+							onChange={text("qualityFinalReview", "closedBy")} />
 					</>
 				)}
 
@@ -1312,7 +1371,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 								enabled={!submitting}
 								onClick={() => {
 									if (step === reviewStep) void submit();
-									else saveAndContinue();
+									else void saveAndContinue();
 								}}
 							/>
 						</>
@@ -1363,12 +1422,19 @@ function reviewGroups(
 		{ id: "engineering" as SectionId, title: "Engineering Disposition", rows: [
 			["Engineering instructions", v.engineering.instructions]] },
 		{ id: "operations" as SectionId, title: "Operations Disposition", rows: [
-			["Rework/repair instructions", v.operations.instructions]] },
+			["Operations disposition", v.operations.disposition],
+			["Rework/repair instructions", v.operations.instructions],
+			["Operations comments", v.operations.comments],
+			["Operations representative", v.operations.representative],
+			["Operations date completed", v.operations.dateCompleted]] },
 		{ id: "procurement" as SectionId, title: "Procurement", rows: [
 			["Communication of a delay due to quality rejection", v.procurement.delayCommunication]] },
 		{ id: "qualityFinalReview" as SectionId, title: "Quality Final Review", rows: [
+			["Final inspection result", v.qualityFinalReview.inspectionResult],
 			["Quality comments", v.qualityFinalReview.comments],
-			["Final acceptance confirmation", v.qualityFinalReview.acceptanceConfirmed === "yes" ? "Yes" : v.qualityFinalReview.acceptanceConfirmed === "no" ? "No" : ""]] },
+			["Final acceptance confirmation", v.qualityFinalReview.acceptanceConfirmed === "yes" ? "Yes" : v.qualityFinalReview.acceptanceConfirmed === "no" ? "No" : ""],
+			["Quality review date", v.qualityFinalReview.dateClosed],
+			["Quality reviewer", v.qualityFinalReview.closedBy]] },
 	] as { id: SectionId; title: string; rows: [string, string][] }[];
 	return groups.filter((group) =>
 		(group.id !== "engineering" || (includeEngineering && v.defect.engineeringRequired === "yes")) &&

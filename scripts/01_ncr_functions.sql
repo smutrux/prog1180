@@ -1,6 +1,7 @@
 -- =====================================================================
 -- NCR app: seed rows, server-side functions and the list view.
 -- Run the whole file once in the Supabase SQL editor. Safe to re-run.
+-- Re-run this file after app updates to install workflow persistence changes.
 --
 -- Every function runs as the caller (SECURITY INVOKER), so your row-level
 -- security policies still apply. Each public function is one transaction:
@@ -29,6 +30,36 @@ on conflict (ncr_process_applicable_label) do nothing;
 insert into public.ncr_disposition (ncr_disposition_label) values
   ('Pending'), ('Use As Is'), ('Repair'), ('Rework'), ('Scrap')
 on conflict (ncr_disposition_label) do nothing;
+
+-- Workflow sections use one-to-one rows so they can be saved independently.
+create table if not exists public.ncr_operations (
+  ncr_id integer primary key references public.ncr(ncr_id) on delete cascade,
+  operations_disposition text not null default '',
+  operations_instructions text not null default '',
+  operations_comments text not null default '',
+  operations_representative text not null default '',
+  operations_date_completed date,
+  updated_by_person_id integer not null references public.person(person_id),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.ncr_procurement (
+  ncr_id integer primary key references public.ncr(ncr_id) on delete cascade,
+  procurement_delay_communication text not null default '',
+  updated_by_person_id integer not null references public.person(person_id),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.ncr_quality_final_review (
+  ncr_id integer primary key references public.ncr(ncr_id) on delete cascade,
+  quality_final_inspection_result text not null default '',
+  quality_final_comments text not null default '',
+  quality_final_acceptance_confirmed boolean,
+  quality_date_closed date,
+  quality_closed_by text not null default '',
+  updated_by_person_id integer not null references public.person(person_id),
+  updated_at timestamptz not null default now()
+);
 
 -- ---------------------------------------------------------------------
 -- 1. Private helpers (not exposed through the API)
@@ -259,6 +290,129 @@ end $$;
 -- 2. Public functions (called with supabase.rpc)
 -- ---------------------------------------------------------------------
 
+-- Saves a workflow section immediately. When the NCR is still a draft, keep
+-- its JSON snapshot in sync so Continue restores the latest saved section.
+create or replace function public.save_ncr_section(
+  p_ncr_id integer,
+  p_section text,
+  p_data jsonb,
+  p_person_id integer,
+  p_step integer default null
+)
+returns void
+language plpgsql
+set search_path = public, private
+as $$
+declare
+  v_draft text;
+begin
+  select ncr_draft_data into v_draft
+  from ncr
+  where ncr_id = p_ncr_id
+  for update;
+  if not found then
+    perform private.ncr_fail('This NCR no longer exists. Close the form and reload the list.');
+  end if;
+
+  if p_person_id is null or not exists (
+    select 1 from person where person_id = p_person_id
+  ) then
+    perform private.ncr_fail('Your account is not loaded yet. Reload the page and try again.');
+  end if;
+
+  if p_section = 'operations' then
+    insert into ncr_operations (
+      ncr_id, operations_disposition, operations_instructions, operations_comments,
+      operations_representative, operations_date_completed, updated_by_person_id
+    )
+    values (
+      p_ncr_id,
+      coalesce(p_data->>'disposition', ''),
+      coalesce(p_data->>'instructions', ''),
+      coalesce(p_data->>'comments', ''),
+      coalesce(p_data->>'representative', ''),
+      nullif(p_data->>'dateCompleted', '')::date,
+      p_person_id
+    )
+    on conflict (ncr_id) do update set
+      operations_disposition = excluded.operations_disposition,
+      operations_instructions = excluded.operations_instructions,
+      operations_comments = excluded.operations_comments,
+      operations_representative = excluded.operations_representative,
+      operations_date_completed = excluded.operations_date_completed,
+      updated_by_person_id = excluded.updated_by_person_id,
+      updated_at = now();
+  elsif p_section = 'procurement' then
+    insert into ncr_procurement (
+      ncr_id, procurement_delay_communication, updated_by_person_id
+    )
+    values (
+      p_ncr_id,
+      coalesce(p_data->>'delayCommunication', ''),
+      p_person_id
+    )
+    on conflict (ncr_id) do update set
+      procurement_delay_communication = excluded.procurement_delay_communication,
+      updated_by_person_id = excluded.updated_by_person_id,
+      updated_at = now();
+  elsif p_section = 'qualityFinalReview' then
+    insert into ncr_quality_final_review (
+      ncr_id, quality_final_inspection_result, quality_final_comments,
+      quality_final_acceptance_confirmed, quality_date_closed, quality_closed_by,
+      updated_by_person_id
+    )
+    values (
+      p_ncr_id,
+      coalesce(p_data->>'inspectionResult', ''),
+      coalesce(p_data->>'comments', ''),
+      case
+        when jsonb_typeof(p_data->'acceptanceConfirmed') = 'boolean'
+          then (p_data->>'acceptanceConfirmed')::boolean
+        when lower(p_data->>'acceptanceConfirmed') = 'yes' then true
+        when lower(p_data->>'acceptanceConfirmed') = 'no' then false
+        else null
+      end,
+      nullif(p_data->>'dateClosed', '')::date,
+      coalesce(p_data->>'closedBy', ''),
+      p_person_id
+    )
+    on conflict (ncr_id) do update set
+      quality_final_inspection_result = excluded.quality_final_inspection_result,
+      quality_final_comments = excluded.quality_final_comments,
+      quality_final_acceptance_confirmed = excluded.quality_final_acceptance_confirmed,
+      quality_date_closed = excluded.quality_date_closed,
+      quality_closed_by = excluded.quality_closed_by,
+      updated_by_person_id = excluded.updated_by_person_id,
+      updated_at = now();
+  else
+    perform private.ncr_fail('Unknown workflow section.');
+  end if;
+
+  if v_draft is not null and btrim(v_draft) <> '' then
+    update ncr
+    set ncr_draft_data = jsonb_set(
+      coalesce(nullif(ncr_draft_data, '')::jsonb, '{}'::jsonb),
+      array['values', p_section],
+      coalesce(p_data, '{}'::jsonb),
+      true
+    )::text,
+    ncr_draft_step = coalesce(p_step::text, ncr_draft_step)
+    where ncr_id = p_ncr_id;
+  end if;
+end $$;
+
+-- Persists all workflow sections as part of the main submit/edit transaction.
+create or replace function private.ncr_sync_workflow(p jsonb, p_ncr_id integer, p_person_id integer)
+returns void
+language plpgsql
+set search_path = public, private
+as $$
+begin
+  perform public.save_ncr_section(p_ncr_id, 'operations', coalesce(p->'operations', '{}'::jsonb), p_person_id);
+  perform public.save_ncr_section(p_ncr_id, 'procurement', coalesce(p->'procurement', '{}'::jsonb), p_person_id);
+  perform public.save_ncr_section(p_ncr_id, 'qualityFinalReview', coalesce(p->'qualityFinalReview', '{}'::jsonb), p_person_id);
+end $$;
+
 -- The next free NCR number for this year, e.g. 2026-001.
 create or replace function public.next_ncr_number()
 returns text
@@ -363,6 +517,8 @@ begin
     returning ncr_id into v_ncr_id;
   end if;
 
+  perform private.ncr_sync_workflow(p, v_ncr_id, v_by);
+
   insert into qa (ncr_id, qa_defect_desc, qa_quantity_defective, qa_is_non_conforming,
                   qa_rep_date, ncr_process_applicable_id, qa_rep_person_id)
   values (v_ncr_id, btrim(p->>'defect_description'), v_defective,
@@ -442,6 +598,8 @@ begin
   if v_qa is null then
     perform private.ncr_fail('The QA section of this NCR is missing, so it cannot be edited.');
   end if;
+
+  perform private.ncr_sync_workflow(p, v_ncr_id, v_by);
 
   perform private.ncr_sync_children(p, v_ncr_id, v_inspector);
 

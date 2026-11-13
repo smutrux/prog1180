@@ -73,6 +73,7 @@ export interface FormLookups {
 	suppliers: SupplierOption[];
 	problemTypes: ProblemTypeOption[];
 	inspectors: InspectorOption[];
+	dispositions: string[];
 }
 
 const same = (a: string | null | undefined, b: string) =>
@@ -132,7 +133,7 @@ export async function loadStatuses(): Promise<StatusOption[]> {
 }
 
 export async function loadFormLookups(): Promise<FormLookups> {
-	const [statuses, suppliers, problemTypes, inspectors] = await Promise.all([
+	const [statuses, suppliers, problemTypes, inspectors, dispositions] = await Promise.all([
 		loadStatuses(),
 		supabase.from("supplier").select("supplier_id, supplier_name").order("supplier_name"),
 		supabase
@@ -145,6 +146,7 @@ export async function loadFormLookups(): Promise<FormLookups> {
 			.ilike("role.role_name", QUALITY_ROLE)
 			.order("person_last_name")
 			.order("person_first_name"),
+		supabase.from("ncr_disposition").select("ncr_disposition_label").order("disposition_id"),
 	]);
 
 	return {
@@ -163,6 +165,7 @@ export async function loadFormLookups(): Promise<FormLookups> {
 			middle: (p.person_middle_name ?? "").trim(),
 			last: p.person_last_name.trim(),
 		})),
+		dispositions: unwrap(dispositions).map((d) => d.ncr_disposition_label.trim()).filter(Boolean),
 	};
 }
 
@@ -243,6 +246,27 @@ export async function saveDraft(
 	return { ncrNumber: d.ncrNumber, recordId: res.ncr_id };
 }
 
+export type PersistedNcrSection = "operations" | "procurement" | "qualityFinalReview";
+
+/** Saves one workflow section immediately, and syncs its payload in an active draft. */
+export async function saveNcrSection(
+	ncrId: number,
+	section: PersistedNcrSection,
+	data: unknown,
+	personId: number,
+	step?: number,
+): Promise<void> {
+	throwIfError(
+		await db.rpc("save_ncr_section", {
+			p_ncr_id: ncrId,
+			p_section: section,
+			p_data: data,
+			p_person_id: personId,
+			p_step: step ?? null,
+		}),
+	);
+}
+
 export interface NcrEditData {
 	ncrId: number;
 	ncrNumber: string;
@@ -303,14 +327,39 @@ const EDIT_SELECT = `
 `;
 
 export async function loadNcrForEdit(rec: Pick<NcrRecord, "ncr_id">): Promise<NcrEditData> {
-	const res = await supabase
+	const [res, operationsRes, procurementRes, qualityRes] = await Promise.all([
+		supabase
 		.from("ncr")
 		.select(EDIT_SELECT)
 		.eq("ncr_id", rec.ncr_id)
-		.maybeSingle();
+		.maybeSingle(),
+		db.from("ncr_operations").select("*").eq("ncr_id", rec.ncr_id).maybeSingle(),
+		db.from("ncr_procurement").select("*").eq("ncr_id", rec.ncr_id).maybeSingle(),
+		db.from("ncr_quality_final_review").select("*").eq("ncr_id", rec.ncr_id).maybeSingle(),
+	]);
 	throwIfError(res);
+	throwIfError(operationsRes);
+	throwIfError(procurementRes);
+	throwIfError(qualityRes);
 	const row = res.data;
 	if (!row) throw new SubmitError("This NCR no longer exists. Close the form and reload the list.");
+	const operations = operationsRes.data as {
+		operations_disposition: string | null;
+		operations_instructions: string | null;
+		operations_comments: string | null;
+		operations_representative: string | null;
+		operations_date_completed: string | null;
+	} | null;
+	const procurement = procurementRes.data as {
+		procurement_delay_communication: string | null;
+	} | null;
+	const quality = qualityRes.data as {
+		quality_final_inspection_result: string | null;
+		quality_final_comments: string | null;
+		quality_final_acceptance_confirmed: boolean | null;
+		quality_date_closed: string | null;
+		quality_closed_by: string | null;
+	} | null;
 
 	const qa = row.qa;
 	const line = row.so_line_item;
@@ -346,6 +395,23 @@ export async function loadNcrForEdit(rec: Pick<NcrRecord, "ncr_id">): Promise<Nc
 			.filter(Boolean),
 		defectDescription: (qa?.qa_defect_desc ?? "").trim(),
 		isNonconforming: qa?.qa_is_non_conforming ?? null,
+		engineeringRequired: null,
+		engineeringDisposition: "",
+		engineeringInstructions: "",
+		engineeringComments: "",
+		engineeringRepresentative: "",
+		engineeringDateCompleted: "",
+		operationsDisposition: operations?.operations_disposition ?? "",
+		operationsInstructions: operations?.operations_instructions ?? "",
+		operationsComments: operations?.operations_comments ?? "",
+		operationsRepresentative: operations?.operations_representative ?? "",
+		operationsDateCompleted: operations?.operations_date_completed ?? "",
+		procurementDelayCommunication: procurement?.procurement_delay_communication ?? "",
+		qualityFinalInspectionResult: quality?.quality_final_inspection_result ?? "",
+		qualityFinalComments: quality?.quality_final_comments ?? "",
+		qualityFinalAcceptanceConfirmed: quality?.quality_final_acceptance_confirmed ?? null,
+		qualityDateClosed: quality?.quality_date_closed ?? row.ncr_closed_at ?? "",
+		qualityClosedBy: quality?.quality_closed_by ?? "",
 		inspector: {
 			personId: person?.person_id ?? 0,
 			first: (person?.person_first_name ?? "").trim(),
@@ -427,6 +493,23 @@ function payload(s: NcrSubmission, ncrId: number | null) {
 		problem_type_ids: s.problemTypeIds,
 		defect_description: s.defectDescription,
 		is_non_conforming: s.isNonconforming,
+		operations: {
+			disposition: s.operationsDisposition,
+			instructions: s.operationsInstructions,
+			comments: s.operationsComments,
+			representative: s.operationsRepresentative,
+			dateCompleted: s.operationsDateCompleted,
+		},
+		procurement: {
+			delayCommunication: s.procurementDelayCommunication,
+		},
+		qualityFinalReview: {
+			inspectionResult: s.qualityFinalInspectionResult,
+			comments: s.qualityFinalComments,
+			acceptanceConfirmed: s.qualityFinalAcceptanceConfirmed,
+			dateClosed: s.qualityDateClosed,
+			closedBy: s.qualityClosedBy,
+		},
 		inspector:
 			s.inspector.kind === "existing"
 				? { kind: "existing", person_id: s.inspector.personId }
