@@ -186,8 +186,6 @@ function reportValues(data: NcrRecord, ed: NcrEditData | null): unknown[] {
 	];
 }
 
-const isEngineeringRequired = (value: unknown) =>
-	value === true || (typeof value === "string" && /^(yes|true)$/i.test(value.trim()));
 
 export function NcrDetailsModal({
 	open,
