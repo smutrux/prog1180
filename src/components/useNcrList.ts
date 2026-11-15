@@ -3,9 +3,8 @@ import { loadAllNcrRows, type NcrListRow } from "./ncrService";
 
 /**
  * Every NCR, newest first, as flat rows with status, supplier, item and QA
- * answers (see the `ncr_list` view). Rows used to be `NcRecord<NcrFields>`
- * with a `fields` object. They are plain objects now: `row.ncr_number`,
- * `row.status_label`, and so on.
+ * answers (see the `ncr_list` view). Access columns directly, for example
+ * `row.ncr_number` and `row.status_label`.
  */
 export function useNcrList() {
 	const [rows, setRows] = useState<NcrListRow[]>([]);

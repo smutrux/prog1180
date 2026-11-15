@@ -348,6 +348,61 @@ export type Database = {
         }
         Relationships: []
       }
+      ncr_operations: {
+        Row: {
+          ncr_id: number
+          operations_comments: string
+          operations_date_completed: string | null
+          operations_disposition: string
+          operations_instructions: string
+          operations_representative: string
+          updated_at: string
+          updated_by_person_id: number
+        }
+        Insert: {
+          ncr_id: number
+          operations_comments?: string
+          operations_date_completed?: string | null
+          operations_disposition?: string
+          operations_instructions?: string
+          operations_representative?: string
+          updated_at?: string
+          updated_by_person_id: number
+        }
+        Update: {
+          ncr_id?: number
+          operations_comments?: string
+          operations_date_completed?: string | null
+          operations_disposition?: string
+          operations_instructions?: string
+          operations_representative?: string
+          updated_at?: string
+          updated_by_person_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ncr_operations_ncr_id_fkey"
+            columns: ["ncr_id"]
+            isOneToOne: true
+            referencedRelation: "ncr"
+            referencedColumns: ["ncr_id"]
+          },
+          {
+            foreignKeyName: "ncr_operations_ncr_id_fkey"
+            columns: ["ncr_id"]
+            isOneToOne: true
+            referencedRelation: "ncr_list"
+            referencedColumns: ["ncr_id"]
+          },
+          {
+            foreignKeyName: "ncr_operations_updated_by_person_id_fkey"
+            columns: ["updated_by_person_id"]
+            isOneToOne: false
+            referencedRelation: "person"
+            referencedColumns: ["person_id"]
+          },
+        ]
+      }
       ncr_problem_type: {
         Row: {
           ncr_id: number
@@ -402,6 +457,104 @@ export type Database = {
           ncr_process_applicable_label?: string
         }
         Relationships: []
+      }
+      ncr_procurement: {
+        Row: {
+          ncr_id: number
+          procurement_delay_communication: string
+          updated_at: string
+          updated_by_person_id: number
+        }
+        Insert: {
+          ncr_id: number
+          procurement_delay_communication?: string
+          updated_at?: string
+          updated_by_person_id: number
+        }
+        Update: {
+          ncr_id?: number
+          procurement_delay_communication?: string
+          updated_at?: string
+          updated_by_person_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ncr_procurement_ncr_id_fkey"
+            columns: ["ncr_id"]
+            isOneToOne: true
+            referencedRelation: "ncr"
+            referencedColumns: ["ncr_id"]
+          },
+          {
+            foreignKeyName: "ncr_procurement_ncr_id_fkey"
+            columns: ["ncr_id"]
+            isOneToOne: true
+            referencedRelation: "ncr_list"
+            referencedColumns: ["ncr_id"]
+          },
+          {
+            foreignKeyName: "ncr_procurement_updated_by_person_id_fkey"
+            columns: ["updated_by_person_id"]
+            isOneToOne: false
+            referencedRelation: "person"
+            referencedColumns: ["person_id"]
+          },
+        ]
+      }
+      ncr_quality_final_review: {
+        Row: {
+          ncr_id: number
+          quality_closed_by: string
+          quality_date_closed: string | null
+          quality_final_acceptance_confirmed: boolean | null
+          quality_final_comments: string
+          quality_final_inspection_result: string
+          updated_at: string
+          updated_by_person_id: number
+        }
+        Insert: {
+          ncr_id: number
+          quality_closed_by?: string
+          quality_date_closed?: string | null
+          quality_final_acceptance_confirmed?: boolean | null
+          quality_final_comments?: string
+          quality_final_inspection_result?: string
+          updated_at?: string
+          updated_by_person_id: number
+        }
+        Update: {
+          ncr_id?: number
+          quality_closed_by?: string
+          quality_date_closed?: string | null
+          quality_final_acceptance_confirmed?: boolean | null
+          quality_final_comments?: string
+          quality_final_inspection_result?: string
+          updated_at?: string
+          updated_by_person_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ncr_quality_final_review_ncr_id_fkey"
+            columns: ["ncr_id"]
+            isOneToOne: true
+            referencedRelation: "ncr"
+            referencedColumns: ["ncr_id"]
+          },
+          {
+            foreignKeyName: "ncr_quality_final_review_ncr_id_fkey"
+            columns: ["ncr_id"]
+            isOneToOne: true
+            referencedRelation: "ncr_list"
+            referencedColumns: ["ncr_id"]
+          },
+          {
+            foreignKeyName: "ncr_quality_final_review_updated_by_person_id_fkey"
+            columns: ["updated_by_person_id"]
+            isOneToOne: false
+            referencedRelation: "person"
+            referencedColumns: ["person_id"]
+          },
+        ]
       }
       ncr_status: {
         Row: {
@@ -835,6 +988,16 @@ export type Database = {
         Returns: undefined
       }
       save_ncr_draft: { Args: { p: Json }; Returns: Json }
+      save_ncr_section: {
+        Args: {
+          p_data: Json
+          p_ncr_id: number
+          p_person_id: number
+          p_section: string
+          p_step?: number
+        }
+        Returns: undefined
+      }
       submit_ncr: { Args: { p: Json }; Returns: Json }
       update_ncr: { Args: { p: Json }; Returns: Json }
     }
