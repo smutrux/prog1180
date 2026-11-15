@@ -13,6 +13,11 @@ import {
 	parseDraft,
 	saveDraft,
 	saveNcrSection,
+	saveEngineering,
+	saveProcurement,
+	type ProcurementInput,
+	PartialSaveError,
+	type EngineeringInput,
 	submitNcr,
 	updateNcr,
 	type FormLookups,
@@ -69,7 +74,11 @@ interface FormValues {
 	engineering: {
 		disposition: string;
 		instructions: string;
-		comments: string;
+		drawingUpdateRequired: YesNo;
+		originalRev: string;
+		updatedRev: string;
+		revisionDate: string;
+		notificationRequired: YesNo;
 		representative: string;
 		dateCompleted: string;
 	};
@@ -80,7 +89,18 @@ interface FormValues {
 		representative: string;
 		dateCompleted: string;
 	};
-	procurement: { delayCommunication: string };
+	procurement: {
+		delayCommunication: string;
+		returnRequested: YesNo;
+		rmaNumber: string;
+		carrierName: string;
+		carrierAccountNumber: string;
+		disposeOnSite: boolean;
+		replacementDate: string;
+		sapReturnCompleted: boolean;
+		creditExpected: boolean;
+		billSupplier: boolean;
+	};
 	qualityFinalReview: {
 		inspectionResult: string;
 		comments: string;
@@ -180,7 +200,11 @@ const makeDefaults = (ncrNumber: string): FormValues => ({
 	engineering: {
 		disposition: "",
 		instructions: "",
-		comments: "",
+		drawingUpdateRequired: "",
+		originalRev: "",
+		updatedRev: "",
+		revisionDate: "",
+		notificationRequired: "",
 		representative: "",
 		dateCompleted: "",
 	},
@@ -191,7 +215,18 @@ const makeDefaults = (ncrNumber: string): FormValues => ({
 		representative: "",
 		dateCompleted: "",
 	},
-	procurement: { delayCommunication: "" },
+	procurement: {
+		delayCommunication: "",
+		returnRequested: "",
+		rmaNumber: "",
+		carrierName: "",
+		carrierAccountNumber: "",
+		disposeOnSite: false,
+		replacementDate: "",
+		sapReturnCompleted: false,
+		creditExpected: false,
+		billSupplier: false,
+	},
 	qualityFinalReview: {
 		inspectionResult: "",
 		comments: "",
@@ -284,7 +319,11 @@ function toFormValues(ed: NcrEditData): FormValues {
 		engineering: {
 			disposition: ed.engineeringDisposition ?? "",
 			instructions: ed.engineeringInstructions ?? "",
-			comments: ed.engineeringComments ?? "",
+			drawingUpdateRequired: toYesNo(ed.engineeringDrawingUpdateRequired),
+			originalRev: ed.engineeringOriginalRev ?? "",
+			updatedRev: ed.engineeringUpdatedRev ?? "",
+			revisionDate: dateForInput(ed.engineeringRevisionDate),
+			notificationRequired: toYesNo(ed.engineeringNotificationRequired),
 			representative: ed.engineeringRepresentative ?? "",
 			dateCompleted: dateForInput(ed.engineeringDateCompleted),
 		},
@@ -295,7 +334,18 @@ function toFormValues(ed: NcrEditData): FormValues {
 			representative: ed.operationsRepresentative ?? "",
 			dateCompleted: dateForInput(ed.operationsDateCompleted),
 		},
-		procurement: { delayCommunication: ed.procurementDelayCommunication ?? "" },
+		procurement: {
+			delayCommunication: ed.procurementDelayCommunication ?? "",
+			returnRequested: toYesNo(ed.procurementReturnRequested),
+			rmaNumber: ed.procurementRmaNumber ?? "",
+			carrierName: ed.procurementCarrierName ?? "",
+			carrierAccountNumber: ed.procurementCarrierAccountNumber ?? "",
+			disposeOnSite: ed.procurementDisposeOnSite ?? false,
+			replacementDate: dateForInput(ed.procurementReplacementDate),
+			sapReturnCompleted: ed.procurementSapReturnCompleted ?? false,
+			creditExpected: ed.procurementCreditExpected ?? false,
+			billSupplier: ed.procurementBillSupplier ?? false,
+		},
 		qualityFinalReview: {
 			inspectionResult: ed.qualityFinalInspectionResult ?? "",
 			comments: ed.qualityFinalComments ?? "",
@@ -424,6 +474,76 @@ const DIGIT_MSG =
 const sanitizeTextbox = (value: string) =>
 	value.replace(INVALID_TEXT_CONTROLS, "");
 
+const toYesNo = (b: boolean | null | undefined): YesNo =>
+	b === null || b === undefined ? "" : b ? "yes" : "no";
+const yesNoText = (v: YesNo) => (v === "yes" ? "Yes" : v === "no" ? "No" : "");
+
+/** Turns the engineering answers into one engineering row. Throws when the disposition is not in the database. */
+function engineeringInput(
+	e: FormValues["engineering"],
+	l: FormLookups,
+	engineerPersonId: number,
+): EngineeringInput {
+	const label = e.disposition.trim().toLowerCase();
+	const found = l.dispositionOptions.find(
+		(d) => d.label.toLowerCase() === label,
+	);
+	if (!found)
+		throw new Error(
+			"The chosen engineering disposition is not in the database any more. Go back to Engineering and choose it again.",
+		);
+	const drawing = e.drawingUpdateRequired === "yes";
+	return {
+		dispositionId: found.id,
+		steps: sanitizeTextbox(e.instructions).trim(),
+		drawingUpdateRequired: drawing,
+		notificationRequired: e.notificationRequired === "yes",
+		originalRev: drawing ? e.originalRev.trim() : "",
+		updatedRev: drawing ? e.updatedRev.trim() : "",
+		revisionDate: drawing ? e.revisionDate : "",
+		engineerPersonId,
+		date: e.dateCompleted,
+	};
+}
+
+const boolText = (b: boolean) => (b ? "Yes" : "No");
+
+/**
+ * Turns the procurement answers into one ncr_procurement row. Return, credit and billing
+ * answers only count for supplier NCRs, and each follow-up only counts under the answer that asks for it.
+ */
+function procurementInput(
+	v: FormValues,
+	updatedByPersonId: number,
+): ProcurementInput {
+	const p = v.procurement;
+	const supplierNcr = v.process.processType === "supplier";
+	const returned = supplierNcr ? p.returnRequested : "";
+	return {
+		delayCommunication: sanitizeTextbox(p.delayCommunication).trim(),
+		returnRequested: returned === "" ? null : returned === "yes",
+		rmaNumber: returned === "yes" ? p.rmaNumber.trim() : "",
+		carrierName: returned === "yes" ? p.carrierName.trim() : "",
+		carrierAccountNumber:
+			returned === "yes" ? p.carrierAccountNumber.trim() : "",
+		disposeOnSite: returned === "no" && p.disposeOnSite,
+		replacementDate: p.replacementDate,
+		sapReturnCompleted: returned === "yes" && p.sapReturnCompleted,
+		creditExpected: supplierNcr && p.creditExpected,
+		billSupplier: supplierNcr && p.billSupplier,
+		updatedByPersonId,
+	};
+}
+
+/** True when the procurement section holds anything beyond the delay note. */
+const procurementHasDetails = (i: ProcurementInput) =>
+	i.returnRequested !== null ||
+	i.disposeOnSite ||
+	i.sapReturnCompleted ||
+	i.creditExpected ||
+	i.billSupplier ||
+	i.replacementDate !== "";
+
 const countHelp = (used: number) =>
 	`Up to ${DEPARTMENT_TEXT_MAX_LENGTH} characters. ${used} used.`;
 
@@ -450,6 +570,22 @@ function stampSections(
 ): FormValues {
 	if (!name) return v;
 	let next = v;
+	const g = v.engineering;
+	if (
+		v.defect.engineeringRequired === "yes" &&
+		filled(
+			g.disposition,
+			g.instructions,
+			g.drawingUpdateRequired,
+			g.notificationRequired,
+		) &&
+		(touched.has("engineering") || !g.representative || !g.dateCompleted)
+	) {
+		next = {
+			...next,
+			engineering: { ...g, representative: name, dateCompleted: today },
+		};
+	}
 	const o = v.operations;
 	if (
 		filled(o.disposition, o.instructions, o.comments) &&
@@ -554,10 +690,24 @@ function validate(
 			break;
 		}
 		case "engineering":
+			if (blank(v.engineering.disposition))
+				e.engineeringDisposition = "Choose the engineering disposition.";
 			validateDepartmentTextbox(
 				"engineeringInstructions",
 				v.engineering.instructions,
 			);
+			if (!v.engineering.drawingUpdateRequired)
+				e.engineeringDrawingUpdateRequired = "Choose Yes or No.";
+			if (v.engineering.drawingUpdateRequired === "yes") {
+				if (v.engineering.originalRev.trim().length > 50)
+					e.engineeringOriginalRev = "Use 50 characters or fewer.";
+				if (blank(v.engineering.updatedRev))
+					e.engineeringUpdatedRev = "Enter the updated revision number.";
+				else if (v.engineering.updatedRev.trim().length > 50)
+					e.engineeringUpdatedRev = "Use 50 characters or fewer.";
+			}
+			if (!v.engineering.notificationRequired)
+				e.engineeringNotificationRequired = "Choose Yes or No.";
 			break;
 		case "operations":
 			if (
@@ -578,6 +728,26 @@ function validate(
 				"procurementDelayCommunication",
 				v.procurement.delayCommunication,
 			);
+			if (v.process.processType === "supplier") {
+				const pr = v.procurement;
+				if (!pr.returnRequested)
+					e.procurementReturnRequested = "Choose Yes or No.";
+				if (pr.returnRequested === "yes") {
+					if (blank(pr.rmaNumber))
+						e.procurementRmaNumber = "Enter the RMA number.";
+					else if (pr.rmaNumber.trim().length > 50)
+						e.procurementRmaNumber = "Use 50 characters or fewer.";
+					if (blank(pr.carrierName))
+						e.procurementCarrierName = "Enter the carrier.";
+					else if (pr.carrierName.trim().length > 100)
+						e.procurementCarrierName = "Use 100 characters or fewer.";
+					if (blank(pr.carrierAccountNumber))
+						e.procurementCarrierAccountNumber =
+							"Enter the carrier account number.";
+					else if (pr.carrierAccountNumber.trim().length > 50)
+						e.procurementCarrierAccountNumber = "Use 50 characters or fewer.";
+				}
+			}
 			break;
 		case "qualityFinalReview":
 			validateDepartmentTextbox(
@@ -650,8 +820,11 @@ const focusIdFor = (key: string) =>
 			? "isNonconforming-yes"
 			: key === "engineeringRequired"
 				? "engineeringRequired-yes"
-				: key === "qualityAcceptanceConfirmed"
-					? "qualityAcceptanceConfirmed-yes"
+				: key === "qualityAcceptanceConfirmed" ||
+					  key === "engineeringDrawingUpdateRequired" ||
+					  key === "engineeringNotificationRequired" ||
+					  key === "procurementReturnRequested"
+					? `${key}-yes`
 					: key;
 
 const formatSize = (bytes: number) =>
@@ -722,12 +895,14 @@ export default function NcrForm({
 	const [submitted, setSubmitted] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
 	const [submitError, setSubmitError] = useState("");
+	const [submitWarning, setSubmitWarning] = useState("");
 	const [lookups, setLookups] = useState<FormLookups>({
 		statuses: [],
 		suppliers: [],
 		problemTypes: [],
 		inspectors: [],
 		dispositions: [],
+		dispositionOptions: [],
 	});
 	const [lookupState, setLookupState] = useState<"loading" | "ready" | "error">(
 		"loading",
@@ -932,12 +1107,16 @@ export default function NcrForm({
 			const next = { ...prev };
 			for (const key of Object.keys(patch)) {
 				delete next[key];
-				if (section === "engineering" && key === "instructions")
-					delete next.engineeringInstructions;
+				if (section === "engineering")
+					delete next[
+						`engineering${key.charAt(0).toUpperCase()}${key.slice(1)}`
+					];
 				if (section === "operations" && key === "instructions")
 					delete next.operationsInstructions;
-				if (section === "procurement" && key === "delayCommunication")
-					delete next.procurementDelayCommunication;
+				if (section === "procurement")
+					delete next[
+						`procurement${key.charAt(0).toUpperCase()}${key.slice(1)}`
+					];
 				if (section === "qualityFinalReview" && key === "comments")
 					delete next.qualityFinalComments;
 				if (section === "qualityFinalReview" && key === "acceptanceConfirmed")
@@ -1028,7 +1207,10 @@ export default function NcrForm({
 		const id = current.id;
 		const found = validate(id, values, files, false);
 		if (Object.keys(found).length) return showErrors(found);
-		const needsStamp = id === "operations" || id === "qualityFinalReview";
+		const needsStamp =
+			id === "engineering" ||
+			id === "operations" ||
+			id === "qualityFinalReview";
 		if (needsStamp && me.status !== "ready") {
 			setStatus(
 				"Your account is not loaded yet. Reload the page and try again.",
@@ -1039,6 +1221,7 @@ export default function NcrForm({
 		const sectionData = stamped[id];
 		let savedToDatabase = false;
 		const isDatabaseSection =
+			id === "engineering" ||
 			id === "operations" ||
 			id === "procurement" ||
 			id === "qualityFinalReview";
@@ -1054,7 +1237,16 @@ export default function NcrForm({
 					return;
 				}
 				try {
-					await saveNcrSection(ncrId, id, sectionData, personId, step + 1);
+					if (id === "engineering")
+						await saveEngineering(
+							ncrId,
+							engineeringInput(stamped.engineering, lookups, personId),
+						);
+					else {
+						await saveNcrSection(ncrId, id, sectionData, personId, step + 1);
+						if (id === "procurement")
+							await saveProcurement(ncrId, procurementInput(values, personId));
+					}
 					savedToDatabase = true;
 				} catch (err) {
 					setStatus(
@@ -1105,6 +1297,15 @@ export default function NcrForm({
 			focusSubmitError.current = true;
 			return;
 		}
+		// Keep the engineer who filled the section in earlier unless this person changed it.
+		const engineerId =
+			editData?.engineeringPersonId && !dirtyIds.has("engineering")
+				? editData.engineeringPersonId
+				: personId;
+		// New NCRs write their procurement details when there are any. Edits only write what changed.
+		const writeProcurement = edit
+			? dirtyIds.has("procurement")
+			: procurementHasDetails(procurementInput(values, personId ?? 0));
 		setSubmitting(true);
 		setSubmitError("");
 		try {
@@ -1114,6 +1315,8 @@ export default function NcrForm({
 				lookups,
 				edit ? (editData?.statusId ?? null) : null,
 				personId,
+				engineerId,
+				writeProcurement,
 			);
 			const result =
 				edit && editData
@@ -1129,6 +1332,29 @@ export default function NcrForm({
 			onSaved?.(result.ncrNumber);
 			void refreshLookups();
 		} catch (err) {
+			if (err instanceof PartialSaveError) {
+				// The NCR exists now. Submitting again would create a second one.
+				draftIdRef.current = null;
+				clearDrafts(prefix);
+				setHasDraft(false);
+				setDirtyIds(new Set());
+				const names = err.sections.join(" and ");
+				const many = err.sections.length > 1;
+				const hint = err.sections.includes("Engineering")
+					? ' Under "Is Engineering review required?" answer Yes again.'
+					: "";
+				setSubmitWarning(
+					`The NCR was saved, but its ${names} section${many ? "s were" : " was"} not. ${err.message} Close this form, find the NCR in the list, choose Edit and fill ${many ? "them" : "it"} in again.${hint}`,
+				);
+				setSubmitted(err.ncrNumber);
+				focusHeading.current = true;
+				setStatus(
+					`NCR ${err.ncrNumber} was saved without its ${err.sections.join(" and ")} section.`,
+				);
+				onSaved?.(err.ncrNumber);
+				void refreshLookups();
+				return;
+			}
 			if (err instanceof DuplicateNcrNumberError) {
 				const next = await nextNcrNumber().catch(() => "");
 				if (next) update("process", { ncrNumber: next });
@@ -1229,6 +1455,16 @@ export default function NcrForm({
 						? "The changes were saved to the database."
 						: "The report was saved to the database."}
 				</p>
+				{submitWarning && (
+					<section
+						className="ncr-error-summary"
+						role="alert"
+						aria-labelledby="ncr-partial-title"
+					>
+						<h2 id="ncr-partial-title">Some sections were not saved</h2>
+						<p>{submitWarning}</p>
+					</section>
+				)}
 				<div className="ncr-actions">
 					{!edit && (
 						<Button
@@ -1237,6 +1473,7 @@ export default function NcrForm({
 							bold
 							onClick={() => {
 								setSubmitted(null);
+								setSubmitWarning("");
 								resetForm("Started a new NCR.");
 							}}
 						/>
@@ -1678,17 +1915,142 @@ export default function NcrForm({
 				)}
 
 				{current.id === "engineering" && (
-					<Input
-						type={Input.PARAGRAPH}
-						name="engineeringInstructions"
-						label="Engineering instructions (optional)"
-						value={values.engineering.instructions}
-						maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
-						placeholder="e.g. Rework to drawing revision C, or use as is."
-						helpText={countHelp(values.engineering.instructions.length)}
-						error={errors.engineeringInstructions}
-						onChange={text("engineering", "instructions")}
-					/>
+					<>
+						<Input
+							type={Input.DROPDOWN}
+							name="engineeringDisposition"
+							label="Engineering disposition"
+							required
+							value={values.engineering.disposition}
+							items={lookups.dispositions}
+							helpText="Choose how this NCR should be handled."
+							error={errors.engineeringDisposition}
+							onChange={text("engineering", "disposition")}
+						/>
+						<Input
+							type={Input.PARAGRAPH}
+							name="engineeringInstructions"
+							label="Engineering instructions (optional)"
+							value={values.engineering.instructions}
+							maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
+							placeholder="e.g. Rework to drawing revision C, or use as is."
+							helpText={`Tell Operations how to correct the problem. ${countHelp(values.engineering.instructions.length)}`}
+							error={errors.engineeringInstructions}
+							onChange={text("engineering", "instructions")}
+						/>
+						<ChoiceGroup
+							id="engineeringDrawingUpdateRequired"
+							legend="Does a drawing need to be updated?"
+							required
+							helpText="Choose Yes if the drawing changes because of this NCR. Boxes for the revision numbers will appear."
+							error={errors.engineeringDrawingUpdateRequired}
+						>
+							<Input
+								type={Input.RADIO}
+								name="engineeringDrawingUpdateRequired-yes"
+								groupName="engineeringDrawingUpdateRequired"
+								value="yes"
+								label="Yes"
+								checked={values.engineering.drawingUpdateRequired === "yes"}
+								required
+								onChange={() => {
+									update("engineering", { drawingUpdateRequired: "yes" });
+									if (values.engineering.drawingUpdateRequired !== "yes")
+										setStatus(
+											"Boxes for the drawing revision have appeared below.",
+										);
+								}}
+							/>
+							<Input
+								type={Input.RADIO}
+								name="engineeringDrawingUpdateRequired-no"
+								groupName="engineeringDrawingUpdateRequired"
+								value="no"
+								label="No"
+								checked={values.engineering.drawingUpdateRequired === "no"}
+								required
+								onChange={() => {
+									update("engineering", {
+										drawingUpdateRequired: "no",
+										originalRev: "",
+										updatedRev: "",
+										revisionDate: "",
+									});
+									if (values.engineering.drawingUpdateRequired === "yes")
+										setStatus("The drawing revision boxes were removed.");
+								}}
+							/>
+						</ChoiceGroup>
+						{values.engineering.drawingUpdateRequired === "yes" && (
+							<>
+								<Input
+									type={Input.TEXT}
+									name="engineeringOriginalRev"
+									label="Original revision number (optional)"
+									value={values.engineering.originalRev}
+									maxLength={50}
+									autoComplete="off"
+									placeholder="e.g. B"
+									helpText="The revision the drawing has now. Up to 50 characters."
+									error={errors.engineeringOriginalRev}
+									onChange={text("engineering", "originalRev")}
+								/>
+								<Input
+									type={Input.TEXT}
+									name="engineeringUpdatedRev"
+									label="Updated revision number"
+									required
+									value={values.engineering.updatedRev}
+									maxLength={50}
+									autoComplete="off"
+									placeholder="e.g. C"
+									helpText="The revision the drawing will have after the update. Up to 50 characters."
+									error={errors.engineeringUpdatedRev}
+									onChange={text("engineering", "updatedRev")}
+								/>
+								<Input
+									type={Input.DATE}
+									name="engineeringRevisionDate"
+									label="Revision date (optional)"
+									value={values.engineering.revisionDate}
+									helpText="The date of the updated revision."
+									onChange={text("engineering", "revisionDate")}
+								/>
+							</>
+						)}
+						<ChoiceGroup
+							id="engineeringNotificationRequired"
+							legend="Is notification required?"
+							required
+							helpText="Choose Yes if the customer or another party must be told about this NCR."
+							error={errors.engineeringNotificationRequired}
+						>
+							<Input
+								type={Input.RADIO}
+								name="engineeringNotificationRequired-yes"
+								groupName="engineeringNotificationRequired"
+								value="yes"
+								label="Yes"
+								checked={values.engineering.notificationRequired === "yes"}
+								required
+								onChange={() =>
+									update("engineering", { notificationRequired: "yes" })
+								}
+							/>
+							<Input
+								type={Input.RADIO}
+								name="engineeringNotificationRequired-no"
+								groupName="engineeringNotificationRequired"
+								value="no"
+								label="No"
+								checked={values.engineering.notificationRequired === "no"}
+								required
+								onChange={() =>
+									update("engineering", { notificationRequired: "no" })
+								}
+							/>
+						</ChoiceGroup>
+					</>
 				)}
 
 				{current.id === "operations" && (
@@ -1749,17 +2111,182 @@ export default function NcrForm({
 				)}
 
 				{current.id === "procurement" && (
-					<Input
-						type={Input.PARAGRAPH}
-						name="procurementDelayCommunication"
-						label="Communication of a delay due to quality rejection (optional)"
-						value={values.procurement.delayCommunication}
-						maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
-						placeholder="e.g. The supplier was told the order is on hold until a replacement ships."
-						helpText={countHelp(values.procurement.delayCommunication.length)}
-						error={errors.procurementDelayCommunication}
-						onChange={text("procurement", "delayCommunication")}
-					/>
+					<>
+						{isSupplierProcess && (
+							<>
+								<ChoiceGroup
+									id="procurementReturnRequested"
+									legend="Does the supplier want the rejected items returned?"
+									required
+									helpText="Choose Yes if the items go back to the supplier. Choose No if we can dispose of them on site."
+									error={errors.procurementReturnRequested}
+								>
+									<Input
+										type={Input.RADIO}
+										name="procurementReturnRequested-yes"
+										groupName="procurementReturnRequested"
+										value="yes"
+										label="Yes"
+										checked={values.procurement.returnRequested === "yes"}
+										required
+										onChange={() => {
+											update("procurement", {
+												returnRequested: "yes",
+												disposeOnSite: false,
+											});
+											if (values.procurement.returnRequested !== "yes")
+												setStatus(
+													"Boxes for the return details have appeared below.",
+												);
+										}}
+									/>
+									<Input
+										type={Input.RADIO}
+										name="procurementReturnRequested-no"
+										groupName="procurementReturnRequested"
+										value="no"
+										label="No"
+										checked={values.procurement.returnRequested === "no"}
+										required
+										onChange={() => {
+											update("procurement", {
+												returnRequested: "no",
+												rmaNumber: "",
+												carrierName: "",
+												carrierAccountNumber: "",
+												sapReturnCompleted: false,
+											});
+											if (values.procurement.returnRequested === "yes")
+												setStatus("The return detail boxes were removed.");
+										}}
+									/>
+								</ChoiceGroup>
+								{values.procurement.returnRequested === "yes" && (
+									<>
+										<Input
+											type={Input.TEXT}
+											name="procurementRmaNumber"
+											label="RMA number"
+											required
+											value={values.procurement.rmaNumber}
+											maxLength={50}
+											autoComplete="off"
+											placeholder="e.g. RMA-10482"
+											helpText="The return authorization number from the supplier. Up to 50 characters."
+											error={errors.procurementRmaNumber}
+											onChange={text("procurement", "rmaNumber")}
+										/>
+										<Input
+											type={Input.TEXT}
+											name="procurementCarrierName"
+											label="Carrier"
+											required
+											value={values.procurement.carrierName}
+											maxLength={100}
+											autoComplete="off"
+											placeholder="e.g. Purolator"
+											helpText="The company that will ship the items back. Up to 100 characters."
+											error={errors.procurementCarrierName}
+											onChange={text("procurement", "carrierName")}
+										/>
+										<Input
+											type={Input.TEXT}
+											name="procurementCarrierAccountNumber"
+											label="Carrier account number"
+											required
+											value={values.procurement.carrierAccountNumber}
+											maxLength={50}
+											autoComplete="off"
+											placeholder="e.g. 123456789"
+											helpText="The account the shipment is charged to. Up to 50 characters."
+											error={errors.procurementCarrierAccountNumber}
+											onChange={text("procurement", "carrierAccountNumber")}
+										/>
+									</>
+								)}
+							</>
+						)}
+						<Input
+							type={Input.DATE}
+							name="procurementReplacementDate"
+							label="Expected date of the replacement or reworked item (optional)"
+							value={values.procurement.replacementDate}
+							helpText="The date the replacement or reworked item will be received or returned."
+							onChange={text("procurement", "replacementDate")}
+						/>
+						{isSupplierProcess && (
+							<ChoiceGroup
+								id="procurementFollowUp"
+								legend="Supplier follow-up (optional)"
+								helpText="Tick everything that applies."
+							>
+								{values.procurement.returnRequested === "no" && (
+									<Input
+										type={Input.CHECKBOX}
+										name="procurementDisposeOnSite"
+										value="yes"
+										label="We can dispose of the rejected items on site"
+										checked={values.procurement.disposeOnSite}
+										onChange={() =>
+											update("procurement", {
+												disposeOnSite: !values.procurement.disposeOnSite,
+											})
+										}
+									/>
+								)}
+								{values.procurement.returnRequested === "yes" && (
+									<Input
+										type={Input.CHECKBOX}
+										name="procurementSapReturnCompleted"
+										value="yes"
+										label="The supplier return has been completed in SAP"
+										checked={values.procurement.sapReturnCompleted}
+										onChange={() =>
+											update("procurement", {
+												sapReturnCompleted:
+													!values.procurement.sapReturnCompleted,
+											})
+										}
+									/>
+								)}
+								<Input
+									type={Input.CHECKBOX}
+									name="procurementCreditExpected"
+									value="yes"
+									label="We expect a credit from the supplier"
+									checked={values.procurement.creditExpected}
+									onChange={() =>
+										update("procurement", {
+											creditExpected: !values.procurement.creditExpected,
+										})
+									}
+								/>
+								<Input
+									type={Input.CHECKBOX}
+									name="procurementBillSupplier"
+									value="yes"
+									label="We are billing the supplier for expenses from the rework"
+									checked={values.procurement.billSupplier}
+									onChange={() =>
+										update("procurement", {
+											billSupplier: !values.procurement.billSupplier,
+										})
+									}
+								/>
+							</ChoiceGroup>
+						)}
+						<Input
+							type={Input.PARAGRAPH}
+							name="procurementDelayCommunication"
+							label="Communication of a delay due to quality rejection (optional)"
+							value={values.procurement.delayCommunication}
+							maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
+							placeholder="e.g. The supplier was told the order is on hold until a replacement ships."
+							helpText={countHelp(values.procurement.delayCommunication.length)}
+							error={errors.procurementDelayCommunication}
+							onChange={text("procurement", "delayCommunication")}
+						/>
+					</>
 				)}
 
 				{current.id === "qualityFinalReview" && (
@@ -2185,7 +2712,27 @@ function reviewGroups(
 		{
 			id: "engineering" as SectionId,
 			title: "Engineering Disposition",
-			rows: [["Engineering instructions", v.engineering.instructions]],
+			rows: [
+				["Engineering disposition", v.engineering.disposition],
+				["Engineering instructions", v.engineering.instructions],
+				[
+					"Drawing update required",
+					yesNoText(v.engineering.drawingUpdateRequired),
+				],
+				...(v.engineering.drawingUpdateRequired === "yes"
+					? [
+							["Original revision", v.engineering.originalRev],
+							["Updated revision", v.engineering.updatedRev],
+							["Revision date", v.engineering.revisionDate],
+						]
+					: []),
+				[
+					"Notification required",
+					yesNoText(v.engineering.notificationRequired),
+				],
+				["Engineer", v.engineering.representative],
+				["Engineering date", v.engineering.dateCompleted],
+			],
 		},
 		{
 			id: "operations" as SectionId,
@@ -2204,6 +2751,48 @@ function reviewGroups(
 			id: "procurement" as SectionId,
 			title: "Procurement",
 			rows: [
+				...(v.process.processType === "supplier"
+					? [
+							[
+								"Supplier wants items returned",
+								yesNoText(v.procurement.returnRequested),
+							],
+							...(v.procurement.returnRequested === "yes"
+								? [
+										["RMA number", v.procurement.rmaNumber],
+										["Carrier", v.procurement.carrierName],
+										[
+											"Carrier account number",
+											v.procurement.carrierAccountNumber,
+										],
+										[
+											"Return completed in SAP",
+											boolText(v.procurement.sapReturnCompleted),
+										],
+									]
+								: []),
+							...(v.procurement.returnRequested === "no"
+								? [
+										[
+											"Dispose of items on site",
+											boolText(v.procurement.disposeOnSite),
+										],
+									]
+								: []),
+							[
+								"Credit expected from supplier",
+								boolText(v.procurement.creditExpected),
+							],
+							[
+								"Billing supplier for rework expenses",
+								boolText(v.procurement.billSupplier),
+							],
+						]
+					: []),
+				[
+					"Replacement or reworked item expected",
+					v.procurement.replacementDate,
+				],
 				[
 					"Communication of a delay due to quality rejection",
 					v.procurement.delayCommunication,
@@ -2241,6 +2830,8 @@ function buildSubmission(
 	l: FormLookups,
 	currentStatusId: number | null = null,
 	createdByPersonId: number | null = null,
+	engineerPersonId: number | null = null,
+	writeProcurement = false,
 ): NcrSubmission {
 	const p = v.process;
 	const status =
@@ -2287,24 +2878,10 @@ function buildSubmission(
 		defectDescription: v.defect.defectDescription.trim(),
 		isNonconforming: v.defect.isNonconforming === "yes",
 		engineeringRequired: v.defect.engineeringRequired === "yes",
-		engineeringDisposition:
+		engineering:
 			v.defect.engineeringRequired === "yes"
-				? v.engineering.disposition.trim()
-				: "",
-		engineeringInstructions:
-			v.defect.engineeringRequired === "yes"
-				? sanitizeTextbox(v.engineering.instructions).trim()
-				: "",
-		engineeringComments:
-			v.defect.engineeringRequired === "yes"
-				? v.engineering.comments.trim()
-				: "",
-		engineeringRepresentative:
-			v.defect.engineeringRequired === "yes"
-				? v.engineering.representative.trim()
-				: "",
-		engineeringDateCompleted:
-			v.defect.engineeringRequired === "yes" ? v.engineering.dateCompleted : "",
+				? engineeringInput(v.engineering, l, engineerPersonId ?? 0)
+				: null,
 		operationsDisposition: v.operations.disposition.trim(),
 		operationsInstructions: isReworkDisposition(v.operations.disposition)
 			? sanitizeTextbox(v.operations.instructions).trim()
@@ -2315,6 +2892,10 @@ function buildSubmission(
 		procurementDelayCommunication: sanitizeTextbox(
 			v.procurement.delayCommunication,
 		).trim(),
+		procurement:
+			writeProcurement && createdByPersonId !== null
+				? procurementInput(v, createdByPersonId)
+				: null,
 		qualityFinalInspectionResult: v.qualityFinalReview.inspectionResult.trim(),
 		qualityFinalComments: sanitizeTextbox(v.qualityFinalReview.comments).trim(),
 		qualityFinalAcceptanceConfirmed: v.qualityFinalReview.acceptanceConfirmed

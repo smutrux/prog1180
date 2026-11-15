@@ -70,12 +70,18 @@ export interface InspectorOption {
 	middle: string;
 	last: string;
 }
+export interface DispositionOption {
+	id: number;
+	label: string;
+}
 export interface FormLookups {
 	statuses: StatusOption[];
 	suppliers: SupplierOption[];
 	problemTypes: ProblemTypeOption[];
 	inspectors: InspectorOption[];
 	dispositions: string[];
+	/** The same dispositions with their ids, which the engineering row stores. */
+	dispositionOptions: DispositionOption[];
 }
 
 const same = (a: string | null | undefined, b: string) =>
@@ -106,6 +112,22 @@ export class SubmitError extends Error {
 		super(message);
 		this.name = "SubmitError";
 		this.leftovers = leftovers;
+	}
+}
+
+/**
+ * The NCR itself was saved, but one of its sections (engineering or procurement) was not.
+ * Submitting again would create a second NCR, so the form must not offer that.
+ */
+export class PartialSaveError extends Error {
+	ncrNumber: string;
+	/** The sections that were not saved, for example ["Engineering", "Procurement"]. */
+	sections: string[];
+	constructor(ncrNumber: string, sections: string[], message: string) {
+		super(message);
+		this.name = "PartialSaveError";
+		this.ncrNumber = ncrNumber;
+		this.sections = sections;
 	}
 }
 
@@ -148,8 +170,12 @@ export async function loadFormLookups(): Promise<FormLookups> {
 			.in("role_id", QUALITY_ROLE_IDS)
 			.order("person_last_name")
 			.order("person_first_name"),
-		supabase.from("ncr_disposition").select("ncr_disposition_label").order("disposition_id"),
+		supabase.from("ncr_disposition").select("disposition_id, ncr_disposition_label").order("disposition_id"),
 	]);
+
+	const dispositionOptions = unwrap(dispositions)
+		.map((d) => ({ id: d.disposition_id, label: d.ncr_disposition_label.trim() }))
+		.filter((d) => d.label);
 
 	return {
 		statuses,
@@ -167,8 +193,52 @@ export async function loadFormLookups(): Promise<FormLookups> {
 			middle: (p.person_middle_name ?? "").trim(),
 			last: p.person_last_name.trim(),
 		})),
-		dispositions: unwrap(dispositions).map((d) => d.ncr_disposition_label.trim()).filter(Boolean),
+		dispositions: dispositionOptions.map((d) => d.label),
+		dispositionOptions,
 	};
+}
+
+/** Saves (or replaces) the engineering row of one NCR. An NCR has at most one. */
+export async function saveEngineering(ncrId: number, e: EngineeringInput): Promise<void> {
+	const { error } = await supabase.from("engineering").upsert(
+		{
+			ncr_id: ncrId,
+			disposition_id: e.dispositionId,
+			engineer_person_id: e.engineerPersonId,
+			engineering_date: e.date,
+			engineering_disposition_steps: e.steps || null,
+			engineering_is_drawing_update_required: e.drawingUpdateRequired,
+			engineering_is_notification_required: e.notificationRequired,
+			engineering_original_rev_number: e.originalRev || null,
+			engineering_updated_rev_number: e.updatedRev || null,
+			engineering_revision_date: e.revisionDate || null,
+		},
+		{ onConflict: "ncr_id" },
+	);
+	if (error) throw explainDbError(error);
+}
+
+/** Saves (or replaces) the procurement row of one NCR, including the return, credit and billing details. */
+export async function saveProcurement(ncrId: number, p: ProcurementInput): Promise<void> {
+	const { error } = await db.from("ncr_procurement").upsert(
+		{
+			ncr_id: ncrId,
+			procurement_delay_communication: p.delayCommunication,
+			updated_by_person_id: p.updatedByPersonId,
+			updated_at: new Date().toISOString(),
+			procurement_return_requested: p.returnRequested,
+			procurement_rma_number: p.rmaNumber || null,
+			procurement_carrier_name: p.carrierName || null,
+			procurement_carrier_account_number: p.carrierAccountNumber || null,
+			procurement_dispose_on_site: p.disposeOnSite,
+			procurement_replacement_expected_date: p.replacementDate || null,
+			procurement_sap_return_completed: p.sapReturnCompleted,
+			procurement_credit_expected: p.creditExpected,
+			procurement_bill_supplier: p.billSupplier,
+		},
+		{ onConflict: "ncr_id" },
+	);
+	if (error) throw explainDbError(error);
 }
 
 /** The next free NCR number for this year, for example 2026-001. */
@@ -287,11 +357,18 @@ export interface NcrEditData {
 	problemTypeLabels: string[];
 	defectDescription: string;
 	isNonconforming: boolean | null;
+	/** True when an engineering row exists. Null when there is none, because "not required" and "not yet answered" look the same in the database. */
 	engineeringRequired: boolean | null;
 	engineeringDisposition: string;
 	engineeringInstructions: string;
-	engineeringComments: string;
+	engineeringDrawingUpdateRequired: boolean | null;
+	engineeringNotificationRequired: boolean | null;
+	engineeringOriginalRev: string;
+	engineeringUpdatedRev: string;
+	engineeringRevisionDate: string;
+	/** The engineer's name, and their person_id for keeping the row's author when nobody edits it. */
 	engineeringRepresentative: string;
+	engineeringPersonId: number | null;
 	engineeringDateCompleted: string;
 	operationsDisposition: string;
 	operationsInstructions: string;
@@ -299,6 +376,15 @@ export interface NcrEditData {
 	operationsRepresentative: string;
 	operationsDateCompleted: string;
 	procurementDelayCommunication: string;
+	procurementReturnRequested: boolean | null;
+	procurementRmaNumber: string;
+	procurementCarrierName: string;
+	procurementCarrierAccountNumber: string;
+	procurementDisposeOnSite: boolean;
+	procurementReplacementDate: string;
+	procurementSapReturnCompleted: boolean;
+	procurementCreditExpected: boolean;
+	procurementBillSupplier: boolean;
 	qualityFinalInspectionResult: string;
 	qualityFinalComments: string;
 	qualityFinalAcceptanceConfirmed: boolean | null;
@@ -329,22 +415,46 @@ const EDIT_SELECT = `
 `;
 
 export async function loadNcrForEdit(rec: Pick<NcrRecord, "ncr_id">): Promise<NcrEditData> {
-	const [res, operationsRes, procurementRes, qualityRes] = await Promise.all([
+	const [res, engineeringRes, operationsRes, procurementRes, qualityRes] = await Promise.all([
 		supabase
 		.from("ncr")
 		.select(EDIT_SELECT)
 		.eq("ncr_id", rec.ncr_id)
 		.maybeSingle(),
+		db
+			.from("engineering")
+			.select(
+				"*, ncr_disposition ( ncr_disposition_label ), person ( person_first_name, person_middle_name, person_last_name )",
+			)
+			.eq("ncr_id", rec.ncr_id)
+			.maybeSingle(),
 		db.from("ncr_operations").select("*").eq("ncr_id", rec.ncr_id).maybeSingle(),
 		db.from("ncr_procurement").select("*").eq("ncr_id", rec.ncr_id).maybeSingle(),
 		db.from("ncr_quality_final_review").select("*").eq("ncr_id", rec.ncr_id).maybeSingle(),
 	]);
 	throwIfError(res);
+	throwIfError(engineeringRes);
 	throwIfError(operationsRes);
 	throwIfError(procurementRes);
 	throwIfError(qualityRes);
 	const row = res.data;
 	if (!row) throw new SubmitError("This NCR no longer exists. Close the form and reload the list.");
+	const engineering = engineeringRes.data as {
+		engineer_person_id: number;
+		engineering_date: string | null;
+		engineering_disposition_steps: string | null;
+		engineering_is_drawing_update_required: boolean;
+		engineering_is_notification_required: boolean;
+		engineering_original_rev_number: string | null;
+		engineering_revision_date: string | null;
+		engineering_updated_rev_number: string | null;
+		ncr_disposition: { ncr_disposition_label: string } | null;
+		person: {
+			person_first_name: string;
+			person_middle_name: string | null;
+			person_last_name: string;
+		} | null;
+	} | null;
 	const operations = operationsRes.data as {
 		operations_disposition: string | null;
 		operations_instructions: string | null;
@@ -354,6 +464,15 @@ export async function loadNcrForEdit(rec: Pick<NcrRecord, "ncr_id">): Promise<Nc
 	} | null;
 	const procurement = procurementRes.data as {
 		procurement_delay_communication: string | null;
+		procurement_return_requested: boolean | null;
+		procurement_rma_number: string | null;
+		procurement_carrier_name: string | null;
+		procurement_carrier_account_number: string | null;
+		procurement_dispose_on_site: boolean | null;
+		procurement_replacement_expected_date: string | null;
+		procurement_sap_return_completed: boolean | null;
+		procurement_credit_expected: boolean | null;
+		procurement_bill_supplier: boolean | null;
 	} | null;
 	const quality = qualityRes.data as {
 		quality_final_inspection_result: string | null;
@@ -397,18 +516,39 @@ export async function loadNcrForEdit(rec: Pick<NcrRecord, "ncr_id">): Promise<Nc
 			.filter(Boolean),
 		defectDescription: (qa?.qa_defect_desc ?? "").trim(),
 		isNonconforming: qa?.qa_is_non_conforming ?? null,
-		engineeringRequired: null,
-		engineeringDisposition: "",
-		engineeringInstructions: "",
-		engineeringComments: "",
-		engineeringRepresentative: "",
-		engineeringDateCompleted: "",
+		engineeringRequired: engineering ? true : null,
+		engineeringDisposition: (engineering?.ncr_disposition?.ncr_disposition_label ?? "").trim(),
+		engineeringInstructions: engineering?.engineering_disposition_steps ?? "",
+		engineeringDrawingUpdateRequired: engineering?.engineering_is_drawing_update_required ?? null,
+		engineeringNotificationRequired: engineering?.engineering_is_notification_required ?? null,
+		engineeringOriginalRev: engineering?.engineering_original_rev_number ?? "",
+		engineeringUpdatedRev: engineering?.engineering_updated_rev_number ?? "",
+		engineeringRevisionDate: engineering?.engineering_revision_date ?? "",
+		engineeringRepresentative: [
+			engineering?.person?.person_first_name,
+			engineering?.person?.person_middle_name,
+			engineering?.person?.person_last_name,
+		]
+			.map((n) => (n ?? "").trim())
+			.filter(Boolean)
+			.join(" "),
+		engineeringPersonId: engineering?.engineer_person_id ?? null,
+		engineeringDateCompleted: engineering?.engineering_date ?? "",
 		operationsDisposition: operations?.operations_disposition ?? "",
 		operationsInstructions: operations?.operations_instructions ?? "",
 		operationsComments: operations?.operations_comments ?? "",
 		operationsRepresentative: operations?.operations_representative ?? "",
 		operationsDateCompleted: operations?.operations_date_completed ?? "",
 		procurementDelayCommunication: procurement?.procurement_delay_communication ?? "",
+		procurementReturnRequested: procurement?.procurement_return_requested ?? null,
+		procurementRmaNumber: procurement?.procurement_rma_number ?? "",
+		procurementCarrierName: procurement?.procurement_carrier_name ?? "",
+		procurementCarrierAccountNumber: procurement?.procurement_carrier_account_number ?? "",
+		procurementDisposeOnSite: procurement?.procurement_dispose_on_site ?? false,
+		procurementReplacementDate: procurement?.procurement_replacement_expected_date ?? "",
+		procurementSapReturnCompleted: procurement?.procurement_sap_return_completed ?? false,
+		procurementCreditExpected: procurement?.procurement_credit_expected ?? false,
+		procurementBillSupplier: procurement?.procurement_bill_supplier ?? false,
 		qualityFinalInspectionResult: quality?.quality_final_inspection_result ?? "",
 		qualityFinalComments: quality?.quality_final_comments ?? "",
 		qualityFinalAcceptanceConfirmed: quality?.quality_final_acceptance_confirmed ?? null,
@@ -431,6 +571,38 @@ export async function loadNcrForEdit(rec: Pick<NcrRecord, "ncr_id">): Promise<Nc
 	};
 }
 
+/** What one row of the engineering table holds. */
+export interface EngineeringInput {
+	dispositionId: number;
+	steps: string;
+	drawingUpdateRequired: boolean;
+	notificationRequired: boolean;
+	originalRev: string;
+	updatedRev: string;
+	/** YYYY-MM-DD, or an empty string. */
+	revisionDate: string;
+	engineerPersonId: number;
+	/** YYYY-MM-DD. */
+	date: string;
+}
+
+/** What the ncr_procurement row holds. */
+export interface ProcurementInput {
+	delayCommunication: string;
+	/** Does the supplier want the rejected items back? Null when it does not apply or was not answered. */
+	returnRequested: boolean | null;
+	rmaNumber: string;
+	carrierName: string;
+	carrierAccountNumber: string;
+	disposeOnSite: boolean;
+	/** YYYY-MM-DD, or an empty string. */
+	replacementDate: string;
+	sapReturnCompleted: boolean;
+	creditExpected: boolean;
+	billSupplier: boolean;
+	updatedByPersonId: number;
+}
+
 export interface NcrSubmission {
 	ncrNumber: string;
 	processApplicable: string;
@@ -445,11 +617,10 @@ export interface NcrSubmission {
 	defectDescription: string;
 	isNonconforming: boolean;
 	engineeringRequired: boolean;
-	engineeringDisposition: string;
-	engineeringInstructions: string;
-	engineeringComments: string;
-	engineeringRepresentative: string;
-	engineeringDateCompleted: string;
+	/** The engineering section, or null when engineering is not required. */
+	engineering: EngineeringInput | null;
+	/** The procurement details to write, or null when there is nothing new to write. */
+	procurement: ProcurementInput | null;
 	operationsDisposition: string;
 	operationsInstructions: string;
 	operationsComments: string;
@@ -542,6 +713,24 @@ export async function submitNcr(
 		await db.rpc("submit_ncr", { p: payload(s, draftId) }),
 		s.ncrNumber,
 	);
+	// The NCR exists now. Anything that fails from here on is reported as a partial save.
+	const failed: { section: string; message: string }[] = [];
+	const attempt = async (section: string, save: () => Promise<void>) => {
+		progress(`Saving the ${section.toLowerCase()} section...`);
+		try {
+			await save();
+		} catch (err) {
+			failed.push({ section, message: err instanceof Error ? err.message : String(err) });
+		}
+	};
+	if (s.engineering) await attempt("Engineering", () => saveEngineering(res.ncr_id, s.engineering!));
+	if (s.procurement) await attempt("Procurement", () => saveProcurement(res.ncr_id, s.procurement!));
+	if (failed.length)
+		throw new PartialSaveError(
+			res.ncr_number,
+			failed.map((f) => f.section),
+			failed.map((f) => f.message).join(" "),
+		);
 	return { ncrNumber: res.ncr_number, recordId: res.ncr_id };
 }
 
@@ -557,6 +746,14 @@ export async function updateNcr(
 		await db.rpc("update_ncr", { p: payload(s, edit.ncrId) }),
 		edit.ncrNumber,
 	);
+	if (s.engineering) {
+		progress("Saving the engineering section...");
+		await saveEngineering(res.ncr_id, s.engineering);
+	}
+	if (s.procurement) {
+		progress("Saving the procurement section...");
+		await saveProcurement(res.ncr_id, s.procurement);
+	}
 	return { ncrNumber: res.ncr_number, recordId: res.ncr_id };
 }
 
