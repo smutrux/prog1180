@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import type { IconType } from "react-icons";
 import { LuLayoutDashboard, LuMenu, LuX } from "react-icons/lu";
-import { FiAlertTriangle } from "react-icons/fi";
+import { FiAlertTriangle, FiLogOut } from "react-icons/fi";
 import { FaSyncAlt } from "react-icons/fa";
 // import { FaRegChartBar } from "react-icons/fa";
 import { IoTrashOutline } from "react-icons/io5";
 import crossfireLogo from "../assets/crossfireLogo.svg";
 import Button from "../components/button";
 import { useNavigate } from "react-router-dom";
-import { Show, useAuth, UserButton } from "@clerk/react";
+import { Show, useAuth, useClerk } from "@clerk/react";
 import Login from "../components/login";
 
 const links: { to: string; label: string; icon: IconType }[] = [
@@ -33,6 +33,7 @@ const SidebarNav = () => {
 	const navigate = useNavigate();
 
 	const { isSignedIn } = useAuth();
+	const { signOut } = useClerk();
 
 	/** Returns true (and alerts) when the click should be blocked. */
 	const blockIfSignedOut = (e?: React.MouseEvent) => {
@@ -133,7 +134,20 @@ const SidebarNav = () => {
 				<div style={{ marginTop: "auto" }}>
 					{/* <Login /> */}
 					<Show when="signed-in" fallback={<Login />}>
-						<UserButton />
+						{/* <button
+							onClick={() => signOut()}
+							className="logout-btn"
+							title="Logout"
+							aria-label="Logout"
+						>
+							<FiLogOut size={24} />
+						</button> */}
+						<Button
+							text="Sign out"
+							icon={FiLogOut}
+							aria="Log out"
+							onClick={() => signOut()}
+						/>
 					</Show>
 				</div>
 			</nav>
@@ -229,6 +243,24 @@ const SidebarNav = () => {
 
 				.sidebarLink:has(a.active)::after {
 					opacity: 1;
+				}
+
+				.logout-btn {
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					width: 44px;
+					height: 44px;
+					border-radius: 50%;
+					background: var(--lifted-bg);
+					color: var(--text-h);
+					border: 1px solid var(--border);
+					cursor: pointer;
+					transition: background 0.2s ease;
+				}
+
+				.logout-btn:hover {
+					background: var(--hover);
 				}
 
 				.mobileHeader {
