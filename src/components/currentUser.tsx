@@ -19,6 +19,8 @@ export type CurrentUser =
 			status: "ready";
 			/** The signed-in person's person.person_id. */
 			personId: number;
+			/** Their full name as stored in the person table, for example "Ana M. Silva". */
+			name: string;
 			/** A person has one role now. Kept as a list so existing checks still work. */
 			roles: string[];
 			isPending: boolean;
@@ -31,8 +33,12 @@ export const useCurrentUser = () => useContext(CurrentUserContext);
 
 interface Synced {
 	personId: number;
+	name: string;
 	roles: string[];
 }
+
+const joinName = (...parts: (string | null | undefined)[]) =>
+	parts.map((p) => (p ?? "").trim()).filter(Boolean).join(" ");
 
 /** Lookups in progress, by email, so StrictMode's double effect creates one person, not two. */
 const inFlight = new Map<string, Promise<Synced>>();
@@ -43,13 +49,17 @@ const likeExact = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 async function findPerson(email: string): Promise<Synced | null> {
 	const { data, error } = await supabase
 		.from("person")
-		.select("person_id, role ( role_name )")
+		.select("person_id, person_first_name, person_middle_name, person_last_name, role ( role_name )")
 		.ilike("person_email", likeExact(email))
 		.maybeSingle();
 	if (error) throw new Error(error.message);
 	if (!data) return null;
 	const roleName = data.role?.role_name ?? "";
-	return { personId: data.person_id, roles: roleName ? [roleName] : [] };
+	return {
+		personId: data.person_id,
+		name: joinName(data.person_first_name, data.person_middle_name, data.person_last_name),
+		roles: roleName ? [roleName] : [],
+	};
 }
 
 /** Finds the person by email (or creates them as Pending) and returns their id and role. */
@@ -94,7 +104,7 @@ async function syncPerson(
 			}
 			throw new Error(error.message);
 		}
-		return { personId: created.person_id, roles: [PENDING_ROLE] };
+		return { personId: created.person_id, name: joinName(first, last), roles: [PENDING_ROLE] };
 	})();
 
 	inFlight.set(email, work);
@@ -134,11 +144,11 @@ export const CurrentUserProvider = ({ children }: { children: ReactNode }) => {
 			user.lastName ?? "",
 			user.primaryPhoneNumber?.phoneNumber ?? "",
 		)
-			.then(({ personId, roles }) => {
+			.then(({ personId, name, roles }) => {
 				if (cancelled) return;
 				const isPending =
 					roles.length === 0 || roles.every((r) => r === PENDING_ROLE);
-				setState({ status: "ready", personId, roles, isPending });
+				setState({ status: "ready", personId, name, roles, isPending });
 			})
 			.catch((err) => {
 				if (cancelled) return;

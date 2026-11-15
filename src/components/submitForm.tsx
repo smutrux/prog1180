@@ -22,6 +22,11 @@ import {
 	type NcrSubmission,
 	defaultStatus,
 } from "./ncrService";
+import {
+	DEPARTMENT_TEXT_MAX_LENGTH,
+	INVALID_TEXT_CONTROLS,
+	isReworkDisposition,
+} from "./ncrConstraints";
 
 export interface NcrFormProps {
 	edit?: boolean;
@@ -102,42 +107,50 @@ const BASE_SECTIONS: { id: SectionId | "review"; title: string }[] = [
 	{ id: "inspector", title: "Inspector" },
 	{ id: "review", title: "Review and submit" },
 ];
-const SAVED_IDS: SectionId[] = ["process", "item", "defect", "engineering", "operations", "procurement", "qualityFinalReview", "evidence", "inspector"];
+const SAVED_IDS: SectionId[] = [
+	"process",
+	"item",
+	"defect",
+	"engineering",
+	"operations",
+	"procurement",
+	"qualityFinalReview",
+	"evidence",
+	"inspector",
+];
 
-function sectionsFor(
-	engineeringRequired: boolean,
-	includeEngineering: boolean,
-	includeOperations: boolean,
-	includeProcurement: boolean,
-	includeQualityFinalReview: boolean,
-) {
+function sectionsFor(engineeringRequired: boolean) {
 	const sections = [...BASE_SECTIONS];
-	if (includeQualityFinalReview) {
-		const reviewIndex = sections.findIndex((section) => section.id === "review");
+	{
+		const reviewIndex = sections.findIndex(
+			(section) => section.id === "review",
+		);
 		sections.splice(reviewIndex, 0, {
 			id: "qualityFinalReview",
 			title: "Quality Final Review",
 		});
 	}
-	let workflowIndex = sections.findIndex((section) => section.id === "qualityFinalReview");
+	let workflowIndex = sections.findIndex(
+		(section) => section.id === "qualityFinalReview",
+	);
 	if (workflowIndex < 0) {
 		workflowIndex = sections.findIndex((section) => section.id === "review");
 	}
-	if (includeEngineering && engineeringRequired) {
+	if (engineeringRequired) {
 		sections.splice(workflowIndex, 0, {
 			id: "engineering",
 			title: "Engineering Disposition",
 		});
 		workflowIndex++;
 	}
-	if (includeOperations) {
+	{
 		sections.splice(workflowIndex, 0, {
 			id: "operations",
 			title: "Operations Disposition",
 		});
 		workflowIndex++;
 	}
-	if (includeProcurement) {
+	{
 		sections.splice(workflowIndex, 0, {
 			id: "procurement",
 			title: "Procurement",
@@ -147,9 +160,23 @@ function sectionsFor(
 }
 
 const makeDefaults = (ncrNumber: string): FormValues => ({
-	process: { ncrNumber, processType: "", supplier: "", newSupplierName: "", poNumber: "", salesOrderNumber: "" },
+	process: {
+		ncrNumber,
+		processType: "",
+		supplier: "",
+		newSupplierName: "",
+		poNumber: "",
+		salesOrderNumber: "",
+	},
 	item: { itemName: "", itemSapNumber: "", itemDescription: "" },
-	defect: { qtyOrdered: "", qtyDefective: "", problemTypeIds: [], defectDescription: "", isNonconforming: "" },
+	defect: {
+		qtyOrdered: "",
+		qtyDefective: "",
+		problemTypeIds: [],
+		defectDescription: "",
+		isNonconforming: "",
+		engineeringRequired: "",
+	},
 	engineering: {
 		disposition: "",
 		instructions: "",
@@ -173,16 +200,26 @@ const makeDefaults = (ncrNumber: string): FormValues => ({
 		closedBy: "",
 	},
 	evidence: { links: [""], fileNames: [] },
-	inspector: { inspector: "", newFirstName: "", newMiddleName: "", newLastName: "" },
+	inspector: {
+		inspector: "",
+		newFirstName: "",
+		newMiddleName: "",
+		newLastName: "",
+	},
 });
 
 function sanitize(v: FormValues, l: FormLookups): FormValues {
 	const validIds = new Set(l.problemTypes.map((t) => String(t.id)));
 	const names = l.inspectors.map(fullName);
-	const keep = v.inspector.inspector === ADD_INSPECTOR || names.includes(v.inspector.inspector);
+	const keep =
+		v.inspector.inspector === ADD_INSPECTOR ||
+		names.includes(v.inspector.inspector);
 	return {
 		...v,
-		defect: { ...v.defect, problemTypeIds: v.defect.problemTypeIds.filter((id) => validIds.has(id)) },
+		defect: {
+			...v.defect,
+			problemTypeIds: v.defect.problemTypeIds.filter((id) => validIds.has(id)),
+		},
 		engineering: {
 			...v.engineering,
 			instructions: sanitizeTextbox(v.engineering.instructions),
@@ -200,12 +237,16 @@ function sanitize(v: FormValues, l: FormLookups): FormValues {
 			...v.qualityFinalReview,
 			comments: sanitizeTextbox(v.qualityFinalReview.comments),
 		},
-		inspector: keep ? v.inspector : { ...v.inspector, inspector: names[0] ?? "" },
+		inspector: keep ? v.inspector : { ...v.inspector, inspector: "" },
 	};
 }
 
 const processTypeOf = (label: string): ProcessType =>
-	label === PROCESS_LABELS.supplier ? "supplier" : label === PROCESS_LABELS.wip ? "wip" : "";
+	label === PROCESS_LABELS.supplier
+		? "supplier"
+		: label === PROCESS_LABELS.wip
+			? "wip"
+			: "";
 
 const dateForInput = (value: string | null | undefined) =>
 	typeof value === "string" ? value.slice(0, 10) : "";
@@ -220,14 +261,25 @@ function toFormValues(ed: NcrEditData): FormValues {
 			poNumber: ed.purchaseOrderNumber,
 			salesOrderNumber: ed.salesOrderNumber,
 		},
-		item: { itemName: ed.item.name, itemSapNumber: ed.item.sapNumber, itemDescription: ed.item.description },
+		item: {
+			itemName: ed.item.name,
+			itemSapNumber: ed.item.sapNumber,
+			itemDescription: ed.item.description,
+		},
 		defect: {
 			qtyOrdered: ed.quantityOrdered === null ? "" : String(ed.quantityOrdered),
-			qtyDefective: ed.quantityDefective === null ? "" : String(ed.quantityDefective),
+			qtyDefective:
+				ed.quantityDefective === null ? "" : String(ed.quantityDefective),
 			problemTypeIds: ed.problemTypeIds.map(String),
 			defectDescription: ed.defectDescription,
-			isNonconforming: ed.isNonconforming === null ? "" : ed.isNonconforming ? "yes" : "no",
-			engineeringRequired: ed.engineeringRequired === null ? "" : ed.engineeringRequired ? "yes" : "no",
+			isNonconforming:
+				ed.isNonconforming === null ? "" : ed.isNonconforming ? "yes" : "no",
+			engineeringRequired:
+				ed.engineeringRequired === null
+					? ""
+					: ed.engineeringRequired
+						? "yes"
+						: "no",
 		},
 		engineering: {
 			disposition: ed.engineeringDisposition ?? "",
@@ -257,7 +309,12 @@ function toFormValues(ed: NcrEditData): FormValues {
 			closedBy: ed.qualityClosedBy ?? "",
 		},
 		evidence: { links: ed.links.length ? ed.links : [""], fileNames: [] },
-		inspector: { inspector: fullName(ed.inspector), newFirstName: "", newMiddleName: "", newLastName: "" },
+		inspector: {
+			inspector: fullName(ed.inspector),
+			newFirstName: "",
+			newMiddleName: "",
+			newLastName: "",
+		},
 	};
 }
 
@@ -270,14 +327,25 @@ function addEditOptions(l: FormLookups, ed: NcrEditData | null): FormLookups {
 	const label = fullName(ed.inspector);
 	const inspectors =
 		label && !l.inspectors.some((i) => fullName(i) === label)
-			? [...l.inspectors, { personId: ed.inspector.personId, first: ed.inspector.first, middle: ed.inspector.middle, last: ed.inspector.last }]
+			? [
+					...l.inspectors,
+					{
+						personId: ed.inspector.personId,
+						first: ed.inspector.first,
+						middle: ed.inspector.middle,
+						last: ed.inspector.last,
+					},
+				]
 			: l.inspectors;
 	return { ...l, suppliers, inspectors };
 }
 
 const CREATE_PREFIX = "ncr-draft-v3";
 const savedAll = (value: boolean) =>
-	Object.fromEntries(SAVED_IDS.map((id) => [id, value])) as Record<SectionId, boolean>;
+	Object.fromEntries(SAVED_IDS.map((id) => [id, value])) as Record<
+		SectionId,
+		boolean
+	>;
 const sectionKey = (prefix: string, id: SectionId) => `${prefix}:${id}`;
 
 function readSection(prefix: string, id: SectionId): unknown {
@@ -298,7 +366,9 @@ function writeSection(prefix: string, id: SectionId, data: unknown): boolean {
 }
 function clearDrafts(prefix: string) {
 	try {
-		SAVED_IDS.forEach((id) => window.localStorage.removeItem(sectionKey(prefix, id)));
+		SAVED_IDS.forEach((id) =>
+			window.localStorage.removeItem(sectionKey(prefix, id)),
+		);
 	} catch {
 		/* storage unavailable */
 	}
@@ -307,34 +377,34 @@ function clearDrafts(prefix: string) {
 function loadDrafts(
 	prefix: string,
 	base: FormValues,
-	includeEngineering: boolean,
-	includeOperations: boolean,
-	includeProcurement: boolean,
-	includeQualityFinalReview: boolean,
 	restoreLocalSections = true,
 ) {
 	const values: FormValues = JSON.parse(JSON.stringify(base));
-	const saved = Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>;
+	const saved = Object.fromEntries(
+		SAVED_IDS.map((id) => [id, false]),
+	) as Record<SectionId, boolean>;
 	let any = false;
 	if (restoreLocalSections) {
 		for (const id of SAVED_IDS) {
 			const stored = readSection(prefix, id);
 			if (stored && typeof stored === "object") {
-				(values as Record<SectionId, unknown>)[id] = { ...values[id], ...stored };
+				(values as Record<SectionId, unknown>)[id] = {
+					...values[id],
+					...stored,
+				};
 				saved[id] = true;
 				any = true;
 			}
 		}
 	}
-	if (!Array.isArray(values.evidence.links) || values.evidence.links.length === 0) values.evidence.links = [""];
-	if (!Array.isArray(values.defect.problemTypeIds)) values.defect.problemTypeIds = [];
-	const sections = sectionsFor(
-		values.defect.engineeringRequired === "yes",
-		includeEngineering,
-		includeOperations,
-		includeProcurement,
-		includeQualityFinalReview,
-	);
+	if (
+		!Array.isArray(values.evidence.links) ||
+		values.evidence.links.length === 0
+	)
+		values.evidence.links = [""];
+	if (!Array.isArray(values.defect.problemTypeIds))
+		values.defect.problemTypeIds = [];
+	const sections = sectionsFor(values.defect.engineeringRequired === "yes");
 	const activeIds = sections.flatMap((section) =>
 		section.id === "review" ? [] : [section.id],
 	);
@@ -349,12 +419,66 @@ const DIGITS = /^\d{1,18}$/;
 const POSITIVE_INT = /^[1-9]\d{0,8}$/;
 const NCR_NUMBER = /^\d{4}-\d{3,}$/;
 const blank = (s: string) => !s.trim();
-const DIGIT_MSG = "Use digits only, up to 18. Remove spaces, dashes and letters.";
-const DEPARTMENT_TEXT_MAX_LENGTH = 2000;
-const INVALID_TEXT_CONTROLS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
-const sanitizeTextbox = (value: string) => value.replace(INVALID_TEXT_CONTROLS, "");
+const DIGIT_MSG =
+	"Use digits only, up to 18. Remove spaces, dashes and letters.";
+const sanitizeTextbox = (value: string) =>
+	value.replace(INVALID_TEXT_CONTROLS, "");
 
-function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolean): Errors {
+const countHelp = (used: number) =>
+	`Up to ${DEPARTMENT_TEXT_MAX_LENGTH} characters. ${used} used.`;
+
+/** Today's date in the person's own time zone, as YYYY-MM-DD for a date column. */
+function todayLocal() {
+	const d = new Date();
+	const two = (n: number) => String(n).padStart(2, "0");
+	return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+}
+
+const filled = (...parts: string[]) => parts.some((x) => x.trim() !== "");
+
+/**
+ * Fills in the hidden "who and when" fields of Operations and Quality Final Review
+ * with the signed-in person and today. A section is stamped when it has content and
+ * either it was just saved or changed, or it has never been stamped. A section
+ * nobody touched keeps its earlier stamp.
+ */
+function stampSections(
+	v: FormValues,
+	name: string,
+	today: string,
+	touched: ReadonlySet<SectionId>,
+): FormValues {
+	if (!name) return v;
+	let next = v;
+	const o = v.operations;
+	if (
+		filled(o.disposition, o.instructions, o.comments) &&
+		(touched.has("operations") || !o.representative || !o.dateCompleted)
+	) {
+		next = {
+			...next,
+			operations: { ...o, representative: name, dateCompleted: today },
+		};
+	}
+	const q = v.qualityFinalReview;
+	if (
+		filled(q.inspectionResult, q.comments, q.acceptanceConfirmed) &&
+		(touched.has("qualityFinalReview") || !q.closedBy || !q.dateClosed)
+	) {
+		next = {
+			...next,
+			qualityFinalReview: { ...q, closedBy: name, dateClosed: today },
+		};
+	}
+	return next;
+}
+
+function validate(
+	id: SectionId,
+	v: FormValues,
+	files: File[],
+	forSubmit: boolean,
+): Errors {
 	const e: Errors = {};
 	const validateDepartmentTextbox = (key: string, value: string) => {
 		if (value.length > DEPARTMENT_TEXT_MAX_LENGTH) {
@@ -369,58 +493,100 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 		case "process": {
 			const p = v.process;
 			const isSupplier = p.processType === "supplier";
-			if (!NCR_NUMBER.test(p.ncrNumber)) e.ncrNumber = "The NCR number is missing. Reload the form to get the next number.";
-			if (!p.processType) e.processType = "Choose which process this report covers.";
-			if (isSupplier && !p.supplier) e.supplier = "Choose a supplier from the list.";
+			if (!NCR_NUMBER.test(p.ncrNumber))
+				e.ncrNumber =
+					"The NCR number is missing. Reload the form to get the next number.";
+			if (!p.processType)
+				e.processType = "Choose which process this report covers.";
+			if (isSupplier && !p.supplier)
+				e.supplier = "Choose a supplier from the list.";
 			if (p.supplier === ADD_SUPPLIER) {
-				if (blank(p.newSupplierName)) e.newSupplierName = "Enter the supplier's name.";
-				else if (p.newSupplierName.trim().length > 200) e.newSupplierName = "Use 200 characters or fewer.";
+				if (blank(p.newSupplierName))
+					e.newSupplierName = "Enter the supplier's name.";
+				else if (p.newSupplierName.trim().length > 200)
+					e.newSupplierName = "Use 200 characters or fewer.";
 			}
-			if (blank(p.poNumber)) e.poNumber = isSupplier ? "Enter the purchase order number." : "Enter the production order number.";
+			if (blank(p.poNumber))
+				e.poNumber = isSupplier
+					? "Enter the purchase order number."
+					: "Enter the production order number.";
 			else if (!DIGITS.test(p.poNumber.trim())) e.poNumber = DIGIT_MSG;
-			if (blank(p.salesOrderNumber)) e.salesOrderNumber = "Enter the sales order number.";
-			else if (!DIGITS.test(p.salesOrderNumber.trim())) e.salesOrderNumber = DIGIT_MSG;
+			if (blank(p.salesOrderNumber))
+				e.salesOrderNumber = "Enter the sales order number.";
+			else if (!DIGITS.test(p.salesOrderNumber.trim()))
+				e.salesOrderNumber = DIGIT_MSG;
 			break;
 		}
 		case "item": {
 			const i = v.item;
 			if (blank(i.itemName)) e.itemName = "Enter the item name.";
-			else if (i.itemName.trim().length > 200) e.itemName = "Use 200 characters or fewer.";
+			else if (i.itemName.trim().length > 200)
+				e.itemName = "Use 200 characters or fewer.";
 			if (blank(i.itemSapNumber)) e.itemSapNumber = "Enter the SAP number.";
-			else if (i.itemSapNumber.trim().length > 20) e.itemSapNumber = "Use 20 characters or fewer.";
-			if (i.itemDescription.trim().length > 300) e.itemDescription = "Use 300 characters or fewer.";
+			else if (i.itemSapNumber.trim().length > 20)
+				e.itemSapNumber = "Use 20 characters or fewer.";
+			if (i.itemDescription.trim().length > 300)
+				e.itemDescription = "Use 300 characters or fewer.";
 			break;
 		}
 		case "defect": {
 			const d = v.defect;
 			const ordered = d.qtyOrdered.trim();
 			const defective = d.qtyDefective.trim();
-			if (!POSITIVE_INT.test(ordered)) e.qtyOrdered = "Enter a whole number of 1 or more.";
-			if (!POSITIVE_INT.test(defective)) e.qtyDefective = "Enter a whole number of 1 or more.";
-			else if (POSITIVE_INT.test(ordered) && Number(defective) > Number(ordered)) {
+			if (!POSITIVE_INT.test(ordered))
+				e.qtyOrdered = "Enter a whole number of 1 or more.";
+			if (!POSITIVE_INT.test(defective))
+				e.qtyDefective = "Enter a whole number of 1 or more.";
+			else if (
+				POSITIVE_INT.test(ordered) &&
+				Number(defective) > Number(ordered)
+			) {
 				e.qtyDefective = "This cannot be more than the quantity ordered.";
 			}
-			if (d.problemTypeIds.length === 0) e.problemTypeIds = "Tick at least one problem type.";
-			if (blank(d.defectDescription)) e.defectDescription = "Describe the defect.";
-			else if (d.defectDescription.trim().length > 400) e.defectDescription = "Use 400 characters or fewer.";
+			if (d.problemTypeIds.length === 0)
+				e.problemTypeIds = "Tick at least one problem type.";
+			if (blank(d.defectDescription))
+				e.defectDescription = "Describe the defect.";
+			else if (d.defectDescription.trim().length > 400)
+				e.defectDescription = "Use 400 characters or fewer.";
 			if (!d.isNonconforming) e.isNonconforming = "Choose Yes or No.";
 			if (!d.engineeringRequired) e.engineeringRequired = "Choose Yes or No.";
 			break;
 		}
 		case "engineering":
-			validateDepartmentTextbox("engineeringInstructions", v.engineering.instructions);
+			validateDepartmentTextbox(
+				"engineeringInstructions",
+				v.engineering.instructions,
+			);
 			break;
 		case "operations":
-			validateDepartmentTextbox("operationsInstructions", v.operations.instructions);
+			if (
+				isReworkDisposition(v.operations.disposition) &&
+				blank(v.operations.instructions)
+			) {
+				e.operationsInstructions = "Enter the rework or repair instructions.";
+			} else {
+				validateDepartmentTextbox(
+					"operationsInstructions",
+					v.operations.instructions,
+				);
+			}
 			validateDepartmentTextbox("operationsComments", v.operations.comments);
 			break;
 		case "procurement":
-			validateDepartmentTextbox("procurementDelayCommunication", v.procurement.delayCommunication);
+			validateDepartmentTextbox(
+				"procurementDelayCommunication",
+				v.procurement.delayCommunication,
+			);
 			break;
 		case "qualityFinalReview":
-			validateDepartmentTextbox("qualityFinalComments", v.qualityFinalReview.comments);
+			validateDepartmentTextbox(
+				"qualityFinalComments",
+				v.qualityFinalReview.comments,
+			);
 			if (!v.qualityFinalReview.acceptanceConfirmed) {
-				e.qualityAcceptanceConfirmed = "Confirm Yes or No for final acceptance.";
+				e.qualityAcceptanceConfirmed =
+					"Confirm Yes or No for final acceptance.";
 			}
 			break;
 		case "evidence": {
@@ -432,17 +598,29 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 					return;
 				}
 				try {
-					if (!/^https?:$/.test(new URL(t).protocol)) throw new Error("protocol");
+					if (!/^https?:$/.test(new URL(t).protocol))
+						throw new Error("protocol");
 				} catch {
-					e[`link-${i}`] = "Enter a full web address that starts with http:// or https://.";
+					e[`link-${i}`] =
+						"Enter a full web address that starts with http:// or https://.";
 				}
 			});
-			const bad = files.find((f) => !(f.type.startsWith("image/") || f.type === "application/pdf"));
+			const bad = files.find(
+				(f) => !(f.type.startsWith("image/") || f.type === "application/pdf"),
+			);
 			const long = files.find((f) => f.name.length > 300);
-			if (bad) e.files = `"${bad.name}" is not a picture or PDF. Choose the files again without it.`;
-			else if (long) e.files = "A file name is longer than 300 characters. Rename it and choose it again.";
-			else if (forSubmit && v.evidence.fileNames.length > 0 && files.length === 0) {
-				e.files = "Your saved draft lists files, but the browser does not keep files after a reload. Choose them again, or remove the saved file names.";
+			if (bad)
+				e.files = `"${bad.name}" is not a picture or PDF. Choose the files again without it.`;
+			else if (long)
+				e.files =
+					"A file name is longer than 300 characters. Rename it and choose it again.";
+			else if (
+				forSubmit &&
+				v.evidence.fileNames.length > 0 &&
+				files.length === 0
+			) {
+				e.files =
+					"Your saved draft lists files, but the browser does not keep files after a reload. Choose them again, or remove the saved file names.";
 			}
 			break;
 		}
@@ -451,10 +629,13 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 			if (!n.inspector) e.inspector = "Choose the inspector.";
 			if (n.inspector === ADD_INSPECTOR) {
 				if (blank(n.newFirstName)) e.newFirstName = "Enter a first name.";
-				else if (n.newFirstName.trim().length > 75) e.newFirstName = "Use 75 characters or fewer.";
-				if (n.newMiddleName.trim().length > 75) e.newMiddleName = "Use 75 characters or fewer.";
+				else if (n.newFirstName.trim().length > 75)
+					e.newFirstName = "Use 75 characters or fewer.";
+				if (n.newMiddleName.trim().length > 75)
+					e.newMiddleName = "Use 75 characters or fewer.";
 				if (blank(n.newLastName)) e.newLastName = "Enter a last name.";
-				else if (n.newLastName.trim().length > 75) e.newLastName = "Use 75 characters or fewer.";
+				else if (n.newLastName.trim().length > 75)
+					e.newLastName = "Use 75 characters or fewer.";
 			}
 			break;
 		}
@@ -463,10 +644,20 @@ function validate(id: SectionId, v: FormValues, files: File[], forSubmit: boolea
 }
 
 const focusIdFor = (key: string) =>
-	key === "processType" ? "processType-supplier" : key === "isNonconforming" ? "isNonconforming-yes" : key === "engineeringRequired" ? "engineeringRequired-yes" : key === "qualityAcceptanceConfirmed" ? "qualityAcceptanceConfirmed-yes" : key;
+	key === "processType"
+		? "processType-supplier"
+		: key === "isNonconforming"
+			? "isNonconforming-yes"
+			: key === "engineeringRequired"
+				? "engineeringRequired-yes"
+				: key === "qualityAcceptanceConfirmed"
+					? "qualityAcceptanceConfirmed-yes"
+					: key;
 
 const formatSize = (bytes: number) =>
-	bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+	bytes < 1024 * 1024
+		? `${Math.max(1, Math.round(bytes / 1024))} KB`
+		: `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 function ChoiceGroup(props: {
 	id: string;
@@ -477,14 +668,21 @@ function ChoiceGroup(props: {
 	children: React.ReactNode;
 }) {
 	const { id, legend, required, helpText, error, children } = props;
-	const describedBy = [helpText && `${id}-help`, error && `${id}-error`].filter(Boolean).join(" ") || undefined;
+	const describedBy =
+		[helpText && `${id}-help`, error && `${id}-error`]
+			.filter(Boolean)
+			.join(" ") || undefined;
 	return (
 		<fieldset className="ncr-fieldset" aria-describedby={describedBy}>
 			<legend>
 				{legend}
 				{required && <span className="ncr-req"> (required)</span>}
 			</legend>
-			{helpText && <p id={`${id}-help`} className="ncr-help">{helpText}</p>}
+			{helpText && (
+				<p id={`${id}-help`} className="ncr-help">
+					{helpText}
+				</p>
+			)}
 			{children}
 			{error && (
 				<p id={`${id}-error`} className="ncr-error">
@@ -496,12 +694,23 @@ function ChoiceGroup(props: {
 	);
 }
 
-export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyChange }: NcrFormProps) {
+export default function NcrForm({
+	edit = false,
+	data,
+	onClose,
+	onSaved,
+	onDirtyChange,
+}: NcrFormProps) {
 	const me = useCurrentUser();
 	const personId = me.status === "ready" ? me.personId : null;
+	const myName = me.status === "ready" ? me.name : "";
 	const [values, setValues] = useState<FormValues>(() => makeDefaults(""));
 	const [saved, setSaved] = useState<Record<SectionId, boolean>>(
-		() => Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>,
+		() =>
+			Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<
+				SectionId,
+				boolean
+			>,
 	);
 	const [hasDraft, setHasDraft] = useState(false);
 	const [dirtyIds, setDirtyIds] = useState<Set<SectionId>>(() => new Set());
@@ -520,7 +729,9 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		inspectors: [],
 		dispositions: [],
 	});
-	const [lookupState, setLookupState] = useState<"loading" | "ready" | "error">("loading");
+	const [lookupState, setLookupState] = useState<"loading" | "ready" | "error">(
+		"loading",
+	);
 	const [lookupError, setLookupError] = useState("");
 	const [editData, setEditData] = useState<NcrEditData | null>(null);
 	const isArchived = edit && editData?.isArchived === true;
@@ -551,8 +762,12 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		setLookupState("loading");
 		setLookupError("");
 		try {
-			if (edit && !dataRef.current) throw new Error("No NCR was given to edit.");
-			const draftRec = !edit && dataRef.current && isDraftRecord(dataRef.current) ? dataRef.current : null;
+			if (edit && !dataRef.current)
+				throw new Error("No NCR was given to edit.");
+			const draftRec =
+				!edit && dataRef.current && isDraftRecord(dataRef.current)
+					? dataRef.current
+					: null;
 			if (draftRec) {
 				const l = await loadFormLookups();
 				const parsed = parseDraft(draftRec);
@@ -561,11 +776,20 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				if (parsed) {
 					for (const id of SAVED_IDS) {
 						const stored = parsed.values[id];
-						if (stored && typeof stored === "object") (merged as Record<SectionId, unknown>)[id] = { ...merged[id], ...stored };
+						if (stored && typeof stored === "object")
+							(merged as Record<SectionId, unknown>)[id] = {
+								...merged[id],
+								...stored,
+							};
 					}
 				}
-				if (!Array.isArray(merged.evidence.links) || merged.evidence.links.length === 0) merged.evidence.links = [""];
-				if (!Array.isArray(merged.defect.problemTypeIds)) merged.defect.problemTypeIds = [];
+				if (
+					!Array.isArray(merged.evidence.links) ||
+					merged.evidence.links.length === 0
+				)
+					merged.evidence.links = [""];
+				if (!Array.isArray(merged.defect.problemTypeIds))
+					merged.defect.problemTypeIds = [];
 				baseRef.current = base;
 				editRef.current = null;
 				draftIdRef.current = draftRec.ncr_id;
@@ -575,30 +799,28 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				setSaved(savedAll(true));
 				setHasDraft(false);
 				setDirtyIds(new Set());
-				setStep(Math.min(
-					Math.max(parsed?.step ?? 0, 0),
-					sectionsFor(merged.defect.engineeringRequired === "yes", true, true, true, true).length - 1,
-				));
-				setStatus("Your saved draft was loaded. You are on the section where you left off.");
+				setStep(
+					Math.min(
+						Math.max(parsed?.step ?? 0, 0),
+						sectionsFor(merged.defect.engineeringRequired === "yes").length - 1,
+					),
+				);
+				setStatus(
+					"Your saved draft was loaded. You are on the section where you left off.",
+				);
 				setLookupState("ready");
 				return;
 			}
 			const [l, next, ed] = await Promise.all([
 				loadFormLookups(),
 				edit ? Promise.resolve("") : nextNcrNumber(),
-				edit ? loadNcrForEdit(dataRef.current as NcrRecord) : Promise.resolve(null),
+				edit
+					? loadNcrForEdit(dataRef.current as NcrRecord)
+					: Promise.resolve(null),
 			]);
 			const withExtras = addEditOptions(l, ed);
 			const base = ed ? toFormValues(ed) : makeDefaults(next);
-			const d = loadDrafts(
-				prefix,
-				base,
-				edit || isDraft,
-				edit || isDraft,
-				edit || isDraft,
-				edit || isDraft,
-				!edit,
-			);
+			const d = loadDrafts(prefix, base, !edit);
 			baseRef.current = base;
 			editRef.current = ed;
 			setEditData(ed);
@@ -608,7 +830,10 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			setHasDraft(d.any);
 			setDirtyIds(new Set());
 			setStep(d.step);
-			if (d.any) setStatus("Your saved sections were restored. You are on the first section that is not saved yet.");
+			if (d.any)
+				setStatus(
+					"Your saved sections were restored. You are on the first section that is not saved yet.",
+				);
 			setLookupState("ready");
 		} catch (err) {
 			setLookupError(messageOf(err));
@@ -622,17 +847,37 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 
 	const refreshLookups = useCallback(async () => {
 		try {
-			const [l, next] = await Promise.all([loadFormLookups(), edit ? Promise.resolve("") : nextNcrNumber()]);
+			const [l, next] = await Promise.all([
+				loadFormLookups(),
+				edit ? Promise.resolve("") : nextNcrNumber(),
+			]);
 			const withExtras = addEditOptions(l, editRef.current);
 			setLookups(withExtras);
 			setValues((prev) => {
 				const clean = sanitize(prev, withExtras);
-				return clean.process.ncrNumber ? clean : { ...clean, process: { ...clean.process, ncrNumber: next } };
+				return clean.process.ncrNumber
+					? clean
+					: { ...clean, process: { ...clean.process, ncrNumber: next } };
 			});
 		} catch {
 			/* keep what is on screen */
 		}
 	}, [edit]);
+
+	useEffect(() => {
+		// Pick the signed-in person as the inspector when they are on the list and nobody has chosen yet.
+		if (lookupState !== "ready" || me.status !== "ready") return;
+		const mine = lookups.inspectors.find((i) => i.personId === me.personId);
+		if (!mine) return;
+		setValues((prev) =>
+			prev.inspector.inspector
+				? prev
+				: {
+						...prev,
+						inspector: { ...prev.inspector, inspector: fullName(mine) },
+					},
+		);
+	}, [lookupState, me, lookups.inspectors]);
 
 	useEffect(() => {
 		onDirtyChange?.(dirtyIds.size > 0);
@@ -673,8 +918,14 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		focusHeading.current = true;
 	}
 
-	function update<K extends SectionId>(section: K, patch: Partial<FormValues[K]>) {
-		setValues((prev) => ({ ...prev, [section]: { ...prev[section], ...patch } }));
+	function update<K extends SectionId>(
+		section: K,
+		patch: Partial<FormValues[K]>,
+	) {
+		setValues((prev) => ({
+			...prev,
+			[section]: { ...prev[section], ...patch },
+		}));
 		setSaved((prev) => ({ ...prev, [section]: false }));
 		setDirtyIds((prev) => new Set(prev).add(section));
 		setErrors((prev) => {
@@ -691,7 +942,10 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 					delete next.qualityFinalComments;
 				if (section === "qualityFinalReview" && key === "acceptanceConfirmed")
 					delete next.qualityAcceptanceConfirmed;
-				if (key === "links") Object.keys(next).filter((k) => k.startsWith("link-")).forEach((k) => delete next[k]);
+				if (key === "links")
+					Object.keys(next)
+						.filter((k) => k.startsWith("link-"))
+						.forEach((k) => delete next[k]);
 				if (key === "fileNames") delete next.files;
 			}
 			return next;
@@ -707,7 +961,9 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				(section === "operations" && key === "comments") ||
 				(section === "procurement" && key === "delayCommunication") ||
 				(section === "qualityFinalReview" && key === "comments");
-			const value = cleanInput ? sanitizeTextbox(e.target.value) : e.target.value;
+			const value = cleanInput
+				? sanitizeTextbox(e.target.value)
+				: e.target.value;
 			update(section, { [key]: value } as Partial<FormValues[K]>);
 		};
 
@@ -715,26 +971,38 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		setErrors(found);
 		focusSummary.current = true;
 		const n = Object.keys(found).length;
-		setStatus(`This section has ${n} ${n === 1 ? "problem" : "problems"}. Fix them and try again.`);
+		setStatus(
+			`This section has ${n} ${n === 1 ? "problem" : "problems"}. Fix them and try again.`,
+		);
 	}
 
 	async function saveDraftNow() {
 		if (savingDraft || submitting) return;
 		if (!NCR_NUMBER.test(values.process.ncrNumber)) {
-			setStatus("The draft was not saved. The NCR number is missing. Reload the form to get the next number.");
+			setStatus(
+				"The draft was not saved. The NCR number is missing. Reload the form to get the next number.",
+			);
 			return;
 		}
 		setSavingDraft(true);
 		try {
 			const result = await saveDraft(
-				{ recordId: draftIdRef.current, ncrNumber: values.process.ncrNumber, values, step, createdByPersonId: personId },
+				{
+					recordId: draftIdRef.current,
+					ncrNumber: values.process.ncrNumber,
+					values,
+					step,
+					createdByPersonId: personId,
+				},
 				lookups.statuses,
 				setStatus,
 			);
 			draftIdRef.current = result.recordId;
 			setSaved(savedAll(true));
 			setDirtyIds(new Set());
-			setStatus(`Draft ${result.ncrNumber} saved. You can close this form and choose Continue on it in the NCR list later. Chosen files are not kept in a draft.`);
+			setStatus(
+				`Draft ${result.ncrNumber} saved. You can close this form and choose Continue on it in the NCR list later. Chosen files are not kept in a draft.`,
+			);
 			onSaved?.(result.ncrNumber);
 		} catch (err) {
 			if (err instanceof DuplicateNcrNumberError) {
@@ -744,7 +1012,9 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 					`The draft was not saved. NCR number ${err.ncrNumber} was already used. ${next ? `Your NCR number is now ${next}. Choose Save draft again.` : "Reload the form to get a new number."}`,
 				);
 			} else {
-				setStatus(`The draft was not saved. ${messageOf(err)} Your answers are still on screen.`);
+				setStatus(
+					`The draft was not saved. ${messageOf(err)} Your answers are still on screen.`,
+				);
 			}
 		} finally {
 			setSavingDraft(false);
@@ -752,38 +1022,51 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	}
 
 	async function saveAndContinue() {
-		const sections = sectionsFor(
-			values.defect.engineeringRequired === "yes",
-			edit || isDraft,
-			edit || isDraft,
-			edit || isDraft,
-			edit || isDraft,
-		);
+		const sections = sectionsFor(values.defect.engineeringRequired === "yes");
 		const current = sections[step];
 		if (!current || current.id === "review") return;
 		const id = current.id;
 		const found = validate(id, values, files, false);
 		if (Object.keys(found).length) return showErrors(found);
+		const needsStamp = id === "operations" || id === "qualityFinalReview";
+		if (needsStamp && me.status !== "ready") {
+			setStatus(
+				"Your account is not loaded yet. Reload the page and try again.",
+			);
+			return;
+		}
+		const stamped = stampSections(values, myName, todayLocal(), new Set([id]));
+		const sectionData = stamped[id];
+		let savedToDatabase = false;
 		const isDatabaseSection =
-			id === "operations" || id === "procurement" || id === "qualityFinalReview";
+			id === "operations" ||
+			id === "procurement" ||
+			id === "qualityFinalReview";
 		if (isDatabaseSection) {
 			const ncrId = edit ? editData?.ncrId : draftIdRef.current;
-			if (ncrId === null || ncrId === undefined) {
-				setStatus("Save this NCR as a draft before saving workflow sections.");
-				return;
-			}
-			if (personId === null) {
-				setStatus("Your account is not loaded yet. Reload the page and try again.");
-				return;
-			}
-			try {
-				await saveNcrSection(ncrId, id, values[id], personId, step + 1);
-			} catch (err) {
-				setStatus(`${current.title} was not saved to the database. ${messageOf(err)} Your answers are still on screen.`);
-				return;
+			// A brand new NCR has no database row until it is submitted or saved as a draft.
+			// Until then these sections are kept in this browser and sent with the submission.
+			if (ncrId !== null && ncrId !== undefined) {
+				if (personId === null) {
+					setStatus(
+						"Your account is not loaded yet. Reload the page and try again.",
+					);
+					return;
+				}
+				try {
+					await saveNcrSection(ncrId, id, sectionData, personId, step + 1);
+					savedToDatabase = true;
+				} catch (err) {
+					setStatus(
+						`${current.title} was not saved to the database. ${messageOf(err)} Your answers are still on screen.`,
+					);
+					return;
+				}
 			}
 		}
-		const ok = writeSection(prefix, id, values[id]);
+		const ok = writeSection(prefix, id, sectionData);
+		if (needsStamp)
+			setValues((prev) => ({ ...prev, [id]: sectionData }) as FormValues);
 		setSaved((prev) => ({ ...prev, [id]: ok }));
 		setDirtyIds((prev) => {
 			const next = new Set(prev);
@@ -795,8 +1078,8 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 		const next = sections[step + 1];
 		setStatus(
 			ok && next
-				? `${current.title} saved${isDatabaseSection ? " to the database and this browser" : ""}. Now on section ${step + 2} of ${sections.length}: ${next.title}.`
-				: isDatabaseSection
+				? `${current.title} saved${savedToDatabase ? " to the database and this browser" : ""}. Now on section ${step + 2} of ${sections.length}: ${next.title}.`
+				: savedToDatabase
 					? `${current.title} was saved to the database, but this browser blocked local saving. Now on the next section.`
 					: "Your answers are on screen, but this browser blocked saving. Now on the next section.",
 		);
@@ -804,13 +1087,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 
 	async function submit() {
 		if (submitting) return;
-		const sections = sectionsFor(
-			values.defect.engineeringRequired === "yes",
-			edit || isDraft,
-			edit || isDraft,
-			edit || isDraft,
-			edit || isDraft,
-		);
+		const sections = sectionsFor(values.defect.engineeringRequired === "yes");
 		for (let i = 0; i < sections.length; i++) {
 			const section = sections[i];
 			if (section.id === "review") continue;
@@ -821,13 +1098,27 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				return;
 			}
 		}
+		if (me.status !== "ready") {
+			setSubmitError(
+				"Your account is not loaded yet. Reload the page and try again.",
+			);
+			focusSubmitError.current = true;
+			return;
+		}
 		setSubmitting(true);
 		setSubmitError("");
 		try {
-			const submission = buildSubmission(values, files, lookups, edit ? editData?.statusId ?? null : null, personId);
-			const result = edit && editData
-				? await updateNcr(editData, submission, setStatus)
-				: await submitNcr(submission, setStatus, draftIdRef.current);
+			const submission = buildSubmission(
+				stampSections(values, myName, todayLocal(), dirtyIds),
+				files,
+				lookups,
+				edit ? (editData?.statusId ?? null) : null,
+				personId,
+			);
+			const result =
+				edit && editData
+					? await updateNcr(editData, submission, setStatus)
+					: await submitNcr(submission, setStatus, draftIdRef.current);
 			draftIdRef.current = null;
 			clearDrafts(prefix);
 			setHasDraft(false);
@@ -845,22 +1136,36 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 					`NCR number ${err.ncrNumber} was already used by another report. ${next ? `Your NCR number is now ${next}. Check it, then submit again.` : "Reload the form to get a new number."}`,
 				);
 			} else {
-				const left = err instanceof SubmitError && err.leftovers.length
-					? ` Some records could not be removed and need cleaning up by hand: ${err.leftovers.join(", ")}.`
-					: "";
-				setSubmitError(`${messageOf(err)}${left} Your answers are kept. Try again.`);
+				const left =
+					err instanceof SubmitError && err.leftovers.length
+						? ` Some records could not be removed and need cleaning up by hand: ${err.leftovers.join(", ")}.`
+						: "";
+				setSubmitError(
+					`${messageOf(err)}${left} Your answers are kept. Try again.`,
+				);
 			}
 			focusSubmitError.current = true;
-			setStatus(edit ? "The changes were not saved." : "The NCR was not submitted.");
+			setStatus(
+				edit ? "The changes were not saved." : "The NCR was not submitted.",
+			);
 		} finally {
 			setSubmitting(false);
 		}
 	}
 
 	function resetForm(message: string) {
-		const base = edit ? baseRef.current : makeDefaults(draftIdRef.current !== null ? values.process.ncrNumber : "");
+		const base = edit
+			? baseRef.current
+			: makeDefaults(
+					draftIdRef.current !== null ? values.process.ncrNumber : "",
+				);
 		setValues(sanitize(JSON.parse(JSON.stringify(base)), lookups));
-		setSaved(Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<SectionId, boolean>);
+		setSaved(
+			Object.fromEntries(SAVED_IDS.map((id) => [id, false])) as Record<
+				SectionId,
+				boolean
+			>,
+		);
 		setDirtyIds(new Set());
 		setFiles([]);
 		setFileInputKey((k) => k + 1);
@@ -870,14 +1175,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	}
 
 	function restoreSaved() {
-		const d = loadDrafts(
-			prefix,
-			baseRef.current,
-			edit || isDraft,
-			edit || isDraft,
-			edit || isDraft,
-			edit || isDraft,
-		);
+		const d = loadDrafts(prefix, baseRef.current);
 		setValues(sanitize(d.values, lookups));
 		setSaved(d.saved);
 		setDirtyIds(new Set());
@@ -891,13 +1189,7 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const p = values.process;
 	const isSupplierProcess = p.processType === "supplier";
 	const links = values.evidence.links;
-	const sections = sectionsFor(
-		values.defect.engineeringRequired === "yes",
-		edit || isDraft,
-		edit || isDraft,
-		edit || isDraft,
-		edit || isDraft,
-	);
+	const sections = sectionsFor(values.defect.engineeringRequired === "yes");
 	const reviewStep = sections.length - 1;
 	const current = sections[step];
 	const errorKeys = Object.keys(errors);
@@ -914,7 +1206,12 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 					<p>{lookupError}</p>
 				</section>
 				<p>
-					<Button text="Try again" aria="Try again" bold onClick={() => void init()} />
+					<Button
+						text="Try again"
+						aria="Try again"
+						bold
+						onClick={() => void init()}
+					/>
 				</p>
 				<FormStyles />
 			</div>
@@ -924,15 +1221,24 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	if (submitted) {
 		return (
 			<div className="ncr-form">
-				<h1 ref={headingRef} tabIndex={-1}>NCR {submitted} {edit ? "updated" : "submitted"}</h1>
-				<p>{edit ? "The changes were saved to the database." : "The report was saved to the database."}</p>
+				<h1 ref={headingRef} tabIndex={-1}>
+					NCR {submitted} {edit ? "updated" : "submitted"}
+				</h1>
+				<p>
+					{edit
+						? "The changes were saved to the database."
+						: "The report was saved to the database."}
+				</p>
 				<div className="ncr-actions">
 					{!edit && (
 						<Button
 							text="Start a new NCR"
 							aria="Start a new NCR"
 							bold
-							onClick={() => { setSubmitted(null); resetForm("Started a new NCR."); }}
+							onClick={() => {
+								setSubmitted(null);
+								resetForm("Started a new NCR.");
+							}}
 						/>
 					)}
 					{onClose && (
@@ -941,7 +1247,9 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 						</button>
 					)}
 				</div>
-				<p role="status" className="ncr-status">{status}</p>
+				<p role="status" className="ncr-status">
+					{status}
+				</p>
 				<FormStyles />
 			</div>
 		);
@@ -950,8 +1258,12 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 	const primaryLabel =
 		step === reviewStep
 			? submitting
-				? edit ? "Saving..." : "Submitting..."
-				: edit ? "Save changes" : "Submit NCR"
+				? edit
+					? "Saving..."
+					: "Submitting..."
+				: edit
+					? "Save changes"
+					: "Submit NCR"
 			: "Save and continue";
 
 	return (
@@ -968,19 +1280,34 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 			{isArchived && (
 				<section className="ncr-error-summary" role="alert">
 					<h3>This NCR is archived</h3>
-					<p>Archived reports are read-only. Use "Restore / Make Live" to make changes.</p>
+					<p>
+						Archived reports are read-only. Use "Restore / Make Live" to make
+						changes.
+					</p>
 				</section>
 			)}
 
-			<h1 id="ncr-title">{edit ? `Edit NCR ${p.ncrNumber}` : "Non-conformance report (NCR)"}</h1>
+			<h1 id="ncr-title">
+				{edit ? `Edit NCR ${p.ncrNumber}` : "Non-conformance report (NCR)"}
+			</h1>
 
 			<nav aria-label="Form sections" className="ncr-steps">
 				<ol>
 					{sections.map((s, i) => {
-						const state = s.id === "review" ? "" : saved[s.id as SectionId] ? "Saved" : "Not saved";
+						const state =
+							s.id === "review"
+								? ""
+								: saved[s.id as SectionId]
+									? "Saved"
+									: "Not saved";
 						return (
 							<li key={s.id}>
-								<button type="button" className="ncr-step-btn" aria-current={i === step ? "step" : undefined} onClick={() => goTo(i)}>
+								<button
+									type="button"
+									className="ncr-step-btn"
+									aria-current={i === step ? "step" : undefined}
+									onClick={() => goTo(i)}
+								>
 									{i + 1}. {s.title}
 									{state && <span className="ncr-step-state">{state}</span>}
 								</button>
@@ -996,8 +1323,14 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 						type="button"
 						className="ncr-btn"
 						onClick={() => {
-							if (window.confirm("Clear everything on screen? Sections you already saved stay stored, and you can restore them.")) {
-								resetForm("Form cleared. Your saved sections are still stored. Choose Restore saved sections to bring them back.");
+							if (
+								window.confirm(
+									"Clear everything on screen? Sections you already saved stay stored, and you can restore them.",
+								)
+							) {
+								resetForm(
+									"Form cleared. Your saved sections are still stored. Choose Restore saved sections to bring them back.",
+								);
 							}
 						}}
 					>
@@ -1011,17 +1344,34 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				)}
 			</div>
 
-			<p role="status" className="ncr-status">{status}</p>
+			<p role="status" className="ncr-status">
+				{status}
+			</p>
 
 			<div className="ncr-section">
-				<p className="ncr-progress">Section {step + 1} of {sections.length}</p>
-				<h2 ref={headingRef} tabIndex={-1}>{current.title}</h2>
-				<p className="ncr-help">Fields marked (required) must be filled in before you can save this section.</p>
+				<p className="ncr-progress">
+					Section {step + 1} of {sections.length}
+				</p>
+				<h2 ref={headingRef} tabIndex={-1}>
+					{current.title}
+				</h2>
+				<p className="ncr-help">
+					Fields marked (required) must be filled in before you can save this
+					section.
+				</p>
 
 				{errorKeys.length > 0 && (
-					<section ref={summaryRef} tabIndex={-1} className="ncr-error-summary" aria-labelledby="ncr-error-title">
+					<section
+						ref={summaryRef}
+						tabIndex={-1}
+						className="ncr-error-summary"
+						aria-labelledby="ncr-error-title"
+					>
 						<h3 id="ncr-error-title">
-							{errorKeys.length === 1 ? "There is 1 problem" : `There are ${errorKeys.length} problems`} in this section
+							{errorKeys.length === 1
+								? "There is 1 problem"
+								: `There are ${errorKeys.length} problems`}{" "}
+							in this section
 						</h3>
 						<ul>
 							{errorKeys.map((k) => (
@@ -1043,240 +1393,538 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 
 				{current.id === "process" && (
 					<>
-						<Input type={Input.TEXT} name="ncrNumber" label="NCR number" value={p.ncrNumber} readOnly
-							placeholder="Looking up the next number..." error={errors.ncrNumber}
-							helpText={edit ? "This number cannot be changed." : "The next number in the sequence. It is checked again when you submit."} />
-						<ChoiceGroup id="processType" legend="Which process does this report cover?" required
+						<Input
+							type={Input.TEXT}
+							name="ncrNumber"
+							label="NCR number"
+							value={p.ncrNumber}
+							readOnly
+							placeholder="Looking up the next number..."
+							error={errors.ncrNumber}
+							helpText={
+								edit
+									? "This number cannot be changed."
+									: "The next number in the sequence. It is checked again when you submit."
+							}
+						/>
+						<ChoiceGroup
+							id="processType"
+							legend="Which process does this report cover?"
+							required
 							helpText="Choose Supplier or receiving inspection for purchased items. Choose Work in progress for items made in-house."
-							error={errors.processType}>
-							<Input type={Input.RADIO} name="processType-supplier" groupName="processType" value="supplier"
-								label="Supplier or receiving inspection" checked={p.processType === "supplier"} required
-								onChange={() => update("process", { processType: "supplier" })} />
-							<Input type={Input.RADIO} name="processType-wip" groupName="processType" value="wip"
-								label="Work in progress (production order)" checked={p.processType === "wip"} required
-								onChange={() => update("process", { processType: "wip" })} />
+							error={errors.processType}
+						>
+							<Input
+								type={Input.RADIO}
+								name="processType-supplier"
+								groupName="processType"
+								value="supplier"
+								label="Supplier or receiving inspection"
+								checked={p.processType === "supplier"}
+								required
+								onChange={() => update("process", { processType: "supplier" })}
+							/>
+							<Input
+								type={Input.RADIO}
+								name="processType-wip"
+								groupName="processType"
+								value="wip"
+								label="Work in progress (production order)"
+								checked={p.processType === "wip"}
+								required
+								onChange={() => update("process", { processType: "wip" })}
+							/>
 						</ChoiceGroup>
-						<Input type={Input.DROPDOWN} name="supplier" label={isSupplierProcess ? "Supplier" : "Supplier (optional)"}
-							items={[...lookups.suppliers.map((s) => s.name), ADD_SUPPLIER]} value={p.supplier} required={isSupplierProcess}
-							onChange={text("process", "supplier")} error={errors.supplier}
-							helpText={isSupplierProcess ? "Pick the supplier that sent the item." : "Leave empty for in-house production."} />
+						<Input
+							type={Input.DROPDOWN}
+							name="supplier"
+							label={isSupplierProcess ? "Supplier" : "Supplier (optional)"}
+							items={[...lookups.suppliers.map((s) => s.name), ADD_SUPPLIER]}
+							value={p.supplier}
+							required={isSupplierProcess}
+							onChange={text("process", "supplier")}
+							error={errors.supplier}
+							helpText={
+								isSupplierProcess
+									? "Pick the supplier that sent the item."
+									: "Leave empty for in-house production."
+							}
+						/>
 						{p.supplier === ADD_SUPPLIER && (
-							<Input type={Input.TEXT} name="newSupplierName" label="New supplier name" value={p.newSupplierName}
-								required maxLength={200} placeholder="e.g. Lakeshore Tooling Co." autoComplete="off"
-								onChange={text("process", "newSupplierName")} error={errors.newSupplierName} />
+							<Input
+								type={Input.TEXT}
+								name="newSupplierName"
+								label="New supplier name"
+								value={p.newSupplierName}
+								required
+								maxLength={200}
+								placeholder="e.g. Lakeshore Tooling Co."
+								autoComplete="off"
+								onChange={text("process", "newSupplierName")}
+								error={errors.newSupplierName}
+							/>
 						)}
-						<Input type={Input.TEXT} name="poNumber"
-							label={p.processType === "wip" ? "Production order number" : "Purchase order number"}
-							value={p.poNumber} required inputMode="numeric" maxLength={18} autoComplete="off"
-							placeholder="e.g. 4500123456" helpText="Type it exactly as it appears on the paperwork. Digits only."
-							onChange={text("process", "poNumber")} error={errors.poNumber} />
-						<Input type={Input.TEXT} name="salesOrderNumber" label="Sales order number"
-							value={p.salesOrderNumber} required inputMode="numeric" maxLength={18} autoComplete="off"
-							placeholder="e.g. 1012345" helpText="Digits only."
-							onChange={text("process", "salesOrderNumber")} error={errors.salesOrderNumber} />
+						<Input
+							type={Input.TEXT}
+							name="poNumber"
+							label={
+								p.processType === "wip"
+									? "Production order number"
+									: "Purchase order number"
+							}
+							value={p.poNumber}
+							required
+							inputMode="numeric"
+							maxLength={18}
+							autoComplete="off"
+							placeholder="e.g. 4500123456"
+							helpText="Type it exactly as it appears on the paperwork. Digits only."
+							onChange={text("process", "poNumber")}
+							error={errors.poNumber}
+						/>
+						<Input
+							type={Input.TEXT}
+							name="salesOrderNumber"
+							label="Sales order number"
+							value={p.salesOrderNumber}
+							required
+							inputMode="numeric"
+							maxLength={18}
+							autoComplete="off"
+							placeholder="e.g. 1012345"
+							helpText="Digits only."
+							onChange={text("process", "salesOrderNumber")}
+							error={errors.salesOrderNumber}
+						/>
 					</>
 				)}
 
 				{current.id === "item" && (
 					<>
-						<Input type={Input.TEXT} name="itemName" label="Item name" value={values.item.itemName} required
-							maxLength={200} autoComplete="off" placeholder="e.g. Hydraulic fitting, 1/2 in"
-							onChange={text("item", "itemName")} error={errors.itemName} />
-						<Input type={Input.TEXT} name="itemSapNumber" label="SAP number" value={values.item.itemSapNumber} required
-							maxLength={20} autoComplete="off" placeholder="e.g. 100234567"
-							onChange={text("item", "itemSapNumber")} error={errors.itemSapNumber} />
-						<Input type={Input.PARAGRAPH} name="itemDescription" label="Item description (optional)"
-							value={values.item.itemDescription} maxLength={300} placeholder="e.g. Stainless steel, drawing rev C, lot 24-0815"
+						<Input
+							type={Input.TEXT}
+							name="itemName"
+							label="Item name"
+							value={values.item.itemName}
+							required
+							maxLength={200}
+							autoComplete="off"
+							placeholder="e.g. Hydraulic fitting, 1/2 in"
+							onChange={text("item", "itemName")}
+							error={errors.itemName}
+						/>
+						<Input
+							type={Input.TEXT}
+							name="itemSapNumber"
+							label="SAP number"
+							value={values.item.itemSapNumber}
+							required
+							maxLength={20}
+							autoComplete="off"
+							placeholder="e.g. 100234567"
+							onChange={text("item", "itemSapNumber")}
+							error={errors.itemSapNumber}
+						/>
+						<Input
+							type={Input.PARAGRAPH}
+							name="itemDescription"
+							label="Item description (optional)"
+							value={values.item.itemDescription}
+							maxLength={300}
+							placeholder="e.g. Stainless steel, drawing rev C, lot 24-0815"
 							helpText={`Material, revision or lot help identify the item. Up to 300 characters. ${values.item.itemDescription.length} used.`}
-							onChange={text("item", "itemDescription")} error={errors.itemDescription} />
+							onChange={text("item", "itemDescription")}
+							error={errors.itemDescription}
+						/>
 					</>
 				)}
 
 				{current.id === "defect" && (
 					<>
-						<Input type={Input.NUMBER} name="qtyOrdered" label="Quantity ordered" value={values.defect.qtyOrdered}
-							required min={1} step={1} inputMode="numeric" placeholder="e.g. 50"
-							onChange={text("defect", "qtyOrdered")} error={errors.qtyOrdered} />
-						<Input type={Input.NUMBER} name="qtyDefective" label="Quantity defective" value={values.defect.qtyDefective}
-							required min={1} max={values.defect.qtyOrdered || undefined} step={1} inputMode="numeric" placeholder="e.g. 3"
+						<Input
+							type={Input.NUMBER}
+							name="qtyOrdered"
+							label="Quantity ordered"
+							value={values.defect.qtyOrdered}
+							required
+							min={1}
+							step={1}
+							inputMode="numeric"
+							placeholder="e.g. 50"
+							onChange={text("defect", "qtyOrdered")}
+							error={errors.qtyOrdered}
+						/>
+						<Input
+							type={Input.NUMBER}
+							name="qtyDefective"
+							label="Quantity defective"
+							value={values.defect.qtyDefective}
+							required
+							min={1}
+							max={values.defect.qtyOrdered || undefined}
+							step={1}
+							inputMode="numeric"
+							placeholder="e.g. 3"
 							helpText="Count only the items that do not meet requirements."
-							onChange={text("defect", "qtyDefective")} error={errors.qtyDefective} />
-						<ChoiceGroup id="problemTypeIds" legend="Problem types" required
-							helpText="Tick every problem that applies." error={errors.problemTypeIds}>
+							onChange={text("defect", "qtyDefective")}
+							error={errors.qtyDefective}
+						/>
+						<ChoiceGroup
+							id="problemTypeIds"
+							legend="Problem types"
+							required
+							helpText="Tick every problem that applies."
+							error={errors.problemTypeIds}
+						>
 							{lookups.problemTypes.length === 0 && (
-								<p className="ncr-help">No problem types are set up in the database yet.</p>
+								<p className="ncr-help">
+									No problem types are set up in the database yet.
+								</p>
 							)}
 							{lookups.problemTypes.map((t, idx) => {
 								const idStr = String(t.id);
 								return (
-									<Input key={t.id} type={Input.CHECKBOX} id={idx === 0 ? "problemTypeIds" : undefined}
-										name={`problemType-${t.id}`} value={idStr} label={t.label} helpText={t.description || undefined}
+									<Input
+										key={t.id}
+										type={Input.CHECKBOX}
+										id={idx === 0 ? "problemTypeIds" : undefined}
+										name={`problemType-${t.id}`}
+										value={idStr}
+										label={t.label}
+										helpText={t.description || undefined}
 										checked={selectedProblems.includes(idStr)}
-										onChange={() => update("defect", {
-											problemTypeIds: selectedProblems.includes(idStr)
-												? selectedProblems.filter((x) => x !== idStr)
-												: [...selectedProblems, idStr],
-										})} />
+										onChange={() =>
+											update("defect", {
+												problemTypeIds: selectedProblems.includes(idStr)
+													? selectedProblems.filter((x) => x !== idStr)
+													: [...selectedProblems, idStr],
+											})
+										}
+									/>
 								);
 							})}
 						</ChoiceGroup>
-						<Input type={Input.PARAGRAPH} name="defectDescription" label="Description of defect"
-							value={values.defect.defectDescription} required maxLength={400}
+						<Input
+							type={Input.PARAGRAPH}
+							name="defectDescription"
+							label="Description of defect"
+							value={values.defect.defectDescription}
+							required
+							maxLength={400}
 							placeholder="Say what is wrong, where on the item, and how you found it. Include measurements if you have them."
 							helpText={`Up to 400 characters. ${values.defect.defectDescription.length} used.`}
-							onChange={text("defect", "defectDescription")} error={errors.defectDescription} />
-						<ChoiceGroup id="isNonconforming" legend="Is the item marked as nonconforming?" required
-							helpText="Choose Yes if the item has been tagged or marked as nonconforming." error={errors.isNonconforming}>
-							<Input type={Input.RADIO} name="isNonconforming-yes" groupName="isNonconforming" value="yes" label="Yes"
-								checked={values.defect.isNonconforming === "yes"} required
-								onChange={() => update("defect", { isNonconforming: "yes" })} />
-							<Input type={Input.RADIO} name="isNonconforming-no" groupName="isNonconforming" value="no" label="No"
-								checked={values.defect.isNonconforming === "no"} required
-								onChange={() => update("defect", { isNonconforming: "no" })} />
+							onChange={text("defect", "defectDescription")}
+							error={errors.defectDescription}
+						/>
+						<ChoiceGroup
+							id="isNonconforming"
+							legend="Is the item marked as nonconforming?"
+							required
+							helpText="Choose Yes if the item has been tagged or marked as nonconforming."
+							error={errors.isNonconforming}
+						>
+							<Input
+								type={Input.RADIO}
+								name="isNonconforming-yes"
+								groupName="isNonconforming"
+								value="yes"
+								label="Yes"
+								checked={values.defect.isNonconforming === "yes"}
+								required
+								onChange={() => update("defect", { isNonconforming: "yes" })}
+							/>
+							<Input
+								type={Input.RADIO}
+								name="isNonconforming-no"
+								groupName="isNonconforming"
+								value="no"
+								label="No"
+								checked={values.defect.isNonconforming === "no"}
+								required
+								onChange={() => update("defect", { isNonconforming: "no" })}
+							/>
 						</ChoiceGroup>
-						<ChoiceGroup id="engineeringRequired" legend="Is Engineering review required?" required
-							helpText="Choose Yes to route this NCR to Engineering for disposition." error={errors.engineeringRequired}>
-							<Input type={Input.RADIO} name="engineeringRequired-yes" groupName="engineeringRequired" value="yes" label="Yes"
-								checked={values.defect.engineeringRequired === "yes"} required
-								onChange={() => update("defect", { engineeringRequired: "yes" })} />
-							<Input type={Input.RADIO} name="engineeringRequired-no" groupName="engineeringRequired" value="no" label="No"
-								checked={values.defect.engineeringRequired === "no"} required
-								onChange={() => update("defect", { engineeringRequired: "no" })} />
+						<ChoiceGroup
+							id="engineeringRequired"
+							legend="Is Engineering review required?"
+							required
+							helpText="Choose Yes to route this NCR to Engineering for disposition."
+							error={errors.engineeringRequired}
+						>
+							<Input
+								type={Input.RADIO}
+								name="engineeringRequired-yes"
+								groupName="engineeringRequired"
+								value="yes"
+								label="Yes"
+								checked={values.defect.engineeringRequired === "yes"}
+								required
+								onChange={() =>
+									update("defect", { engineeringRequired: "yes" })
+								}
+							/>
+							<Input
+								type={Input.RADIO}
+								name="engineeringRequired-no"
+								groupName="engineeringRequired"
+								value="no"
+								label="No"
+								checked={values.defect.engineeringRequired === "no"}
+								required
+								onChange={() => update("defect", { engineeringRequired: "no" })}
+							/>
 						</ChoiceGroup>
 					</>
 				)}
 
 				{current.id === "engineering" && (
-					<>
-						<Input type={Input.PARAGRAPH} name="engineeringInstructions" label="Engineering instructions"
-							value={values.engineering.instructions}
-							maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
-							error={errors.engineeringInstructions}
-							onChange={text("engineering", "instructions")} />
-					</>
+					<Input
+						type={Input.PARAGRAPH}
+						name="engineeringInstructions"
+						label="Engineering instructions (optional)"
+						value={values.engineering.instructions}
+						maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
+						placeholder="e.g. Rework to drawing revision C, or use as is."
+						helpText={countHelp(values.engineering.instructions.length)}
+						error={errors.engineeringInstructions}
+						onChange={text("engineering", "instructions")}
+					/>
 				)}
 
 				{current.id === "operations" && (
 					<>
-						<Input type={Input.DROPDOWN} name="operationsDisposition" label="Operations disposition"
-							value={values.operations.disposition} items={lookups.dispositions}
-							onChange={text("operations", "disposition")} />
-						<Input type={Input.PARAGRAPH} name="operationsInstructions" label="Rework/repair instructions"
-							value={values.operations.instructions}
-							maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
-							error={errors.operationsInstructions}
-							onChange={text("operations", "instructions")} />
-						<Input type={Input.PARAGRAPH} name="operationsComments" label="Operations comments"
+						<Input
+							type={Input.DROPDOWN}
+							name="operationsDisposition"
+							label="Operations disposition (optional)"
+							value={values.operations.disposition}
+							items={lookups.dispositions}
+							helpText="If you choose rework or repair, a box for the instructions appears and you must fill it in."
+							onChange={(e: ChangeEvt) => {
+								const next = e.target.value;
+								const was = isReworkDisposition(values.operations.disposition);
+								const now = isReworkDisposition(next);
+								update(
+									"operations",
+									now
+										? { disposition: next }
+										: { disposition: next, instructions: "" },
+								);
+								if (now && !was)
+									setStatus(
+										"A required box for the rework or repair instructions has appeared below.",
+									);
+								else if (!now && was)
+									setStatus(
+										"The rework or repair instructions box was removed.",
+									);
+							}}
+						/>
+						{isReworkDisposition(values.operations.disposition) && (
+							<Input
+								type={Input.PARAGRAPH}
+								name="operationsInstructions"
+								label="Rework/repair instructions"
+								value={values.operations.instructions}
+								required
+								maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
+								placeholder="Say what must be reworked or repaired, and how."
+								helpText={countHelp(values.operations.instructions.length)}
+								error={errors.operationsInstructions}
+								onChange={text("operations", "instructions")}
+							/>
+						)}
+						<Input
+							type={Input.PARAGRAPH}
+							name="operationsComments"
+							label="Operations comments (optional)"
 							value={values.operations.comments}
 							maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
+							placeholder="e.g. Parts are on the rework shelf, row 4."
+							helpText={countHelp(values.operations.comments.length)}
 							error={errors.operationsComments}
-							onChange={text("operations", "comments")} />
-						<Input type={Input.TEXT} name="operationsRepresentative" label="Operations representative"
-							value={values.operations.representative}
-							maxLength={150}
-							onChange={text("operations", "representative")} />
-						<Input type={Input.DATE} name="operationsDateCompleted" label="Operations date completed"
-							value={values.operations.dateCompleted}
-							onChange={text("operations", "dateCompleted")} />
+							onChange={text("operations", "comments")}
+						/>
 					</>
 				)}
 
 				{current.id === "procurement" && (
-					<Input type={Input.PARAGRAPH} name="procurementDelayCommunication"
-						label="Communication of a delay due to quality rejection"
+					<Input
+						type={Input.PARAGRAPH}
+						name="procurementDelayCommunication"
+						label="Communication of a delay due to quality rejection (optional)"
 						value={values.procurement.delayCommunication}
 						maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
+						placeholder="e.g. The supplier was told the order is on hold until a replacement ships."
+						helpText={countHelp(values.procurement.delayCommunication.length)}
 						error={errors.procurementDelayCommunication}
-						onChange={text("procurement", "delayCommunication")} />
+						onChange={text("procurement", "delayCommunication")}
+					/>
 				)}
 
 				{current.id === "qualityFinalReview" && (
 					<>
-						<Input type={Input.TEXT} name="qualityFinalInspectionResult" label="Final inspection result"
+						<Input
+							type={Input.TEXT}
+							name="qualityFinalInspectionResult"
+							label="Final inspection result (optional)"
 							value={values.qualityFinalReview.inspectionResult}
 							maxLength={300}
-							onChange={text("qualityFinalReview", "inspectionResult")} />
-						<Input type={Input.PARAGRAPH} name="qualityFinalComments" label="Quality comments"
+							autoComplete="off"
+							placeholder="e.g. Passed re-inspection, no defects found"
+							helpText={`Up to 300 characters. ${values.qualityFinalReview.inspectionResult.length} used.`}
+							onChange={text("qualityFinalReview", "inspectionResult")}
+						/>
+						<Input
+							type={Input.PARAGRAPH}
+							name="qualityFinalComments"
+							label="Quality comments (optional)"
 							value={values.qualityFinalReview.comments}
 							maxLength={DEPARTMENT_TEXT_MAX_LENGTH}
+							placeholder="e.g. Accepted after rework. Measurements are in the attached picture."
+							helpText={countHelp(values.qualityFinalReview.comments.length)}
 							error={errors.qualityFinalComments}
-							onChange={text("qualityFinalReview", "comments")} />
-						<ChoiceGroup id="qualityAcceptanceConfirmed" legend="Final acceptance confirmation" required
-							error={errors.qualityAcceptanceConfirmed}>
-							<Input type={Input.RADIO} name="qualityAcceptanceConfirmed-yes" groupName="qualityAcceptanceConfirmed" value="yes" label="Yes"
-								checked={values.qualityFinalReview.acceptanceConfirmed === "yes"} required
-								onChange={() => update("qualityFinalReview", { acceptanceConfirmed: "yes" })} />
-							<Input type={Input.RADIO} name="qualityAcceptanceConfirmed-no" groupName="qualityAcceptanceConfirmed" value="no" label="No"
-								checked={values.qualityFinalReview.acceptanceConfirmed === "no"} required
-								onChange={() => update("qualityFinalReview", { acceptanceConfirmed: "no" })} />
+							onChange={text("qualityFinalReview", "comments")}
+						/>
+						<ChoiceGroup
+							id="qualityAcceptanceConfirmed"
+							legend="Final acceptance confirmation"
+							required
+							helpText="Choose Yes if the item is accepted after the final review."
+							error={errors.qualityAcceptanceConfirmed}
+						>
+							<Input
+								type={Input.RADIO}
+								name="qualityAcceptanceConfirmed-yes"
+								groupName="qualityAcceptanceConfirmed"
+								value="yes"
+								label="Yes"
+								checked={
+									values.qualityFinalReview.acceptanceConfirmed === "yes"
+								}
+								required
+								onChange={() =>
+									update("qualityFinalReview", { acceptanceConfirmed: "yes" })
+								}
+							/>
+							<Input
+								type={Input.RADIO}
+								name="qualityAcceptanceConfirmed-no"
+								groupName="qualityAcceptanceConfirmed"
+								value="no"
+								label="No"
+								checked={values.qualityFinalReview.acceptanceConfirmed === "no"}
+								required
+								onChange={() =>
+									update("qualityFinalReview", { acceptanceConfirmed: "no" })
+								}
+							/>
 						</ChoiceGroup>
-						<Input type={Input.DATE} name="qualityDateClosed" label="Quality review date"
-							value={values.qualityFinalReview.dateClosed}
-							onChange={text("qualityFinalReview", "dateClosed")} />
-						<Input type={Input.TEXT} name="qualityClosedBy" label="Quality reviewer"
-							value={values.qualityFinalReview.closedBy}
-							maxLength={150}
-							onChange={text("qualityFinalReview", "closedBy")} />
 					</>
 				)}
 
 				{current.id === "evidence" && (
 					<>
-						<Input key={fileInputKey} type={Input.FILE} name="files" label="Pictures, screenshots and PDFs (optional)"
-							accept="image/*,application/pdf" multiple error={errors.files}
+						<Input
+							key={fileInputKey}
+							type={Input.FILE}
+							name="files"
+							label="Pictures, screenshots and PDFs (optional)"
+							accept="image/*,application/pdf"
+							multiple
+							error={errors.files}
 							helpText="You can choose more than one file. File upload is not connected yet: only the file names are recorded, the files themselves are not stored."
 							onChange={(e) => {
-								const list = Array.from((e.target as HTMLInputElement).files ?? []);
+								const list = Array.from(
+									(e.target as HTMLInputElement).files ?? [],
+								);
 								setFiles(list);
 								update("evidence", { fileNames: list.map((f) => f.name) });
-							}} />
+							}}
+						/>
 						{edit && editData && editData.existingFiles.length > 0 && (
 							<div className="ncr-note">
-								<p>Already attached: {editData.existingFiles.join(", ")}. These stay attached. Files you choose above are added.</p>
+								<p>
+									Already attached: {editData.existingFiles.join(", ")}. These
+									stay attached. Files you choose above are added.
+								</p>
 							</div>
 						)}
 						{files.length > 0 && (
 							<ul className="ncr-file-list" aria-label="Chosen files">
 								{files.map((f) => (
-									<li key={`${f.name}-${f.size}`}>{f.name} ({formatSize(f.size)})</li>
+									<li key={`${f.name}-${f.size}`}>
+										{f.name} ({formatSize(f.size)})
+									</li>
 								))}
 							</ul>
 						)}
 						{files.length === 0 && values.evidence.fileNames.length > 0 && (
 							<div className="ncr-note">
 								<p>
-									Your last save listed these files: {values.evidence.fileNames.join(", ")}. Browsers cannot keep
+									Your last save listed these files:{" "}
+									{values.evidence.fileNames.join(", ")}. Browsers cannot keep
 									files after a reload, so choose them again before you submit.
 								</p>
-								<button type="button" className="ncr-btn" onClick={() => update("evidence", { fileNames: [] })}>
+								<button
+									type="button"
+									className="ncr-btn"
+									onClick={() => update("evidence", { fileNames: [] })}
+								>
 									Remove saved file names
 								</button>
 							</div>
 						)}
 						<fieldset className="ncr-fieldset" aria-describedby="links-help">
 							<legend>Links to videos or online pictures (optional)</legend>
-							<p id="links-help" className="ncr-help">Paste the full web address. Use one box for each link.</p>
+							<p id="links-help" className="ncr-help">
+								Paste the full web address. Use one box for each link.
+							</p>
 							{links.map((link, i) => (
 								<div key={i} className="ncr-link-row">
-									<Input type={Input.URL} name={`link-${i}`} label={`Link ${i + 1}`} value={link} maxLength={500}
-										autoComplete="off" placeholder="https://example.com/video"
-										onChange={(e) => update("evidence", { links: links.map((l, idx) => (idx === i ? e.target.value : l)) })}
-										error={errors[`link-${i}`]} />
+									<Input
+										type={Input.URL}
+										name={`link-${i}`}
+										label={`Link ${i + 1}`}
+										value={link}
+										maxLength={500}
+										autoComplete="off"
+										placeholder="https://example.com/video"
+										onChange={(e) =>
+											update("evidence", {
+												links: links.map((l, idx) =>
+													idx === i ? e.target.value : l,
+												),
+											})
+										}
+										error={errors[`link-${i}`]}
+									/>
 									{(links.length > 1 || link) && (
-										<button type="button" className="ncr-btn" onClick={() => {
-											const next = links.filter((_, idx) => idx !== i);
-											update("evidence", { links: next.length ? next : [""] });
-											pendingFocus.current = "add-link";
-										}}>
+										<button
+											type="button"
+											className="ncr-btn"
+											onClick={() => {
+												const next = links.filter((_, idx) => idx !== i);
+												update("evidence", {
+													links: next.length ? next : [""],
+												});
+												pendingFocus.current = "add-link";
+											}}
+										>
 											Remove link {i + 1}
 										</button>
 									)}
 								</div>
 							))}
-							<button id="add-link" type="button" className="ncr-btn" onClick={() => {
-								update("evidence", { links: [...links, ""] });
-								pendingFocus.current = `link-${links.length}`;
-							}}>
+							<button
+								id="add-link"
+								type="button"
+								className="ncr-btn"
+								onClick={() => {
+									update("evidence", { links: [...links, ""] });
+									pendingFocus.current = `link-${links.length}`;
+								}}
+							>
 								Add another link
 							</button>
 						</fieldset>
@@ -1285,18 +1933,51 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 
 				{current.id === "inspector" && (
 					<>
-						<Input type={Input.DROPDOWN} name="inspector" label="Inspector name"
-							items={[...lookups.inspectors.map(fullName), ADD_INSPECTOR]} value={values.inspector.inspector} required
-							helpText="Filled in with the first inspector on the list. Change it if someone else did the inspection."
-							onChange={text("inspector", "inspector")} error={errors.inspector} />
+						<Input
+							type={Input.DROPDOWN}
+							name="inspector"
+							label="Inspector name"
+							items={[...lookups.inspectors.map(fullName), ADD_INSPECTOR]}
+							value={values.inspector.inspector}
+							required
+							helpText="Filled in with your name if you are on the list. Change it if someone else did the inspection."
+							onChange={text("inspector", "inspector")}
+							error={errors.inspector}
+						/>
 						{values.inspector.inspector === ADD_INSPECTOR && (
 							<>
-								<Input type={Input.TEXT} name="newFirstName" label="First name" value={values.inspector.newFirstName}
-									required maxLength={75} autoComplete="off" onChange={text("inspector", "newFirstName")} error={errors.newFirstName} />
-								<Input type={Input.TEXT} name="newMiddleName" label="Middle name (optional)" value={values.inspector.newMiddleName}
-									maxLength={75} autoComplete="off" onChange={text("inspector", "newMiddleName")} error={errors.newMiddleName} />
-								<Input type={Input.TEXT} name="newLastName" label="Last name" value={values.inspector.newLastName}
-									required maxLength={75} autoComplete="off" onChange={text("inspector", "newLastName")} error={errors.newLastName} />
+								<Input
+									type={Input.TEXT}
+									name="newFirstName"
+									label="First name"
+									value={values.inspector.newFirstName}
+									required
+									maxLength={75}
+									autoComplete="off"
+									onChange={text("inspector", "newFirstName")}
+									error={errors.newFirstName}
+								/>
+								<Input
+									type={Input.TEXT}
+									name="newMiddleName"
+									label="Middle name (optional)"
+									value={values.inspector.newMiddleName}
+									maxLength={75}
+									autoComplete="off"
+									onChange={text("inspector", "newMiddleName")}
+									error={errors.newMiddleName}
+								/>
+								<Input
+									type={Input.TEXT}
+									name="newLastName"
+									label="Last name"
+									value={values.inspector.newLastName}
+									required
+									maxLength={75}
+									autoComplete="off"
+									onChange={text("inspector", "newLastName")}
+									error={errors.newLastName}
+								/>
 							</>
 						)}
 					</>
@@ -1305,31 +1986,51 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 				{current.id === "review" && (
 					<>
 						{submitError && (
-							<section ref={submitErrorRef} tabIndex={-1} className="ncr-error-summary" aria-labelledby="ncr-submit-error-title">
+							<section
+								ref={submitErrorRef}
+								tabIndex={-1}
+								className="ncr-error-summary"
+								aria-labelledby="ncr-submit-error-title"
+							>
 								<h3 id="ncr-submit-error-title">The NCR was not submitted</h3>
 								<p>{submitError}</p>
 							</section>
 						)}
-						<p>Check each part. Choose Change to fix something, then save that section again. {edit ? "The time you save is recorded as the update time." : "The time of submission is recorded as the NCR's creation time."}</p>
+						<p>
+							Check each part. Choose Change to fix something, then save that
+							section again.{" "}
+							{edit
+								? "The time you save is recorded as the update time."
+								: "The time of submission is recorded as the NCR's creation time."}
+						</p>
 						{reviewGroups(
-							values,
+							stampSections(values, myName, todayLocal(), dirtyIds),
 							files,
 							lookups,
 							editData?.existingFiles ?? [],
-							edit || isDraft,
-							edit || isDraft,
-							edit || isDraft,
-							edit || isDraft,
 						).map((g) => (
-							<section key={g.id} className="ncr-review-group" aria-labelledby={`review-${g.id}`}>
+							<section
+								key={g.id}
+								className="ncr-review-group"
+								aria-labelledby={`review-${g.id}`}
+							>
 								<div className="ncr-review-head">
 									<h3 id={`review-${g.id}`}>{g.title}</h3>
-									<button type="button" className="ncr-btn" onClick={() => goTo(sections.findIndex((section) => section.id === g.id))}>
+									<button
+										type="button"
+										className="ncr-btn"
+										onClick={() =>
+											goTo(sections.findIndex((section) => section.id === g.id))
+										}
+									>
 										Change {g.title.toLowerCase()}
 									</button>
 								</div>
 								{!saved[g.id] && (
-									<p className="ncr-help">This section is not saved yet. Saved sections come back if the page reloads.</p>
+									<p className="ncr-help">
+										This section is not saved yet. Saved sections come back if
+										the page reloads.
+									</p>
 								)}
 								<dl>
 									{g.rows.map(([label, value]) => (
@@ -1346,12 +2047,21 @@ export default function NcrForm({ edit = false, data, onClose, onSaved, onDirtyC
 
 				<div className="ncr-actions">
 					{step > 0 && (
-						<button type="button" className="ncr-btn" onClick={() => goTo(step - 1)}>
+						<button
+							type="button"
+							className="ncr-btn"
+							onClick={() => goTo(step - 1)}
+						>
 							Back
 						</button>
 					)}
 					{isArchived ? (
-						<Button text="Close" aria="Close" bold onClick={() => onClose?.()} />
+						<Button
+							text="Close"
+							aria="Close"
+							bold
+							onClick={() => onClose?.()}
+						/>
 					) : (
 						<>
 							{!edit && (
@@ -1392,62 +2102,155 @@ function reviewGroups(
 	files: File[],
 	l: FormLookups,
 	existingFiles: string[],
-	includeEngineering: boolean,
-	includeOperations: boolean,
-	includeProcurement: boolean,
-	includeQualityFinalReview: boolean,
 ) {
-	const yesNo = v.defect.isNonconforming === "yes" ? "Yes" : v.defect.isNonconforming === "no" ? "No" : "";
-	const fileNames = [...existingFiles, ...(files.length ? files.map((f) => f.name) : v.evidence.fileNames)];
-	const problems = l.problemTypes.filter((t) => v.defect.problemTypeIds.includes(String(t.id))).map((t) => t.label);
-	const inspector = v.inspector.inspector === ADD_INSPECTOR
-		? fullName({ first: v.inspector.newFirstName.trim(), middle: v.inspector.newMiddleName.trim(), last: v.inspector.newLastName.trim() })
-		: v.inspector.inspector;
+	const yesNo =
+		v.defect.isNonconforming === "yes"
+			? "Yes"
+			: v.defect.isNonconforming === "no"
+				? "No"
+				: "";
+	const fileNames = [
+		...existingFiles,
+		...(files.length ? files.map((f) => f.name) : v.evidence.fileNames),
+	];
+	const problems = l.problemTypes
+		.filter((t) => v.defect.problemTypeIds.includes(String(t.id)))
+		.map((t) => t.label);
+	const inspector =
+		v.inspector.inspector === ADD_INSPECTOR
+			? fullName({
+					first: v.inspector.newFirstName.trim(),
+					middle: v.inspector.newMiddleName.trim(),
+					last: v.inspector.newLastName.trim(),
+				})
+			: v.inspector.inspector;
 	const groups = [
-		{ id: "process" as SectionId, title: "Process and source", rows: [
-			["NCR number", v.process.ncrNumber], ["Process", processLabel(v.process.processType)],
-			["Supplier", supplierOf(v.process) || "In-house production"],
-			[v.process.processType === "wip" ? "Production order" : "Purchase order", v.process.poNumber],
-			["Sales order", v.process.salesOrderNumber]] },
-		{ id: "item" as SectionId, title: "Item", rows: [
-			["Item name", v.item.itemName], ["SAP number", v.item.itemSapNumber], ["Description", v.item.itemDescription]] },
-		{ id: "defect" as SectionId, title: "Defect details", rows: [
-			["Quantity ordered", v.defect.qtyOrdered], ["Quantity defective", v.defect.qtyDefective],
-			["Problem types", problems.join(", ")], ["Description of defect", v.defect.defectDescription],
-			["Marked nonconforming", yesNo],
-			["Engineering required", v.defect.engineeringRequired === "yes" ? "Yes" : v.defect.engineeringRequired === "no" ? "No" : ""]] },
-		{ id: "evidence" as SectionId, title: "Pictures and links", rows: [
-			["Files", fileNames.join(", ")], ["Links", v.evidence.links.filter((x) => x.trim()).join(", ")] ] },
-		{ id: "inspector" as SectionId, title: "Inspector", rows: [["Inspector", inspector]] },
-		{ id: "engineering" as SectionId, title: "Engineering Disposition", rows: [
-			["Engineering instructions", v.engineering.instructions]] },
-		{ id: "operations" as SectionId, title: "Operations Disposition", rows: [
-			["Operations disposition", v.operations.disposition],
-			["Rework/repair instructions", v.operations.instructions],
-			["Operations comments", v.operations.comments],
-			["Operations representative", v.operations.representative],
-			["Operations date completed", v.operations.dateCompleted]] },
-		{ id: "procurement" as SectionId, title: "Procurement", rows: [
-			["Communication of a delay due to quality rejection", v.procurement.delayCommunication]] },
-		{ id: "qualityFinalReview" as SectionId, title: "Quality Final Review", rows: [
-			["Final inspection result", v.qualityFinalReview.inspectionResult],
-			["Quality comments", v.qualityFinalReview.comments],
-			["Final acceptance confirmation", v.qualityFinalReview.acceptanceConfirmed === "yes" ? "Yes" : v.qualityFinalReview.acceptanceConfirmed === "no" ? "No" : ""],
-			["Quality review date", v.qualityFinalReview.dateClosed],
-			["Quality reviewer", v.qualityFinalReview.closedBy]] },
+		{
+			id: "process" as SectionId,
+			title: "Process and source",
+			rows: [
+				["NCR number", v.process.ncrNumber],
+				["Process", processLabel(v.process.processType)],
+				["Supplier", supplierOf(v.process) || "In-house production"],
+				[
+					v.process.processType === "wip"
+						? "Production order"
+						: "Purchase order",
+					v.process.poNumber,
+				],
+				["Sales order", v.process.salesOrderNumber],
+			],
+		},
+		{
+			id: "item" as SectionId,
+			title: "Item",
+			rows: [
+				["Item name", v.item.itemName],
+				["SAP number", v.item.itemSapNumber],
+				["Description", v.item.itemDescription],
+			],
+		},
+		{
+			id: "defect" as SectionId,
+			title: "Defect details",
+			rows: [
+				["Quantity ordered", v.defect.qtyOrdered],
+				["Quantity defective", v.defect.qtyDefective],
+				["Problem types", problems.join(", ")],
+				["Description of defect", v.defect.defectDescription],
+				["Marked nonconforming", yesNo],
+				[
+					"Engineering required",
+					v.defect.engineeringRequired === "yes"
+						? "Yes"
+						: v.defect.engineeringRequired === "no"
+							? "No"
+							: "",
+				],
+			],
+		},
+		{
+			id: "evidence" as SectionId,
+			title: "Pictures and links",
+			rows: [
+				["Files", fileNames.join(", ")],
+				["Links", v.evidence.links.filter((x) => x.trim()).join(", ")],
+			],
+		},
+		{
+			id: "inspector" as SectionId,
+			title: "Inspector",
+			rows: [["Inspector", inspector]],
+		},
+		{
+			id: "engineering" as SectionId,
+			title: "Engineering Disposition",
+			rows: [["Engineering instructions", v.engineering.instructions]],
+		},
+		{
+			id: "operations" as SectionId,
+			title: "Operations Disposition",
+			rows: [
+				["Operations disposition", v.operations.disposition],
+				...(isReworkDisposition(v.operations.disposition)
+					? [["Rework/repair instructions", v.operations.instructions]]
+					: []),
+				["Operations comments", v.operations.comments],
+				["Operations representative", v.operations.representative],
+				["Operations date completed", v.operations.dateCompleted],
+			],
+		},
+		{
+			id: "procurement" as SectionId,
+			title: "Procurement",
+			rows: [
+				[
+					"Communication of a delay due to quality rejection",
+					v.procurement.delayCommunication,
+				],
+			],
+		},
+		{
+			id: "qualityFinalReview" as SectionId,
+			title: "Quality Final Review",
+			rows: [
+				["Final inspection result", v.qualityFinalReview.inspectionResult],
+				["Quality comments", v.qualityFinalReview.comments],
+				[
+					"Final acceptance confirmation",
+					v.qualityFinalReview.acceptanceConfirmed === "yes"
+						? "Yes"
+						: v.qualityFinalReview.acceptanceConfirmed === "no"
+							? "No"
+							: "",
+				],
+				["Quality review date", v.qualityFinalReview.dateClosed],
+				["Quality reviewer", v.qualityFinalReview.closedBy],
+			],
+		},
 	] as { id: SectionId; title: string; rows: [string, string][] }[];
-	return groups.filter((group) =>
-		(group.id !== "engineering" || (includeEngineering && v.defect.engineeringRequired === "yes")) &&
-		(group.id !== "operations" || includeOperations) &&
-		(group.id !== "procurement" || includeProcurement) &&
-		(group.id !== "qualityFinalReview" || includeQualityFinalReview),
+	return groups.filter(
+		(group) =>
+			group.id !== "engineering" || v.defect.engineeringRequired === "yes",
 	);
 }
 
-function buildSubmission(v: FormValues, files: File[], l: FormLookups, currentStatusId: number | null = null, createdByPersonId: number | null = null): NcrSubmission {
+function buildSubmission(
+	v: FormValues,
+	files: File[],
+	l: FormLookups,
+	currentStatusId: number | null = null,
+	createdByPersonId: number | null = null,
+): NcrSubmission {
 	const p = v.process;
-	const status = (currentStatusId !== null ? l.statuses.find((x) => x.id === currentStatusId) : undefined) ?? defaultStatus(l.statuses);
-	if (!status) throw new Error("No NCR statuses were found in the database, so the NCR cannot be saved.");
+	const status =
+		(currentStatusId !== null
+			? l.statuses.find((x) => x.id === currentStatusId)
+			: undefined) ?? defaultStatus(l.statuses);
+	if (!status)
+		throw new Error(
+			"No NCR statuses were found in the database, so the NCR cannot be saved.",
+		);
 	let inspector: NcrSubmission["inspector"];
 	if (v.inspector.inspector === ADD_INSPECTOR) {
 		inspector = {
@@ -1457,8 +2260,13 @@ function buildSubmission(v: FormValues, files: File[], l: FormLookups, currentSt
 			last: v.inspector.newLastName.trim(),
 		};
 	} else {
-		const known: InspectorOption | undefined = l.inspectors.find((i) => fullName(i) === v.inspector.inspector);
-		if (!known) throw new Error("The chosen inspector is no longer in the database. Go back and choose the inspector again.");
+		const known: InspectorOption | undefined = l.inspectors.find(
+			(i) => fullName(i) === v.inspector.inspector,
+		);
+		if (!known)
+			throw new Error(
+				"The chosen inspector is no longer in the database. Go back and choose the inspector again.",
+			);
 		inspector = { kind: "existing", personId: known.personId };
 	}
 	return {
@@ -1468,34 +2276,52 @@ function buildSubmission(v: FormValues, files: File[], l: FormLookups, currentSt
 		supplier: supplierOf(p) || null,
 		purchaseOrderNumber: p.poNumber.trim(),
 		salesOrderNumber: p.salesOrderNumber.trim(),
-		item: { name: v.item.itemName.trim(), description: v.item.itemDescription.trim(), sapNumber: v.item.itemSapNumber.trim() },
+		item: {
+			name: v.item.itemName.trim(),
+			description: v.item.itemDescription.trim(),
+			sapNumber: v.item.itemSapNumber.trim(),
+		},
 		quantityOrdered: Number(v.defect.qtyOrdered),
 		quantityDefective: Number(v.defect.qtyDefective),
 		problemTypeIds: v.defect.problemTypeIds.map(Number),
 		defectDescription: v.defect.defectDescription.trim(),
 		isNonconforming: v.defect.isNonconforming === "yes",
 		engineeringRequired: v.defect.engineeringRequired === "yes",
-		engineeringDisposition: includeEngineering && v.defect.engineeringRequired === "yes" ? v.engineering.disposition.trim() : "",
-		engineeringInstructions: includeEngineering && v.defect.engineeringRequired === "yes" ? sanitizeTextbox(v.engineering.instructions).trim() : "",
-		engineeringComments: includeEngineering && v.defect.engineeringRequired === "yes" ? v.engineering.comments.trim() : "",
-		engineeringRepresentative: includeEngineering && v.defect.engineeringRequired === "yes" ? v.engineering.representative.trim() : "",
-		engineeringDateCompleted: includeEngineering && v.defect.engineeringRequired === "yes" ? v.engineering.dateCompleted : "",
-		operationsDisposition: includeOperations ? v.operations.disposition.trim() : "",
-		operationsInstructions: includeOperations ? sanitizeTextbox(v.operations.instructions).trim() : "",
-		operationsComments: includeOperations ? v.operations.comments.trim() : "",
-		operationsRepresentative: includeOperations ? v.operations.representative.trim() : "",
-		operationsDateCompleted: includeOperations ? v.operations.dateCompleted : "",
-		procurementDelayCommunication: includeProcurement
-			? sanitizeTextbox(v.procurement.delayCommunication).trim()
+		engineeringDisposition:
+			v.defect.engineeringRequired === "yes"
+				? v.engineering.disposition.trim()
+				: "",
+		engineeringInstructions:
+			v.defect.engineeringRequired === "yes"
+				? sanitizeTextbox(v.engineering.instructions).trim()
+				: "",
+		engineeringComments:
+			v.defect.engineeringRequired === "yes"
+				? v.engineering.comments.trim()
+				: "",
+		engineeringRepresentative:
+			v.defect.engineeringRequired === "yes"
+				? v.engineering.representative.trim()
+				: "",
+		engineeringDateCompleted:
+			v.defect.engineeringRequired === "yes" ? v.engineering.dateCompleted : "",
+		operationsDisposition: v.operations.disposition.trim(),
+		operationsInstructions: isReworkDisposition(v.operations.disposition)
+			? sanitizeTextbox(v.operations.instructions).trim()
 			: "",
-		qualityFinalInspectionResult: includeQualityFinalReview ? v.qualityFinalReview.inspectionResult.trim() : "",
-		qualityFinalComments: includeQualityFinalReview ? sanitizeTextbox(v.qualityFinalReview.comments).trim() : "",
-		qualityFinalAcceptanceConfirmed:
-			includeQualityFinalReview && v.qualityFinalReview.acceptanceConfirmed
-				? v.qualityFinalReview.acceptanceConfirmed === "yes"
-				: null,
-		qualityDateClosed: includeQualityFinalReview ? v.qualityFinalReview.dateClosed : "",
-		qualityClosedBy: includeQualityFinalReview ? v.qualityFinalReview.closedBy.trim() : "",
+		operationsComments: v.operations.comments.trim(),
+		operationsRepresentative: v.operations.representative.trim(),
+		operationsDateCompleted: v.operations.dateCompleted,
+		procurementDelayCommunication: sanitizeTextbox(
+			v.procurement.delayCommunication,
+		).trim(),
+		qualityFinalInspectionResult: v.qualityFinalReview.inspectionResult.trim(),
+		qualityFinalComments: sanitizeTextbox(v.qualityFinalReview.comments).trim(),
+		qualityFinalAcceptanceConfirmed: v.qualityFinalReview.acceptanceConfirmed
+			? v.qualityFinalReview.acceptanceConfirmed === "yes"
+			: null,
+		qualityDateClosed: v.qualityFinalReview.dateClosed,
+		qualityClosedBy: v.qualityFinalReview.closedBy.trim(),
 		inspector,
 		files,
 		links: v.evidence.links.map((x) => x.trim()).filter(Boolean),
@@ -1517,14 +2343,38 @@ function FormStyles() {
 				color: var(--text-h);
 			}
 			@media (prefers-color-scheme: dark) {
-				.ncr-form { --error: #ffb4bf; }
+				.ncr-form {
+					--error: #ffb4bf;
+				}
 			}
-			.ncr-form h1 { font-size: 1.75rem; margin: 0 0 1rem; }
-			.ncr-form h2 { font-size: 1.6rem; margin: 0; font-weight: 600; color: var(--text-h); }
-			.ncr-form h3 { font-size: 1.1rem; margin: 0; }
-			.ncr-form :focus-visible { outline: 3px solid var(--border); outline-offset: 2px; }
-			.ncr-steps ol { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0; margin: 0 0 1rem; }
-			.ncr-step-btn, .ncr-btn {
+			.ncr-form h1 {
+				font-size: 1.75rem;
+				margin: 0 0 1rem;
+			}
+			.ncr-form h2 {
+				font-size: 1.6rem;
+				margin: 0;
+				font-weight: 600;
+				color: var(--text-h);
+			}
+			.ncr-form h3 {
+				font-size: 1.1rem;
+				margin: 0;
+			}
+			.ncr-form :focus-visible {
+				outline: 3px solid var(--border);
+				outline-offset: 2px;
+			}
+			.ncr-steps ol {
+				list-style: none;
+				display: flex;
+				flex-wrap: wrap;
+				gap: 0.5rem;
+				padding: 0;
+				margin: 0 0 1rem;
+			}
+			.ncr-step-btn,
+			.ncr-btn {
 				min-height: 2.75rem;
 				min-width: 2.75rem;
 				padding: 0.5rem 1rem;
@@ -1535,39 +2385,159 @@ function FormStyles() {
 				font: inherit;
 				cursor: pointer;
 			}
-			.ncr-step-btn { text-align: left; padding: 0.5rem 0.75rem; }
-			.ncr-step-btn[aria-current="step"] { border-width: 4px; font-weight: 700; border-color: var(--accent); }
-			.ncr-step-state { display: block; font-size: 0.9rem; font-weight: 400; }
-			.ncr-btn-primary { background: var(--accent); color: var(--text-h, Canvas); font-weight: 600; }
-			.ncr-btn[aria-disabled="true"] { cursor: progress; }
-			.ncr-tools, .ncr-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-			.ncr-actions { margin-top: 0.5rem; }
-			.ncr-status { min-height: 1.5rem; margin: 0.75rem 0; }
-			.ncr-progress { margin: 2rem 0 0 0 ; font-size: 0.95rem; }
-			.ncr-section { display: flex; flex-direction: column; gap: .75rem; }
-			.ncr-help { margin: 0; font-size: 0.95rem; }
-			.ncr-error { margin: 0.5rem 0 0; color: var(--error); }
-			.ncr-req { font-weight: 400; }
-			.ncr-fieldset { border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem 1rem 1rem; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-			.ncr-fieldset legend { font-weight: 600; padding: 0 0.25rem; }
-			.ncr-error-summary { border: 3px solid var(--error); border-radius: 0.5rem; padding: 1rem; }
-			.ncr-error-summary p { margin: 0.5rem 0 0; }
-			.ncr-error-summary ul { margin: 0.5rem 0 0; padding-left: 1.25rem; }
-			.ncr-error-summary li { margin: 0; }
-			.ncr-error-summary a { display: inline-block; padding: 0.5rem 0; color: var(--text-h); text-decoration: underline; }
-			.ncr-file-list { margin: 0; padding-left: 1.25rem; }
-			.ncr-note { border: 1px dashed var(--border); border-radius: 0.5rem; padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
-			.ncr-note p { margin: 0; }
-			.ncr-link-row { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
-			.ncr-link-row .fld { width: 100%; }
-			.ncr-review-group { border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem 1rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
-			.ncr-review-head { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: space-between; align-items: center; }
-			.ncr-review-group dl { margin: 0; }
-			.ncr-review-row { display: grid; grid-template-columns: minmax(8rem, 1fr) 2fr; gap: 0.5rem; padding: 0.25rem 0; }
-			.ncr-review-row dt { font-weight: 600; }
-			.ncr-review-row dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+			.ncr-step-btn {
+				text-align: left;
+				padding: 0.5rem 0.75rem;
+			}
+			.ncr-step-btn[aria-current="step"] {
+				border-width: 4px;
+				font-weight: 700;
+				border-color: var(--accent);
+			}
+			.ncr-step-state {
+				display: block;
+				font-size: 0.9rem;
+				font-weight: 400;
+			}
+			.ncr-btn-primary {
+				background: var(--accent);
+				color: var(--text-h, Canvas);
+				font-weight: 600;
+			}
+			.ncr-btn[aria-disabled="true"] {
+				cursor: progress;
+			}
+			.ncr-tools,
+			.ncr-actions {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 0.75rem;
+			}
+			.ncr-actions {
+				margin-top: 0.5rem;
+			}
+			.ncr-status {
+				min-height: 1.5rem;
+				margin: 0.75rem 0;
+			}
+			.ncr-progress {
+				margin: 2rem 0 0 0;
+				font-size: 0.95rem;
+			}
+			.ncr-section {
+				display: flex;
+				flex-direction: column;
+				gap: 0.75rem;
+			}
+			.ncr-help {
+				margin: 0;
+				font-size: 0.95rem;
+			}
+			.ncr-error {
+				margin: 0.5rem 0 0;
+				color: var(--error);
+			}
+			.ncr-req {
+				font-weight: 400;
+			}
+			.ncr-fieldset {
+				border: 1px solid var(--border);
+				border-radius: 0.5rem;
+				padding: 0.75rem 1rem 1rem;
+				margin: 0;
+				display: flex;
+				flex-direction: column;
+				gap: 0.5rem;
+			}
+			.ncr-fieldset legend {
+				font-weight: 600;
+				padding: 0 0.25rem;
+			}
+			.ncr-error-summary {
+				border: 3px solid var(--error);
+				border-radius: 0.5rem;
+				padding: 1rem;
+			}
+			.ncr-error-summary p {
+				margin: 0.5rem 0 0;
+			}
+			.ncr-error-summary ul {
+				margin: 0.5rem 0 0;
+				padding-left: 1.25rem;
+			}
+			.ncr-error-summary li {
+				margin: 0;
+			}
+			.ncr-error-summary a {
+				display: inline-flex;
+				align-items: center;
+				min-height: 2.75rem;
+				padding: 0.25rem 0;
+				color: var(--text-h);
+				text-decoration: underline;
+			}
+			.ncr-file-list {
+				margin: 0;
+				padding-left: 1.25rem;
+			}
+			.ncr-note {
+				border: 1px dashed var(--border);
+				border-radius: 0.5rem;
+				padding: 0.75rem 1rem;
+				display: flex;
+				flex-direction: column;
+				gap: 0.5rem;
+				align-items: flex-start;
+			}
+			.ncr-note p {
+				margin: 0;
+			}
+			.ncr-link-row {
+				display: flex;
+				flex-direction: column;
+				gap: 0.5rem;
+				align-items: flex-start;
+			}
+			.ncr-link-row .fld {
+				width: 100%;
+			}
+			.ncr-review-group {
+				border: 1px solid var(--border);
+				border-radius: 0.5rem;
+				padding: 0.75rem 1rem 1rem;
+				display: flex;
+				flex-direction: column;
+				gap: 0.5rem;
+			}
+			.ncr-review-head {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 0.5rem;
+				justify-content: space-between;
+				align-items: center;
+			}
+			.ncr-review-group dl {
+				margin: 0;
+			}
+			.ncr-review-row {
+				display: grid;
+				grid-template-columns: minmax(8rem, 1fr) 2fr;
+				gap: 0.5rem;
+				padding: 0.25rem 0;
+			}
+			.ncr-review-row dt {
+				font-weight: 600;
+			}
+			.ncr-review-row dd {
+				margin: 0;
+				overflow-wrap: anywhere;
+				white-space: pre-wrap;
+			}
 			@media (max-width: 40rem) {
-				.ncr-review-row { grid-template-columns: 1fr; gap: 0; }
+				.ncr-review-row {
+					grid-template-columns: 1fr;
+					gap: 0;
+				}
 			}
 		`}</style>
 	);

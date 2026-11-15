@@ -394,6 +394,14 @@ function ModalStyles() {
 				background: var(--lifted-bg);
 				color: var(--text-h);
 				overflow: auto;
+				/* Keeps a focused field from hiding under the sticky close bar. */
+				scroll-padding-top: 4.5rem;
+				scroll-padding-bottom: 1rem;
+			}
+
+			.ncr-modal :focus-visible {
+				outline: 3px solid var(--border);
+				outline-offset: 2px;
 			}
 
 			.ncr-modal::backdrop {

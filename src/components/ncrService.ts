@@ -8,6 +8,8 @@ import {
 } from "./ncrConstraints";
 
 export const QUALITY_ROLE = "Quality Representative";
+/** role.role_id values whose people can be chosen as the inspector: Quality (1) and Quality Representative (7). */
+export const QUALITY_ROLE_IDS = [1, 7];
 export const STATUS_NEW = "Open";
 export const STATUS_DRAFT = "Draft";
 export const isClosedStatus = (name: string) => /clos/i.test(name);
@@ -142,8 +144,8 @@ export async function loadFormLookups(): Promise<FormLookups> {
 			.order("problem_type_id"),
 		supabase
 			.from("person")
-			.select("person_id, person_first_name, person_middle_name, person_last_name, role!inner(role_name)")
-			.ilike("role.role_name", QUALITY_ROLE)
+			.select("person_id, person_first_name, person_middle_name, person_last_name")
+			.in("role_id", QUALITY_ROLE_IDS)
 			.order("person_last_name")
 			.order("person_first_name"),
 		supabase.from("ncr_disposition").select("ncr_disposition_label").order("disposition_id"),
