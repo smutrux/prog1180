@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LuX } from "react-icons/lu";
 import { FaPlus } from "react-icons/fa6";
 import Button from "./button";
-import { isDraftRecord, loadNcrForEdit, type NcrEditData, type NcrRecord } from "./ncrService";
+import { isDraftRecord, loadNcrForEdit, type NcrEditData, type NcrListRow, type NcrRecord } from "./ncrService";
 import NcrForm from "./submitForm";
 import { useCurrentUser } from "./currentUser";
 import crossfireLogo from "../assets/crossfireLogo.svg";
@@ -109,7 +109,7 @@ export interface NcrDetailsModalProps {
 	open: boolean;
 	onClose: () => void;
 	onPrint: () => void;
-	data?: NcrRecord;
+	data?: NcrListRow;
 	status?: string;
 	onEdit?: (row: NcrRecord) => void;
 	onRestore?: (row: NcrRecord) => void;
@@ -208,10 +208,24 @@ const RELATED_LABELS = [
 	"Raised by",
 	"Links",
 	"Files",
+	"Archived",
 ] as const;
 
-function relatedValues(ed: NcrEditData | null, status?: string): string[] {
-	if (!ed) return RELATED_LABELS.map((label) => (label === "Status" ? (status ?? "") : ""));
+function relatedValues(
+	ed: NcrEditData | null,
+	status?: string,
+	isArchived?: boolean,
+): string[] {
+	const archived =
+		isArchived === undefined ? "" : isArchived ? "Yes" : "No";
+	if (!ed)
+		return RELATED_LABELS.map((label) =>
+			label === "Status"
+				? (status ?? "")
+				: label === "Archived"
+					? archived
+					: "",
+		);
 	const inspector = [ed.inspector.first, ed.inspector.middle, ed.inspector.last]
 		.filter(Boolean)
 		.join(" ");
@@ -225,8 +239,10 @@ function relatedValues(ed: NcrEditData | null, status?: string): string[] {
 		inspector,
 		ed.links.join("\n"),
 		ed.existingFiles.join("\n"),
+		archived,
 	];
 }
+
 
 const REPORT_LABELS = [
 	"NCR number",
@@ -239,11 +255,14 @@ const REPORT_LABELS = [
 	"Description of defect",
 	"Marked nonconforming",
 	"Reinspectable",
+	"Disposition",
+	"Engineering",
+	"Purchasing",
 ] as const;
 /** Rows 3 to 8 come from the QA section and fill in once the NCR has loaded. */
 const needsDetails = (i: number) => i >= 3 && i <= 8;
 
-function reportValues(data: NcrRecord, ed: NcrEditData | null): unknown[] {
+function reportValues(data: NcrListRow, ed: NcrEditData | null): unknown[] {
 	return [
 		data.ncr_number,
 		data.ncr_created_at,
@@ -255,13 +274,15 @@ function reportValues(data: NcrRecord, ed: NcrEditData | null): unknown[] {
 		ed?.defectDescription,
 		ed?.isNonconforming,
 		data.ncr_is_reinspectable,
+		data.disposition_label,
+		data.has_engineering,
+		data.has_purchasing,
 	];
 }
 
 export function NcrDetailsModal({
 	open,
 	onClose,
-	onPrint,
 	data,
 	status,
 	onEdit,
@@ -308,7 +329,7 @@ export function NcrDetailsModal({
 	const number = data?.ncr_number;
 	const isDraft = !!data && isDraftRecord(data);
 	const settled = related !== null && related.id === data?.ncr_id;
-	const values = relatedValues(settled ? related.ed : null, status);
+	const values = relatedValues(settled ? related.ed : null, status, data?.is_archived);
 	const reportRows = data ? reportValues(data, settled ? related.ed : null) : [];
 
 	return (
@@ -356,10 +377,10 @@ export function NcrDetailsModal({
 											className={`ncr-details-row${settled && shown.length > 60 ? " wide" : ""}`}
 										>
 											<dt>{label}</dt>
-											{settled || (label === "Status" && status) ? (
-												<dd>{shown}</dd>
-											) : (
-												<dd className="ncr-skeleton" aria-hidden="true" />
+											{settled || (label === "Status" && status) || label === "Archived" ? (
+ 												<dd>{shown}</dd>
+ 											) : (
+ 												<dd className="ncr-skeleton" aria-hidden="true" />
 											)}
 										</div>
 									);
@@ -393,7 +414,6 @@ export function NcrDetailsModal({
 						</section>
 
 						<div className="ncr-details-actions">
-							<Button text="Print" aria="Print" onClick={onPrint} />
 							{onRestore && (
 								<Button
 									text={restoring ? "Restoring..." : "Restore / Make Live"}
