@@ -5,6 +5,7 @@ import Button from "./button";
 import { isDraftRecord, loadNcrForEdit, type NcrEditData, type NcrRecord } from "./ncrService";
 import NcrForm from "./submitForm";
 import { useCurrentUser } from "./currentUser";
+import crossfireLogo from "../assets/crossfireLogo.svg";
 
 export interface NcrModalProps {
 	open: boolean;
@@ -124,6 +125,77 @@ function formatValue(value: unknown): string {
 	}
 	if (typeof value === "object") return JSON.stringify(value);
 	return String(value);
+}
+
+function escapeHtml(text: string): string {
+	return text
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;");
+}
+
+function printRow(label: string, value: string): string {
+	const wide = value.length > 60 ? " wide" : "";
+	return `<div class="row${wide}"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`;
+}
+
+function printNcrDetails(args: {
+	number: unknown;
+	product: string;
+	isDraft: boolean;
+	related: [string, string][];
+	report: [string, string][];
+}) {
+	const title = args.number ? `${args.number}` : "NCR details";
+	const printedOn = new Date().toLocaleString();
+	const logoUrl = new URL(crossfireLogo, window.location.href).href;
+	const win = window.open("", "_blank");
+	if (!win) return;
+	win.document.write(`<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(title)}</title>
+<style>
+	@page { margin: 1.5rem; }
+	body { font-family: system-ui, sans-serif; margin: 2rem; color: #111; }
+	header { display: flex; justify-content: space-between; align-items: flex-start; gap: 2rem; border-bottom: 2px solid #111; padding-bottom: 1rem; }
+	h1 { font-size: 1.5rem; margin: 0 0 0.5rem; }
+	.product, .printed { margin: 0.25rem 0; }
+	.company { text-align: right; }
+	.company img { width: 64px; height: 64px; }
+	.company-name { font-size: 1.25rem; font-weight: 700; margin-top: 0.25rem; }
+	h2 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; border-bottom: 1px solid #ccc; padding-bottom: 0.25rem; }
+	.draft { border: 1px solid #999; padding: 0.5rem 0.75rem; }
+	dl { margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem 1.5rem; }
+	.row { min-width: 0; page-break-inside: avoid; break-inside: avoid; }
+	.row.wide { grid-column: 1 / -1; }
+	dt { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; }
+	dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<header>
+	<div class="header-info">
+		<h1>${escapeHtml(title)}</h1>
+		${args.product && args.product !== "—" ? `<p class="product"><strong>Product:</strong> ${escapeHtml(args.product)}</p>` : ""}
+		<p class="printed"><strong>Printed:</strong> ${escapeHtml(printedOn)}</p>
+	</div>
+	<div class="company">
+		<img src="${escapeHtml(logoUrl)}" alt="Crossfire logo">
+		<div class="company-name">Crossfire</div>
+	</div>
+</header>
+${args.isDraft ? `<p class="draft">This NCR is a draft. It has not been submitted yet, and some details below fill in once it is.</p>` : ""}
+<h2>Related details</h2>
+<dl>${args.related.map(([label, value]) => printRow(label, value)).join("")}</dl>
+<h2>Report</h2>
+<dl>${args.report.map(([label, value]) => printRow(label, value)).join("")}</dl>
+<script>window.onload = () => window.print();</script>
+</body>
+</html>`);
+	win.document.close();
 }
 
 const RELATED_LABELS = [
@@ -336,6 +408,30 @@ export function NcrDetailsModal({
 									onClick={() => onEdit(data)}
 								/>
 							)}
+							<Button
+								text="Print / PDF"
+								aria={`Print NCR ${number ?? ""}`.trim()}
+								enabled={settled}
+								onClick={() =>
+									printNcrDetails({
+										number,
+										product: formatValue(values[2]),
+										isDraft,
+										related: RELATED_LABELS.map(
+											(label, i): [string, string] => [
+												label,
+												formatValue(values[i]),
+											],
+										),
+										report: REPORT_LABELS.map(
+											(label, i): [string, string] => [
+												label,
+												formatValue(reportRows[i]),
+											],
+										),
+									})
+								}
+							/>
 							<Button text="Close" aria="Close" onClick={onClose} />
 						</div>
 					</div>
