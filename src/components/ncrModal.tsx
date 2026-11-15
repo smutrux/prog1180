@@ -147,7 +147,7 @@ function printNcrDetails(args: {
 	related: [string, string][];
 	report: [string, string][];
 }) {
-	const title = args.number ? `${args.number}` : "NCR details";
+	const title = args.number ? `NCR ${args.number}` : "NCR details";
 	const printedOn = new Date().toLocaleString();
 	const logoUrl = new URL(crossfireLogo, window.location.href).href;
 	const win = window.open("", "_blank");
