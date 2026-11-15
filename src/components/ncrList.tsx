@@ -92,8 +92,9 @@ function draftRow(r: NcrListRow): NcrRow {
 	const process = str("process", "processType");
 	const chosen = str("process", "supplier");
 	const supplier =
-		(chosen === NEW_SUPPLIER_CHOICE ? str("process", "newSupplierName") : chosen) ||
-		(process ? IN_HOUSE_LABEL : "-");
+		(chosen === NEW_SUPPLIER_CHOICE
+			? str("process", "newSupplierName")
+			: chosen) || (process ? IN_HOUSE_LABEL : "-");
 	return {
 		record: r,
 		ncrNumber: r.ncr_number,
@@ -109,7 +110,8 @@ function draftRow(r: NcrListRow): NcrRow {
 
 function toRow(r: NcrListRow): NcrRow {
 	if (r.is_draft) return draftRow(r);
-	const num = (n: number | null) => (n === null || n === undefined ? "-" : String(n));
+	const num = (n: number | null) =>
+		n === null || n === undefined ? "-" : String(n);
 	const supplier = (r.supplier_name ?? "").trim();
 	return {
 		record: r,
@@ -147,7 +149,7 @@ async function loadSupplierNames(): Promise<string[]> {
 		.select("supplier_name")
 		.order("supplier_name");
 	if (error) throw new Error(error.message);
-	return data.map((r: { supplier_name: string; }) =>
+	return data.map((r: { supplier_name: string }) =>
 		r.supplier_name.trim().toLowerCase() === IN_HOUSE_SUPPLIER.toLowerCase()
 			? IN_HOUSE_LABEL
 			: r.supplier_name.trim(),
@@ -171,14 +173,20 @@ async function fetchNcrPage(
 	else if (filters.status !== ALL_STATUSES)
 		q = q.eq("is_draft", false).eq("status_label", filters.status);
 
-	const days = DATE_OPTIONS.find((d) => d.label === filters.dateRange)?.days ?? null;
+	const days =
+		DATE_OPTIONS.find((d) => d.label === filters.dateRange)?.days ?? null;
 	if (days !== null)
-		q = q.gte("ncr_created_at", new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
+		q = q.gte(
+			"ncr_created_at",
+			new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString(),
+		);
 
 	if (filters.supplier !== ALL_SUPPLIERS)
 		q = q.eq(
 			"supplier_name",
-			filters.supplier === IN_HOUSE_LABEL ? IN_HOUSE_SUPPLIER : filters.supplier,
+			filters.supplier === IN_HOUSE_LABEL
+				? IN_HOUSE_SUPPLIER
+				: filters.supplier,
 		);
 
 	const term = filters.search.trim();
@@ -199,7 +207,10 @@ async function fetchNcrPage(
 
 	const rows = (data as NcrListRow[]).map(toRow);
 	if (rows.length > 0 && rows.some((r) => !r.date))
-		console.warn("NCRs: some rows have no created date.", rows.find((r) => !r.date)?.record);
+		console.warn(
+			"NCRs: some rows have no created date.",
+			rows.find((r) => !r.date)?.record,
+		);
 	return { rows, total: count ?? rows.length };
 }
 
@@ -323,7 +334,7 @@ const Ncrs = ({
 }: NcrsProps) => {
 	const me = useCurrentUser();
 	const editable = allowEdit && me.status === "ready" && !me.isPending;
-	
+
 	const defaultDate = simple || show === "archived" ? ALL_TIME : DEFAULT_DATE;
 
 	const [data, setData] = useState<PageResult>({ rows: [], total: 0 });
@@ -514,8 +525,7 @@ const Ncrs = ({
 	const firstShown = data.total === 0 ? 0 : page * pageSize + 1;
 	const lastShown = Math.min(data.total, page * pageSize + data.rows.length);
 
-	const showMessage =
-		loadState === "error" || data.rows.length === 0;
+	const showMessage = loadState === "error" || data.rows.length === 0;
 	const unfiltered =
 		simple ||
 		(search.trim() === "" &&
@@ -531,7 +541,11 @@ const Ncrs = ({
 	return (
 		<div className="ncrs">
 			{!simple && (
-				<section className="ncrs-filters" role="search" aria-label={`Search and filter: ${label}`}>
+				<section
+					className="ncrs-filters"
+					role="search"
+					aria-label={`Search and filter: ${label}`}
+				>
 					<div className="ncrs-search">
 						<SearchIcon />
 						<input
@@ -543,14 +557,24 @@ const Ncrs = ({
 						/>
 					</div>
 					<div className="ncrs-filter-group">
-						<FilterPill label="Status" value={status} options={statusOptions} onChange={setStatus} />
+						<FilterPill
+							label="Status"
+							value={status}
+							options={statusOptions}
+							onChange={setStatus}
+						/>
 						<FilterPill
 							label="Date"
 							value={dateRange}
 							options={DATE_OPTIONS.map((d) => d.label)}
 							onChange={setDateChoice}
 						/>
-						<FilterPill label="Supplier" value={supplier} options={supplierOptions} onChange={setSupplier} />
+						<FilterPill
+							label="Supplier"
+							value={supplier}
+							options={supplierOptions}
+							onChange={setSupplier}
+						/>
 						<button type="button" className="ncrs-clear" onClick={clearFilters}>
 							Clear filters
 						</button>
@@ -558,16 +582,27 @@ const Ncrs = ({
 				</section>
 			)}
 
-			<div className="ncrs-scroll" role="region" tabIndex={0} aria-label={`Scrollable area: ${label}`}>
-				<div className="ncrs-table" role="table" aria-label={label} aria-busy={loadState === "loading"}>
+			<div
+				className="ncrs-scroll"
+				role="region"
+				tabIndex={0}
+				aria-label={`Scrollable area: ${label}`}
+			>
+				<div
+					className="ncrs-table"
+					role="table"
+					aria-label={label}
+					aria-busy={loadState === "loading"}
+				>
 					<div role="rowgroup">
 						<div className="ncrs-row ncrs-head" role="row">
 							<span role="columnheader">NCR number</span>
 							<span role="columnheader">Supplier name</span>
 							<span role="columnheader">Product name</span>
-							<span role="columnheader" className="ncrs-defect">Description of defect</span>
+							<span role="columnheader" className="ncrs-defect">
+								Description of defect
+							</span>
 							<span role="columnheader">Status</span>
-							
 						</div>
 					</div>
 
@@ -593,16 +628,20 @@ const Ncrs = ({
 											{n.ncrNumber}
 										</button>
 									</span>
-									
+
 									<span role="cell" className="ncrs-strong truncate-this">
 										{n.supplier}
 									</span>
 									<span role="cell" className="ncrs-strong truncate-this">
 										{n.product}
 									</span>
-									<span role="cell" className="truncate-this ncrs-defect">{n.defect}</span>
+									<span role="cell" className="truncate-this ncrs-defect">
+										{n.defect}
+									</span>
 									<span role="cell">
-										<span className={`ncrs-status ncrs-status-${statusTone(n.status)}`}>
+										<span
+											className={`ncrs-status ncrs-status-${statusTone(n.status)}`}
+										>
 											<span className="ncrs-dot" aria-hidden="true" />
 											{n.status || "-"}
 										</span>
@@ -613,7 +652,7 @@ const Ncrs = ({
 											className="ncrs-edit-col"
 											onClick={(e) => e.stopPropagation()}
 										>
-											<Button												
+											<Button
 												text={isDraftRecord(n.record) ? "Continue" : "Edit"}
 												aria={`${isDraftRecord(n.record) ? "Continue" : "Edit"} NCR ${n.ncrNumber}`}
 												onClick={() => setEditing(n.record)}
@@ -625,12 +664,25 @@ const Ncrs = ({
 
 						{showMessage && (
 							<div role="row">
-								<div className="ncrs-empty" role="cell" aria-colspan={editable ? 9 : 8}>
-									{loadState === "loading" && <p role="status">Loading NCRs...</p>}
+								<div
+									className="ncrs-empty"
+									role="cell"
+									aria-colspan={editable ? 9 : 8}
+								>
+									{loadState === "loading" && (
+										<p role="status">Loading NCRs...</p>
+									)}
 									{loadState === "error" && (
 										<>
-											<p role="alert">The NCRs could not be loaded. {loadError}</p>
-											<Button text="Try again" aria="Try again" icon={FaSyncAlt} onClick={resetLoaders} />
+											<p role="alert">
+												The NCRs could not be loaded. {loadError}
+											</p>
+											<Button
+												text="Try again"
+												aria="Try again"
+												icon={FaSyncAlt}
+												onClick={resetLoaders}
+											/>
 										</>
 									)}
 									{loadState === "ready" && <p>{emptyText}</p>}
@@ -644,7 +696,8 @@ const Ncrs = ({
 			{loadState !== "error" && (
 				<nav className="ncrs-pager" aria-label={`Pagination: ${label}`}>
 					<p className="ncrs-pager-info" role="status">
-						Showing <strong>{firstShown}</strong> to <strong>{lastShown}</strong> of <strong>{data.total}</strong>{" "}
+						Showing <strong>{firstShown}</strong> to{" "}
+						<strong>{lastShown}</strong> of <strong>{data.total}</strong>{" "}
 						{data.total === 1 ? "report" : "reports"}
 						{updating && ". Updating results."}
 					</p>
@@ -664,7 +717,11 @@ const Ncrs = ({
 
 						{pageWindow(page, pageCount).map((p, i) =>
 							p === "…" ? (
-								<span key={`gap-${i}`} className="ncrs-page-gap" aria-hidden="true">
+								<span
+									key={`gap-${i}`}
+									className="ncrs-page-gap"
+									aria-hidden="true"
+								>
 									…
 								</span>
 							) : (
@@ -704,18 +761,24 @@ const Ncrs = ({
 				data={viewing?.record}
 				status={viewing?.status}
 				onClose={() => setViewing(null)}
-				onEdit={editable && viewing && !isArchived(viewing.status)
-					? (row) => {
-						setViewing(null);
-						setEditing(row);
-					}
-					: undefined}
-				onRestore={editable && viewing && isArchived(viewing.status)
-					? (row) => void restoreNcr(row)
-					: undefined}
-				restoring={restoring} onPrint={function (): void {
+				onEdit={
+					editable && viewing && !isArchived(viewing.status)
+						? (row) => {
+								setViewing(null);
+								setEditing(row);
+							}
+						: undefined
+				}
+				onRestore={
+					editable && viewing && isArchived(viewing.status)
+						? (row) => void restoreNcr(row)
+						: undefined
+				}
+				restoring={restoring}
+				onPrint={function (): void {
 					throw new Error("Function not implemented.");
-				} }			/>
+				}}
+			/>
 
 			{editable && (
 				<>
@@ -737,8 +800,10 @@ const Ncrs = ({
 					--error-line: color-mix(in srgb, var(--error) 45%, transparent);
 					--success-bg: color-mix(in srgb, var(--success) 10%, transparent);
 					--success-line: color-mix(in srgb, var(--success) 45%, transparent);
-					--cols: minmax(5rem, 6rem) minmax(6rem, 12rem) minmax(6rem, 12rem) minmax(10rem, 1fr) 6rem minmax(4rem, 7rem);
-					--cols-no-defect: minmax(5rem, 6rem) minmax(6rem, 12rem) minmax(6rem, 1fr) 6rem minmax(4rem, 7rem);
+					--cols: minmax(5rem, 6rem) minmax(6rem, 12rem) minmax(6rem, 12rem)
+						minmax(10rem, 1fr) 6rem minmax(4rem, 7rem);
+					--cols-no-defect: minmax(5rem, 6rem) minmax(6rem, 12rem)
+						minmax(6rem, 1fr) 6rem minmax(4rem, 7rem);
 
 					color: var(--text-h);
 					font-size: 0.9375rem;
@@ -918,9 +983,9 @@ const Ncrs = ({
 
 				.ncrs-edit-col {
 					justify-self: end;
-					text-align: right;					
+					text-align: right;
 				}
-				
+
 				.ncrs-edit-col button {
 					width: 6.5rem;
 				}
@@ -1050,14 +1115,14 @@ const Ncrs = ({
 					color: var(--text);
 				}
 
-				@media (max-width: 40rem) {	
+				@media (max-width: 40rem) {
 					.ncrs-search {
 						max-width: none;
 					}
 
 					.ncrs-pager-controls {
-    					width: 100%;
-    					justify-content: space-between;
+						width: 100%;
+						justify-content: space-between;
 					}
 
 					.ncrs-table {
@@ -1071,7 +1136,6 @@ const Ncrs = ({
 					.ncrs-row {
 						grid-template-columns: var(--cols-no-defect);
 					}
-					
 				}
 			`}</style>
 		</div>

@@ -36,6 +36,16 @@ export class ConstraintError extends Error {
 
 const ORDER_NUMBER = /^\d{1,18}$/;
 
+/** The longest a department's free-text box may be. */
+export const DEPARTMENT_TEXT_MAX_LENGTH = 2000;
+/** Control characters the database cannot store. Has the g flag, so use it with replace, not test. */
+export const INVALID_TEXT_CONTROLS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+/** The same characters without the g flag, safe to call test on again and again. */
+const HAS_INVALID_TEXT_CONTROLS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
+
+/** True when an operations disposition label means rework or repair. Those need written instructions. */
+export const isReworkDisposition = (label: string) => /rework|repair/i.test(label);
+
 /** What validateSubmission needs to know from the service. */
 export interface SubmissionRules {
 	/** The process names the NCR may be saved with. */
@@ -96,6 +106,22 @@ export function validateSubmission(
 	const defect = s.defectDescription.trim();
 	if (!defect) add("defectDescription", "Describe the defect.");
 	else if (defect.length > 400) add("defectDescription", "Use 400 characters or fewer.");
+
+	const departmentTextFields = [
+		["engineeringInstructions", s.engineeringInstructions],
+		["operationsInstructions", s.operationsInstructions],
+		["procurementDelayCommunication", s.procurementDelayCommunication],
+		["qualityFinalComments", s.qualityFinalComments],
+	] as const;
+	for (const [field, value] of departmentTextFields) {
+		if (value.length > DEPARTMENT_TEXT_MAX_LENGTH)
+			add(field, `Use ${DEPARTMENT_TEXT_MAX_LENGTH} characters or fewer.`);
+		if (HAS_INVALID_TEXT_CONTROLS.test(value))
+			add(field, "Remove unsupported control characters.");
+	}
+
+	if (isReworkDisposition(s.operationsDisposition) && !s.operationsInstructions.trim())
+		add("operationsInstructions", "Enter the rework or repair instructions.");
 
 	if (s.inspector.kind === "new") {
 		const { first, middle, last } = s.inspector;
