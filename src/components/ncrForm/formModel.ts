@@ -48,7 +48,12 @@ export interface FormValues {
 	engineering: {
 		disposition: string;
 		instructions: string;
-		comments: string;
+		drawingUpdateRequired: YesNo;
+		notificationRequired: YesNo;
+		originalRev: string;
+		updatedRev: string;
+		/** YYYY-MM-DD, or empty. */
+		revisionDate: string;
 		representative: string;
 		dateCompleted: string;
 	};
@@ -59,7 +64,19 @@ export interface FormValues {
 		representative: string;
 		dateCompleted: string;
 	};
-	procurement: { delayCommunication: string };
+	procurement: {
+		delayCommunication: string;
+		returnRequested: YesNo;
+		rmaNumber: string;
+		carrierName: string;
+		carrierAccountNumber: string;
+		disposeOnSite: YesNo;
+		/** YYYY-MM-DD, or empty. */
+		replacementDate: string;
+		sapReturnCompleted: YesNo;
+		creditExpected: YesNo;
+		billSupplier: YesNo;
+	};
 	qualityFinalReview: {
 		inspectionResult: string;
 		comments: string;
@@ -174,7 +191,11 @@ export const makeDefaults = (ncrNumber: string): FormValues => ({
 	engineering: {
 		disposition: "",
 		instructions: "",
-		comments: "",
+		drawingUpdateRequired: "",
+		notificationRequired: "",
+		originalRev: "",
+		updatedRev: "",
+		revisionDate: "",
 		representative: "",
 		dateCompleted: "",
 	},
@@ -185,7 +206,18 @@ export const makeDefaults = (ncrNumber: string): FormValues => ({
 		representative: "",
 		dateCompleted: "",
 	},
-	procurement: { delayCommunication: "" },
+	procurement: {
+		delayCommunication: "",
+		returnRequested: "",
+		rmaNumber: "",
+		carrierName: "",
+		carrierAccountNumber: "",
+		disposeOnSite: "no",
+		replacementDate: "",
+		sapReturnCompleted: "no",
+		creditExpected: "no",
+		billSupplier: "no",
+	},
 	qualityFinalReview: {
 		inspectionResult: "",
 		comments: "",
@@ -242,6 +274,10 @@ const processTypeOf = (label: string): ProcessType =>
 			? "wip"
 			: "";
 
+/** A stored true, false or null as a Yes/No answer. Null is unanswered. */
+const yesNoOf = (b: boolean | null | undefined): YesNo =>
+	b === null || b === undefined ? "" : b ? "yes" : "no";
+
 const dateForInput = (value: string | null | undefined) =>
 	typeof value === "string" ? value.slice(0, 10) : "";
 
@@ -278,7 +314,11 @@ export function toFormValues(ed: NcrEditData): FormValues {
 		engineering: {
 			disposition: ed.engineeringDisposition ?? "",
 			instructions: ed.engineeringInstructions ?? "",
-			comments: ed.engineeringComments ?? "",
+			drawingUpdateRequired: yesNoOf(ed.engineeringDrawingUpdateRequired),
+			notificationRequired: yesNoOf(ed.engineeringNotificationRequired),
+			originalRev: ed.engineeringOriginalRev ?? "",
+			updatedRev: ed.engineeringUpdatedRev ?? "",
+			revisionDate: dateForInput(ed.engineeringRevisionDate),
 			representative: ed.engineeringRepresentative ?? "",
 			dateCompleted: dateForInput(ed.engineeringDateCompleted),
 		},
@@ -289,7 +329,18 @@ export function toFormValues(ed: NcrEditData): FormValues {
 			representative: ed.operationsRepresentative ?? "",
 			dateCompleted: dateForInput(ed.operationsDateCompleted),
 		},
-		procurement: { delayCommunication: ed.procurementDelayCommunication ?? "" },
+		procurement: {
+			delayCommunication: ed.procurementDelayCommunication ?? "",
+			returnRequested: yesNoOf(ed.procurementReturnRequested),
+			rmaNumber: ed.procurementRmaNumber ?? "",
+			carrierName: ed.procurementCarrierName ?? "",
+			carrierAccountNumber: ed.procurementCarrierAccountNumber ?? "",
+			disposeOnSite: yesNoOf(ed.procurementDisposeOnSite ?? false),
+			replacementDate: dateForInput(ed.procurementReplacementDate),
+			sapReturnCompleted: yesNoOf(ed.procurementSapReturnCompleted ?? false),
+			creditExpected: yesNoOf(ed.procurementCreditExpected ?? false),
+			billSupplier: yesNoOf(ed.procurementBillSupplier ?? false),
+		},
 		qualityFinalReview: {
 			inspectionResult: ed.qualityFinalInspectionResult ?? "",
 			comments: ed.qualityFinalComments ?? "",
@@ -350,16 +401,21 @@ export function todayLocal() {
 	return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
 }
 
+/** Error keys that belong to a Yes/No pair. The first radio of the pair is "<key>-yes". */
+const YES_NO_KEYS = new Set([
+	"isNonconforming",
+	"engineeringRequired",
+	"engineeringDrawingUpdate",
+	"engineeringNotification",
+	"qualityAcceptanceConfirmed",
+]);
+
 export const focusIdFor = (key: string) =>
 	key === "processType"
 		? "processType-supplier"
-		: key === "isNonconforming"
-			? "isNonconforming-yes"
-			: key === "engineeringRequired"
-				? "engineeringRequired-yes"
-				: key === "qualityAcceptanceConfirmed"
-					? "qualityAcceptanceConfirmed-yes"
-					: key;
+		: YES_NO_KEYS.has(key)
+			? `${key}-yes`
+			: key;
 
 export const formatSize = (bytes: number) =>
 	bytes < 1024 * 1024

@@ -24,8 +24,15 @@ const DIGIT_MSG =
 
 const filled = (...parts: string[]) => parts.some((x) => x.trim() !== "");
 
+/** True for a real calendar date written as YYYY-MM-DD. */
+const validDate = (s: string) => {
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+	const d = new Date(`${s}T00:00:00Z`);
+	return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+};
+
 /**
- * Fills in the hidden "who and when" fields of Operations and Quality Final Review
+ * Fills in the hidden "who and when" fields of Engineering, Operations and Quality Final Review
  * with the signed-in person and today. A section is stamped when it has content and
  * either it was just saved or changed, or it has never been stamped. A section
  * nobody touched keeps its earlier stamp.
@@ -38,6 +45,16 @@ export function stampSections(
 ): FormValues {
 	if (!name) return v;
 	let next = v;
+	const g = v.engineering;
+	if (
+		filled(g.disposition, g.instructions, g.originalRev, g.updatedRev) &&
+		(touched.has("engineering") || !g.representative || !g.dateCompleted)
+	) {
+		next = {
+			...next,
+			engineering: { ...g, representative: name, dateCompleted: today },
+		};
+	}
 	const o = v.operations;
 	if (
 		filled(o.disposition, o.instructions, o.comments) &&
@@ -141,12 +158,36 @@ export function validate(
 			if (!d.engineeringRequired) e.engineeringRequired = "Choose Yes or No.";
 			break;
 		}
-		case "engineering":
-			validateDepartmentTextbox(
-				"engineeringInstructions",
-				v.engineering.instructions,
+		case "engineering": {
+			const g = v.engineering;
+			validateDepartmentTextbox("engineeringInstructions", g.instructions);
+			validateDepartmentTextbox("engineeringOriginalRev", g.originalRev);
+			validateDepartmentTextbox("engineeringUpdatedRev", g.updatedRev);
+			if (g.revisionDate && !validDate(g.revisionDate))
+				e.engineeringRevisionDate = "Enter a real date as YYYY-MM-DD.";
+			// Engineering is stored as one row, so once any answer is given the required ones must be there too.
+			const started = filled(
+				g.disposition,
+				g.instructions,
+				g.drawingUpdateRequired,
+				g.notificationRequired,
+				g.originalRev,
+				g.updatedRev,
+				g.revisionDate,
 			);
+			if (started) {
+				if (!g.disposition)
+					e.engineeringDisposition = "Choose the engineering disposition.";
+				if (!g.drawingUpdateRequired)
+					e.engineeringDrawingUpdate = "Choose Yes or No.";
+				if (!g.notificationRequired)
+					e.engineeringNotification = "Choose Yes or No.";
+				if (g.drawingUpdateRequired === "yes" && blank(g.updatedRev))
+					e.engineeringUpdatedRev =
+						"Enter the updated revision number. A drawing update needs one.";
+			}
 			break;
+		}
 		case "operations":
 			if (
 				isReworkDisposition(v.operations.disposition) &&
@@ -161,12 +202,22 @@ export function validate(
 			}
 			validateDepartmentTextbox("operationsComments", v.operations.comments);
 			break;
-		case "procurement":
+		case "procurement": {
+			const g = v.procurement;
 			validateDepartmentTextbox(
 				"procurementDelayCommunication",
-				v.procurement.delayCommunication,
+				g.delayCommunication,
 			);
+			validateDepartmentTextbox("procurementRmaNumber", g.rmaNumber);
+			validateDepartmentTextbox("procurementCarrierName", g.carrierName);
+			validateDepartmentTextbox(
+				"procurementCarrierAccountNumber",
+				g.carrierAccountNumber,
+			);
+			if (g.replacementDate && !validDate(g.replacementDate))
+				e.procurementReplacementDate = "Enter a real date as YYYY-MM-DD.";
 			break;
+		}
 		case "qualityFinalReview":
 			validateDepartmentTextbox(
 				"qualityFinalComments",

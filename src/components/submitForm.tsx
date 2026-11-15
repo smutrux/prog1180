@@ -10,7 +10,9 @@ import {
 	nextNcrNumber,
 	parseDraft,
 	saveDraft,
+	saveEngineering,
 	saveNcrSection,
+	saveProcurement,
 	submitNcr,
 	updateNcr,
 	type FormLookups,
@@ -53,7 +55,12 @@ import {
 	savedAll,
 	writeSection,
 } from "./ncrForm/formStorage";
-import { buildSubmission, reviewGroups } from "./ncrForm/formSubmission";
+import {
+	buildSubmission,
+	engineeringInput,
+	procurementInput,
+	reviewGroups,
+} from "./ncrForm/formSubmission";
 import { NCR_NUMBER, stampSections, validate } from "./ncrForm/formValidation";
 
 export interface NcrFormProps {
@@ -98,6 +105,7 @@ export default function NcrForm({
 		problemTypes: [],
 		inspectors: [],
 		dispositions: [],
+		dispositionOptions: [],
 	});
 	const [lookupState, setLookupState] = useState<"loading" | "ready" | "error">(
 		"loading",
@@ -411,7 +419,10 @@ export default function NcrForm({
 		const id = current.id;
 		const found = validate(id, values, files, false);
 		if (Object.keys(found).length) return showErrors(found);
-		const needsStamp = id === "operations" || id === "qualityFinalReview";
+		const needsStamp =
+			id === "engineering" ||
+			id === "operations" ||
+			id === "qualityFinalReview";
 		if (needsStamp && me.status !== "ready") {
 			setStatus(
 				"Your account is not loaded yet. Reload the page and try again.",
@@ -422,6 +433,7 @@ export default function NcrForm({
 		const sectionData = stamped[id];
 		let savedToDatabase = false;
 		const isDatabaseSection =
+			id === "engineering" ||
 			id === "operations" ||
 			id === "procurement" ||
 			id === "qualityFinalReview";
@@ -437,7 +449,17 @@ export default function NcrForm({
 					return;
 				}
 				try {
-					await saveNcrSection(ncrId, id, sectionData, personId, step + 1);
+					if (id === "engineering") {
+						// Engineering is its own table. It is only written once it is complete.
+						const row = engineeringInput(stamped, lookups, personId);
+						if (row) await saveEngineering(ncrId, row);
+					} else {
+						await saveNcrSection(ncrId, id, sectionData, personId, step + 1);
+						if (id === "procurement") {
+							const row = procurementInput(stamped, personId);
+							if (row) await saveProcurement(ncrId, row);
+						}
+					}
 					savedToDatabase = true;
 				} catch (err) {
 					setStatus(
@@ -497,6 +519,9 @@ export default function NcrForm({
 				lookups,
 				edit ? (editData?.statusId ?? null) : null,
 				personId,
+				dirtyIds.has("engineering") || !editData?.engineeringPersonId
+					? personId
+					: editData.engineeringPersonId,
 			);
 			const result =
 				edit && editData
@@ -789,7 +814,10 @@ export default function NcrForm({
 				)}
 
 				{current.id === "engineering" && (
-					<EngineeringSection {...bind("engineering")} />
+					<EngineeringSection
+						{...bind("engineering")}
+						dispositions={lookups.dispositions}
+					/>
 				)}
 
 				{current.id === "operations" && (

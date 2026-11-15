@@ -2,18 +2,22 @@ import { isReworkDisposition } from "../ncrConstraints";
 import {
 	PROCESS_LABELS,
 	defaultStatus,
+	type EngineeringInput,
 	type FormLookups,
 	type InspectorOption,
 	type NcrSubmission,
+	type ProcurementInput,
 } from "../ncrService";
 import {
 	ADD_INSPECTOR,
 	ADD_SUPPLIER,
 	fullName,
 	sanitizeTextbox,
+	todayLocal,
 	type FormValues,
 	type ProcessType,
 	type SectionId,
+	type YesNo,
 } from "./formModel";
 
 /** One block of the review screen: a section's title and its label and value rows. */
@@ -27,6 +31,81 @@ const supplierOf = (p: FormValues["process"]) =>
 	p.supplier === ADD_SUPPLIER ? p.newSupplierName.trim() : p.supplier.trim();
 
 const processLabel = (t: ProcessType) => (t ? PROCESS_LABELS[t] : "");
+
+const yesNoText = (x: YesNo) => (x === "yes" ? "Yes" : x === "no" ? "No" : "");
+
+/**
+ * The engineering row to save, or null when there is nothing to save yet.
+ * The database needs a disposition, both Yes/No answers, a date and the
+ * engineer, so a partly filled section is left out until those exist.
+ */
+export function engineeringInput(
+	v: FormValues,
+	l: FormLookups,
+	engineerPersonId: number | null,
+): EngineeringInput | null {
+	const g = v.engineering;
+	if (v.defect.engineeringRequired !== "yes" || engineerPersonId === null)
+		return null;
+	const disposition = l.dispositionOptions.find(
+		(d) => d.label === g.disposition.trim(),
+	);
+	if (!disposition || !g.drawingUpdateRequired || !g.notificationRequired)
+		return null;
+	return {
+		dispositionId: disposition.id,
+		steps: sanitizeTextbox(g.instructions).trim(),
+		drawingUpdateRequired: g.drawingUpdateRequired === "yes",
+		notificationRequired: g.notificationRequired === "yes",
+		originalRev: g.originalRev.trim(),
+		updatedRev: g.updatedRev.trim(),
+		revisionDate: g.revisionDate,
+		engineerPersonId,
+		date: g.dateCompleted || todayLocal(),
+	};
+}
+
+/**
+ * The procurement row to save, or null when every answer is still blank or
+ * "No", so an untouched section never writes an empty row over saved data.
+ */
+export function procurementInput(
+	v: FormValues,
+	updatedByPersonId: number | null,
+): ProcurementInput | null {
+	const g = v.procurement;
+	const delay = sanitizeTextbox(g.delayCommunication).trim();
+	const started =
+		delay !== "" ||
+		g.returnRequested !== "" ||
+		[
+			g.rmaNumber,
+			g.carrierName,
+			g.carrierAccountNumber,
+			g.replacementDate,
+		].some((x) => x.trim() !== "") ||
+		[
+			g.disposeOnSite,
+			g.sapReturnCompleted,
+			g.creditExpected,
+			g.billSupplier,
+		].some((x) => x === "yes");
+	if (!started || updatedByPersonId === null) return null;
+	return {
+		delayCommunication: delay,
+		returnRequested:
+			g.returnRequested === "" ? null : g.returnRequested === "yes",
+		rmaNumber: g.rmaNumber.trim(),
+		carrierName: g.carrierName.trim(),
+		carrierAccountNumber: g.carrierAccountNumber.trim(),
+		disposeOnSite: g.disposeOnSite === "yes",
+		replacementDate: g.replacementDate,
+		sapReturnCompleted: g.sapReturnCompleted === "yes",
+		creditExpected: g.creditExpected === "yes",
+		billSupplier: g.billSupplier === "yes",
+		updatedByPersonId,
+	};
+}
 
 export function reviewGroups(
 	v: FormValues,
@@ -116,7 +195,23 @@ export function reviewGroups(
 		{
 			id: "engineering" as SectionId,
 			title: "Engineering Disposition",
-			rows: [["Engineering instructions", v.engineering.instructions]],
+			rows: [
+				["Engineering disposition", v.engineering.disposition],
+				["Engineering instructions", v.engineering.instructions],
+				[
+					"Drawing update required",
+					yesNoText(v.engineering.drawingUpdateRequired),
+				],
+				[
+					"Notification required",
+					yesNoText(v.engineering.notificationRequired),
+				],
+				["Original revision", v.engineering.originalRev],
+				["Updated revision", v.engineering.updatedRev],
+				["Revision date", v.engineering.revisionDate],
+				["Engineering representative", v.engineering.representative],
+				["Engineering date completed", v.engineering.dateCompleted],
+			],
 		},
 		{
 			id: "operations" as SectionId,
@@ -139,6 +234,18 @@ export function reviewGroups(
 					"Communication of a delay due to quality rejection",
 					v.procurement.delayCommunication,
 				],
+				[
+					"Supplier wants the items returned",
+					yesNoText(v.procurement.returnRequested),
+				],
+				["RMA number", v.procurement.rmaNumber],
+				["Carrier", v.procurement.carrierName],
+				["Carrier account number", v.procurement.carrierAccountNumber],
+				["Dispose of on site", yesNoText(v.procurement.disposeOnSite)],
+				["Replacement expected", v.procurement.replacementDate],
+				["SAP return completed", yesNoText(v.procurement.sapReturnCompleted)],
+				["Credit expected", yesNoText(v.procurement.creditExpected)],
+				["Bill supplier", yesNoText(v.procurement.billSupplier)],
 			],
 		},
 		{
@@ -172,6 +279,8 @@ export function buildSubmission(
 	l: FormLookups,
 	currentStatusId: number | null = null,
 	createdByPersonId: number | null = null,
+	/** Who gets credit for the engineering row: the signed-in person, or the earlier engineer when nobody changed it. */
+	engineerPersonId: number | null = createdByPersonId,
 ): NcrSubmission {
 	const p = v.process;
 	const status =
@@ -218,24 +327,8 @@ export function buildSubmission(
 		defectDescription: v.defect.defectDescription.trim(),
 		isNonconforming: v.defect.isNonconforming === "yes",
 		engineeringRequired: v.defect.engineeringRequired === "yes",
-		engineeringDisposition:
-			v.defect.engineeringRequired === "yes"
-				? v.engineering.disposition.trim()
-				: "",
-		engineeringInstructions:
-			v.defect.engineeringRequired === "yes"
-				? sanitizeTextbox(v.engineering.instructions).trim()
-				: "",
-		engineeringComments:
-			v.defect.engineeringRequired === "yes"
-				? v.engineering.comments.trim()
-				: "",
-		engineeringRepresentative:
-			v.defect.engineeringRequired === "yes"
-				? v.engineering.representative.trim()
-				: "",
-		engineeringDateCompleted:
-			v.defect.engineeringRequired === "yes" ? v.engineering.dateCompleted : "",
+		engineering: engineeringInput(v, l, engineerPersonId),
+		procurement: procurementInput(v, createdByPersonId),
 		operationsDisposition: v.operations.disposition.trim(),
 		operationsInstructions: isReworkDisposition(v.operations.disposition)
 			? sanitizeTextbox(v.operations.instructions).trim()
