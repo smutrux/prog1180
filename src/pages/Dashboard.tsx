@@ -2,8 +2,6 @@ import { useEffect, useRef } from "react";
 import PageHeader from "../components/pageHeader";
 import { NewNcrButton } from "../components/ncrModal";
 import { useAuth, useClerk } from "@clerk/react";
-import Button from "../components/button";
-import { notifySuccess, notifyError } from "../components/toast";
 import clerkSignInAppearance from "../components/clerkSignInAppearance";
 
 /** The dashboard: four headline numbers and the list of NCRs. */
@@ -28,25 +26,6 @@ const Dashboard = () => {
 				description="Quality Control Dashboard"
 			/>
 			<NewNcrButton />
-			{/* These buttons test the toast notifications */}
-			<div className="toast-test">
-				<Button
-					text="Demo Success Toast"
-					aria="Demo Success Toast"
-					onClick={() => notifySuccess("It Worked!")}
-				/>
-				<Button
-					text="Demo Error Toast"
-					aria="Demo Error Toast"
-					onClick={() => notifyError("Something went wrong")}
-				/>
-			</div>
-			<style jsx>{`
-				.toast-test {
-					display: flex;
-					gap: 1rem;
-				}
-			`}</style>
 		</div>
 		
 	);
