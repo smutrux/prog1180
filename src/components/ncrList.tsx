@@ -26,7 +26,7 @@ interface NcrsProps {
 }
 
 interface NcrRow {
-	record: NcrRecord;
+	record: NcrListRow;
 	ncrNumber: string;
 	date: Date | null;
 	supplier: string;
