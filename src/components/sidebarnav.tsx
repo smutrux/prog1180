@@ -134,14 +134,20 @@ const SidebarNav = () => {
 				<div style={{ marginTop: "auto" }}>
 					{/* <Login /> */}
 					<Show when="signed-in" fallback={<Login />}>
-						<button
+						{/* <button
 							onClick={() => signOut()}
 							className="logout-btn"
 							title="Logout"
 							aria-label="Logout"
 						>
 							<FiLogOut size={24} />
-						</button>
+						</button> */}
+						<Button
+							text="Sign out"
+							icon={FiLogOut}
+							aria="Log out"
+							onClick={() => signOut()}
+						/>
 					</Show>
 				</div>
 			</nav>
