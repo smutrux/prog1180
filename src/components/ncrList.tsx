@@ -900,7 +900,7 @@ const Ncrs = ({
 				}
 
 				.ncrs-scroll {
-					overflow-x: auto;
+					overflow-x: visible;
 				}
 
 				.ncrs-table {
