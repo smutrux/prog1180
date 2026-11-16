@@ -2,11 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LuX } from "react-icons/lu";
 import { FaPlus } from "react-icons/fa6";
 import Button from "./button";
-import { isDraftRecord, loadNcrForEdit, type NcrEditData, type NcrListRow, type NcrRecord } from "./ncrService";
+import {
+	isDraftRecord,
+	loadNcrForEdit,
+	type NcrEditData, type NcrListRow,
+	type NcrRecord,
+} from "./ncrService";
 import NcrForm from "./submitForm";
 import { useCurrentUser } from "./currentUser";
 import crossfireLogo from "../assets/crossfireLogo.svg";
 import { clearToastHost, notifyError, setToastHost } from "./toast";
+import { canCreateNcr } from "./ncrForm/formPermissions";
 
 export interface NcrModalProps {
 	open: boolean;
@@ -293,7 +299,6 @@ function reportValues(data: NcrListRow, ed: NcrEditData | null): unknown[] {
 	];
 }
 
-
 export function NcrDetailsModal({
 	open,
 	onClose,
@@ -492,7 +497,8 @@ export function NewNcrButton({
 }) {
 	const [open, setOpen] = useState(false);
 	const me = useCurrentUser();
-	const canEdit = me.status === "ready" && !me.isPending;
+	const canEdit =
+		me.status === "ready" && !me.isPending && canCreateNcr(me.roles);
 	return (
 		<>
 			<div className="ncr-new-btn">
@@ -518,7 +524,7 @@ function ModalStyles() {
 				right: 2rem;
 				z-index: 1000;
 				border-radius: 0.75rem;
-				box-shadow: var(--shadow);	
+				box-shadow: var(--shadow);
 			}
 
 			.ncr-modal {

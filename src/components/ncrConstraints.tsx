@@ -108,7 +108,7 @@ export function validateSubmission(
 	else if (defect.length > 400) add("defectDescription", "Use 400 characters or fewer.");
 
 	const departmentTextFields = [
-		["engineeringInstructions", s.engineeringInstructions],
+		["engineeringInstructions", s.engineering?.steps ?? ""],
 		["operationsInstructions", s.operationsInstructions],
 		["procurementDelayCommunication", s.procurementDelayCommunication],
 		["qualityFinalComments", s.qualityFinalComments],
@@ -118,6 +118,33 @@ export function validateSubmission(
 			add(field, `Use ${DEPARTMENT_TEXT_MAX_LENGTH} characters or fewer.`);
 		if (HAS_INVALID_TEXT_CONTROLS.test(value))
 			add(field, "Remove unsupported control characters.");
+	}
+
+	if (s.engineeringRequired) {
+		const e = s.engineering;
+		if (!e) add("engineeringDisposition", "Choose the engineering disposition.");
+		else {
+			if (e.originalRev.trim().length > 50)
+				add("engineeringOriginalRev", "Use 50 characters or fewer.");
+			if (e.updatedRev.trim().length > 50)
+				add("engineeringUpdatedRev", "Use 50 characters or fewer.");
+			if (e.drawingUpdateRequired && !e.updatedRev.trim())
+				add("engineeringUpdatedRev", "Enter the updated revision number.");
+		}
+	}
+
+	const pr = s.procurement;
+	if (pr) {
+		if (pr.rmaNumber.trim().length > 50) add("procurementRmaNumber", "Use 50 characters or fewer.");
+		if (pr.carrierName.trim().length > 100) add("procurementCarrierName", "Use 100 characters or fewer.");
+		if (pr.carrierAccountNumber.trim().length > 50)
+			add("procurementCarrierAccountNumber", "Use 50 characters or fewer.");
+		if (pr.returnRequested === true) {
+			if (!pr.rmaNumber.trim()) add("procurementRmaNumber", "Enter the RMA number.");
+			if (!pr.carrierName.trim()) add("procurementCarrierName", "Enter the carrier.");
+			if (!pr.carrierAccountNumber.trim())
+				add("procurementCarrierAccountNumber", "Enter the carrier account number.");
+		}
 	}
 
 	if (isReworkDisposition(s.operationsDisposition) && !s.operationsInstructions.trim())
@@ -224,6 +251,11 @@ const CONSTRAINT_MESSAGES: Record<string, Violation> = {
 	attachment_path_uq: { message: "This web address or file is already attached to a report.", field: "links" },
 	person_email_format: { message: "The email address does not look right." },
 	person_name_len: { message: "Use 75 characters or fewer.", field: "newFirstName" },
+	procurement_rma_len: { message: "Use 50 characters or fewer.", field: "procurementRmaNumber" },
+	procurement_carrier_name_len: { message: "Use 100 characters or fewer.", field: "procurementCarrierName" },
+	procurement_carrier_account_len: { message: "Use 50 characters or fewer.", field: "procurementCarrierAccountNumber" },
+	procurement_return_info_required: { message: "Enter the RMA number, the carrier and the carrier account number when the items are returned.", field: "procurementRmaNumber" },
+	procurement_return_flags: { message: "The return and on-site disposal answers do not agree with each other. Check them again." },
 	engineering_updated_rev_required: { message: "The updated revision number is required when a drawing update is required." },
 	supplier_name_lower_uq: { message: "A supplier with this name already exists.", field: "newSupplierName" },
 	person_email_lower_uq: { message: "This email address is already used." },
