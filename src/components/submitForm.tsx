@@ -48,6 +48,7 @@ import {
 	type SectionId,
 	type SectionProps,
 } from "./ncrForm/formModel";
+import { canEditSection, rolesThatEdit } from "./ncrForm/formPermissions";
 import {
 	CREATE_PREFIX,
 	clearDrafts,
@@ -81,6 +82,9 @@ export default function NcrForm({
 	const me = useCurrentUser();
 	const personId = me.status === "ready" ? me.personId : null;
 	const myName = me.status === "ready" ? me.name : "";
+	const roles = me.status === "ready" ? me.roles : [];
+	/** Whether the signed-in person's role may change this section. */
+	const canEdit = (id: SectionId) => canEditSection(roles, id);
 	const [values, setValues] = useState<FormValues>(() => makeDefaults(""));
 	const [saved, setSaved] = useState<Record<SectionId, boolean>>(
 		() =>
@@ -417,6 +421,14 @@ export default function NcrForm({
 		const current = sections[step];
 		if (!current || current.id === "review") return;
 		const id = current.id;
+		if (!canEdit(id)) {
+			// Read only for this role: there is nothing to save, so just move on.
+			goTo(step + 1);
+			setStatus(
+				`${current.title} is read only for your role. Now on the next section.`,
+			);
+			return;
+		}
 		const found = validate(id, values, files, false);
 		if (Object.keys(found).length) return showErrors(found);
 		const needsStamp =
@@ -429,7 +441,13 @@ export default function NcrForm({
 			);
 			return;
 		}
-		const stamped = stampSections(values, myName, todayLocal(), new Set([id]));
+		const stamped = stampSections(
+			values,
+			myName,
+			todayLocal(),
+			new Set([id]),
+			canEdit,
+		);
 		const sectionData = stamped[id];
 		let savedToDatabase = false;
 		const isDatabaseSection =
@@ -496,6 +514,8 @@ export default function NcrForm({
 		for (let i = 0; i < sections.length; i++) {
 			const section = sections[i];
 			if (section.id === "review") continue;
+			// Sections this role cannot edit are not theirs to complete.
+			if (!canEdit(section.id)) continue;
 			const found = validate(section.id, values, files, true);
 			if (Object.keys(found).length) {
 				goTo(i);
@@ -514,7 +534,7 @@ export default function NcrForm({
 		setSubmitError("");
 		try {
 			const submission = buildSubmission(
-				stampSections(values, myName, todayLocal(), dirtyIds),
+				stampSections(values, myName, todayLocal(), dirtyIds, canEdit),
 				files,
 				lookups,
 				edit ? (editData?.statusId ?? null) : null,
@@ -522,6 +542,7 @@ export default function NcrForm({
 				dirtyIds.has("engineering") || !editData?.engineeringPersonId
 					? personId
 					: editData.engineeringPersonId,
+				canEdit,
 			);
 			const result =
 				edit && editData
@@ -660,6 +681,7 @@ export default function NcrForm({
 		);
 	}
 
+	const currentEditable = current.id === "review" || canEdit(current.id);
 	const primaryLabel =
 		step === reviewStep
 			? submitting
@@ -669,7 +691,9 @@ export default function NcrForm({
 				: edit
 					? "Save changes"
 					: "Submit NCR"
-			: "Save and continue";
+			: currentEditable
+				? "Save and continue"
+				: "Next";
 
 	return (
 		<form
@@ -796,64 +820,80 @@ export default function NcrForm({
 					</section>
 				)}
 
-				{current.id === "process" && (
-					<ProcessSection
-						{...bind("process")}
-						edit={edit}
-						suppliers={lookups.suppliers}
-					/>
-				)}
+				{current.id !== "review" && (
+					<>
+						{!currentEditable && !isArchived && me.status === "ready" && (
+							<p className="ncr-note">
+								You can read this section but not change it. It is edited by{" "}
+								{rolesThatEdit(current.id).join(" or ")}.
+							</p>
+						)}
+						<fieldset
+							className="ncr-readonly"
+							disabled={!currentEditable || isArchived || me.status !== "ready"}
+						>
+							<legend className="ncr-sr-only">{current.title}</legend>
+							{current.id === "process" && (
+								<ProcessSection
+									{...bind("process")}
+									edit={edit}
+									suppliers={lookups.suppliers}
+								/>
+							)}
 
-				{current.id === "item" && <ItemSection {...bind("item")} />}
+							{current.id === "item" && <ItemSection {...bind("item")} />}
 
-				{current.id === "defect" && (
-					<DefectSection
-						{...bind("defect")}
-						problemTypes={lookups.problemTypes}
-					/>
-				)}
+							{current.id === "defect" && (
+								<DefectSection
+									{...bind("defect")}
+									problemTypes={lookups.problemTypes}
+								/>
+							)}
 
-				{current.id === "engineering" && (
-					<EngineeringSection
-						{...bind("engineering")}
-						dispositions={lookups.dispositions}
-					/>
-				)}
+							{current.id === "engineering" && (
+								<EngineeringSection
+									{...bind("engineering")}
+									dispositions={lookups.dispositions}
+								/>
+							)}
 
-				{current.id === "operations" && (
-					<OperationsSection
-						{...bind("operations")}
-						dispositions={lookups.dispositions}
-						announce={setStatus}
-					/>
-				)}
+							{current.id === "operations" && (
+								<OperationsSection
+									{...bind("operations")}
+									dispositions={lookups.dispositions}
+									announce={setStatus}
+								/>
+							)}
 
-				{current.id === "procurement" && (
-					<ProcurementSection {...bind("procurement")} />
-				)}
+							{current.id === "procurement" && (
+								<ProcurementSection {...bind("procurement")} />
+							)}
 
-				{current.id === "qualityFinalReview" && (
-					<QualityFinalReviewSection {...bind("qualityFinalReview")} />
-				)}
+							{current.id === "qualityFinalReview" && (
+								<QualityFinalReviewSection {...bind("qualityFinalReview")} />
+							)}
 
-				{current.id === "evidence" && (
-					<EvidenceSection
-						{...bind("evidence")}
-						files={files}
-						onFilesChange={setFiles}
-						fileInputKey={fileInputKey}
-						existingFiles={edit ? (editData?.existingFiles ?? []) : []}
-						focusAfterRender={(id) => {
-							pendingFocus.current = id;
-						}}
-					/>
-				)}
+							{current.id === "evidence" && (
+								<EvidenceSection
+									{...bind("evidence")}
+									files={files}
+									onFilesChange={setFiles}
+									fileInputKey={fileInputKey}
+									existingFiles={edit ? (editData?.existingFiles ?? []) : []}
+									focusAfterRender={(id) => {
+										pendingFocus.current = id;
+									}}
+								/>
+							)}
 
-				{current.id === "inspector" && (
-					<InspectorSection
-						{...bind("inspector")}
-						inspectors={lookups.inspectors}
-					/>
+							{current.id === "inspector" && (
+								<InspectorSection
+									{...bind("inspector")}
+									inspectors={lookups.inspectors}
+								/>
+							)}
+						</fieldset>
+					</>
 				)}
 
 				{current.id === "review" && (
@@ -862,7 +902,7 @@ export default function NcrForm({
 						submitError={submitError}
 						submitErrorRef={submitErrorRef}
 						groups={reviewGroups(
-							stampSections(values, myName, todayLocal(), dirtyIds),
+							stampSections(values, myName, todayLocal(), dirtyIds, canEdit),
 							files,
 							lookups,
 							editData?.existingFiles ?? [],

@@ -281,6 +281,8 @@ export function buildSubmission(
 	createdByPersonId: number | null = null,
 	/** Who gets credit for the engineering row: the signed-in person, or the earlier engineer when nobody changed it. */
 	engineerPersonId: number | null = createdByPersonId,
+	/** Which sections the signed-in person may edit. Engineering and procurement rows are only sent for those. */
+	canEdit: (id: SectionId) => boolean = () => true,
 ): NcrSubmission {
 	const p = v.process;
 	const status =
@@ -327,8 +329,12 @@ export function buildSubmission(
 		defectDescription: v.defect.defectDescription.trim(),
 		isNonconforming: v.defect.isNonconforming === "yes",
 		engineeringRequired: v.defect.engineeringRequired === "yes",
-		engineering: engineeringInput(v, l, engineerPersonId),
-		procurement: procurementInput(v, createdByPersonId),
+		engineering: canEdit("engineering")
+			? engineeringInput(v, l, engineerPersonId)
+			: null,
+		procurement: canEdit("procurement")
+			? procurementInput(v, createdByPersonId)
+			: null,
 		operationsDisposition: v.operations.disposition.trim(),
 		operationsInstructions: isReworkDisposition(v.operations.disposition)
 			? sanitizeTextbox(v.operations.instructions).trim()

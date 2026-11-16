@@ -36,17 +36,22 @@ const validDate = (s: string) => {
  * with the signed-in person and today. A section is stamped when it has content and
  * either it was just saved or changed, or it has never been stamped. A section
  * nobody touched keeps its earlier stamp.
+ *
+ * `canStamp` limits this to the sections the signed-in person may edit, so
+ * their name is never put on someone else's section.
  */
 export function stampSections(
 	v: FormValues,
 	name: string,
 	today: string,
 	touched: ReadonlySet<SectionId>,
+	canStamp: (id: SectionId) => boolean = () => true,
 ): FormValues {
 	if (!name) return v;
 	let next = v;
 	const g = v.engineering;
 	if (
+		canStamp("engineering") &&
 		filled(g.disposition, g.instructions, g.originalRev, g.updatedRev) &&
 		(touched.has("engineering") || !g.representative || !g.dateCompleted)
 	) {
@@ -57,6 +62,7 @@ export function stampSections(
 	}
 	const o = v.operations;
 	if (
+		canStamp("operations") &&
 		filled(o.disposition, o.instructions, o.comments) &&
 		(touched.has("operations") || !o.representative || !o.dateCompleted)
 	) {
@@ -67,6 +73,7 @@ export function stampSections(
 	}
 	const q = v.qualityFinalReview;
 	if (
+		canStamp("qualityFinalReview") &&
 		filled(q.inspectionResult, q.comments, q.acceptanceConfirmed) &&
 		(touched.has("qualityFinalReview") || !q.closedBy || !q.dateClosed)
 	) {

@@ -9,7 +9,7 @@ import {
 
 export const QUALITY_ROLE = "Quality Representative";
 /** role.role_id values whose people can be chosen as the inspector: Quality (1) and Quality Representative (7). */
-export const QUALITY_ROLE_IDS = [1, 7];
+export const QUALITY_ROLE_IDS = [1, 6];
 export const STATUS_NEW = "Open";
 export const STATUS_DRAFT = "Draft";
 export const isClosedStatus = (name: string) => /clos/i.test(name);

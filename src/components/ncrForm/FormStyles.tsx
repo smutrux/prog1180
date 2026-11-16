@@ -122,6 +122,26 @@ export default function FormStyles() {
 				font-weight: 600;
 				padding: 0 0.25rem;
 			}
+			.ncr-readonly {
+				border: 0;
+				padding: 0;
+				margin: 0;
+				min-width: 0;
+				display: flex;
+				flex-direction: column;
+				gap: 0.75rem;
+			}
+			.ncr-sr-only {
+				position: absolute;
+				width: 1px;
+				height: 1px;
+				margin: -1px;
+				padding: 0;
+				overflow: hidden;
+				clip: rect(0, 0, 0, 0);
+				white-space: nowrap;
+				border: 0;
+			}
 			.ncr-error-summary {
 				border: 3px solid var(--error);
 				border-radius: 0.5rem;
