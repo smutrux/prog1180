@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink } from "react-router-dom";
 import type { IconType } from "react-icons";
 import { LuLayoutDashboard, LuMenu, LuX } from "react-icons/lu";
-import { FiAlertTriangle } from "react-icons/fi";
+import { FiAlertTriangle, FiLogOut } from "react-icons/fi";
 import { FaSyncAlt } from "react-icons/fa";
 // import { FaRegChartBar } from "react-icons/fa";
 import { IoTrashOutline } from "react-icons/io5";
 import crossfireLogo from "../assets/crossfireLogo.svg";
 import Button from "../components/button";
 import { useNavigate } from "react-router-dom";
-import { Show, useAuth, UserButton } from "@clerk/react";
+import { Show, useAuth, useClerk } from "@clerk/react";
 import Login from "../components/login";
+import { fireQueuedToast, notifyError, queueToast } from "./toast";
+import { notifySuccess } from "./toast";
 
 const links: { to: string; label: string; icon: IconType }[] = [
 	{ to: "/dashboard", label: "Dashboard", icon: LuLayoutDashboard },
@@ -18,7 +20,7 @@ const links: { to: string; label: string; icon: IconType }[] = [
 	// { to: "/reports", label: "Reports", icon: FaRegChartBar },
 	{ to: "/archive", label: "Archive", icon: IoTrashOutline },
 ];
-
+const WAS_SIGNED_OUT_KEY = "wasSignedOut";
 /**
  * The site navigation. On wide screens it is a fixed sidebar. On narrow
  * screens it is a menu button that opens a drawer. Escape closes the drawer
@@ -32,15 +34,44 @@ const SidebarNav = () => {
 	const menuButton = useRef<HTMLButtonElement>(null);
 	const navigate = useNavigate();
 
-	const { isSignedIn } = useAuth();
+	const { isLoaded, isSignedIn } = useAuth();
+	const { signOut } = useClerk();
 
 	/** Returns true (and alerts) when the click should be blocked. */
 	const blockIfSignedOut = (e?: React.MouseEvent) => {
 		if (isSignedIn) return false;
 		e?.preventDefault();
-		alert("Please log in first.");
+		notifyError("Please log in first.");
 		return true;
 	};
+
+	// Shows a toast queued just before a reload or a sign-out redirect.
+	useEffect(() => {
+		fireQueuedToast();
+	}, []);
+
+	const handleSignOut = () => {
+		queueToast("You have been signed out.");
+		void signOut();
+	};
+
+	
+	const wasSignedIn = useRef<boolean | undefined>(undefined);
+	useEffect(() => {
+		const prev = wasSignedIn.current;
+		wasSignedIn.current = isSignedIn;
+		if (prev === true && isSignedIn === false) fireQueuedToast();
+	}, [isSignedIn]);
+
+	useEffect(() => {
+		if (!isLoaded) return;
+		if (isSignedIn === false) {
+			sessionStorage.setItem(WAS_SIGNED_OUT_KEY, "1");
+		} else if (sessionStorage.getItem(WAS_SIGNED_OUT_KEY)) {
+			sessionStorage.removeItem(WAS_SIGNED_OUT_KEY);
+			notifySuccess("You have been signed in.");
+		}
+	}, [isLoaded, isSignedIn]);
 
 	useEffect(() => {
 		if (!isOpen) return;
@@ -55,6 +86,7 @@ const SidebarNav = () => {
 
 	const reload = () => {
 		if (blockIfSignedOut()) return;
+		queueToast("Page data refreshed.");
 		navigate(0);
 	};
 
@@ -133,7 +165,20 @@ const SidebarNav = () => {
 				<div style={{ marginTop: "auto" }}>
 					{/* <Login /> */}
 					<Show when="signed-in" fallback={<Login />}>
-						<UserButton />
+						{/* <button
+							onClick={() => signOut()}
+							className="logout-btn"
+							title="Logout"
+							aria-label="Logout"
+						>
+							<FiLogOut size={24} />
+						</button> */}
+						<Button
+							text="Sign out"
+							icon={FiLogOut}
+							aria="Log out"
+							onClick={handleSignOut}
+						/>
 					</Show>
 				</div>
 			</nav>
@@ -229,6 +274,24 @@ const SidebarNav = () => {
 
 				.sidebarLink:has(a.active)::after {
 					opacity: 1;
+				}
+
+				.logout-btn {
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					width: 44px;
+					height: 44px;
+					border-radius: 50%;
+					background: var(--lifted-bg);
+					color: var(--text-h);
+					border: 1px solid var(--border);
+					cursor: pointer;
+					transition: background 0.2s ease;
+				}
+
+				.logout-btn:hover {
+					background: var(--hover);
 				}
 
 				.mobileHeader {

@@ -14,6 +14,7 @@ import { FaSyncAlt } from "react-icons/fa";
 import Button from "./button";
 import { NcrDetailsModal, NcrModal } from "./ncrModal";
 import { useCurrentUser } from "./currentUser";
+import { notifyError, notifyLoading, notifySuccess } from "./toast";
 
 export type NcrShow = "all" | "archived";
 
@@ -26,7 +27,7 @@ interface NcrsProps {
 }
 
 interface NcrRow {
-	record: NcrRecord;
+	record: NcrListRow;
 	ncrNumber: string;
 	date: Date | null;
 	supplier: string;
@@ -360,22 +361,31 @@ const Ncrs = ({
 		setViewing(row);
 	};
 
+	/** Opens an NCR in the edit form; one place so both entry points toast once. */
+	const openEdit = (row: NcrRecord) => {
+		notifySuccess(`Editing NCR ${row.ncr_number}.`);
+		setEditing(row);
+	};
+
 	const restoreNcr = async (row: NcrRecord) => {
 		if (restoring || me.status !== "ready") return;
 		setRestoring(true);
+		const toastId = notifyLoading("Restoring NCR...");
 		try {
 			const edit = await loadNcrForEdit(row);
 			const statuses = await loadStatuses();
 			await unarchiveNcr(edit, statuses, me.personId);
+			notifySuccess(`NCR ${row.ncr_number} restored.`, toastId);
 			resetLoaders();
 			setViewing(null);
 		} catch (err) {
 			console.error("Could not restore the NCR:", err);
-			window.alert("Could not restore the NCR. Please try again.");
+			notifyError("Could not restore the NCR. Please try again.", toastId);
 		} finally {
 			setRestoring(false);
 		}
 	};
+
 
 	const [statusNames, setStatusNames] = useState<string[]>([]);
 	const [knownSuppliers, setKnownSuppliers] = useState<string[]>([]);
@@ -537,6 +547,15 @@ const Ncrs = ({
 		: show === "archived"
 			? "There are no archived NCRs yet."
 			: "No NCRs have been submitted yet.";
+	const filtersEmptied =
+	loadState === "ready" && data.rows.length === 0 && !unfiltered;
+	const wasFiltersEmptied = useRef(false);
+	useEffect(() => {
+		if (filtersEmptied && !wasFiltersEmptied.current) {
+			notifyError("No NCRs match your filters.");
+		}
+		wasFiltersEmptied.current = filtersEmptied;
+	}, [filtersEmptied]);
 
 	return (
 		<div className="ncrs">
@@ -655,7 +674,7 @@ const Ncrs = ({
 											<Button
 												text={isDraftRecord(n.record) ? "Continue" : "Edit"}
 												aria={`${isDraftRecord(n.record) ? "Continue" : "Edit"} NCR ${n.ncrNumber}`}
-												onClick={() => setEditing(n.record)}
+												onClick={() => openEdit(n.record)}
 											/>
 										</span>
 									)}
@@ -765,7 +784,7 @@ const Ncrs = ({
 					editable && viewing && !isArchived(viewing.status)
 						? (row) => {
 								setViewing(null);
-								setEditing(row);
+								openEdit(row);
 							}
 						: undefined
 				}
