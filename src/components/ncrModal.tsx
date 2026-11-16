@@ -6,6 +6,7 @@ import { isDraftRecord, loadNcrForEdit, type NcrEditData, type NcrListRow, type 
 import NcrForm from "./submitForm";
 import { useCurrentUser } from "./currentUser";
 import crossfireLogo from "../assets/crossfireLogo.svg";
+import { clearToastHost, notifyError, setToastHost } from "./toast";
 
 export interface NcrModalProps {
 	open: boolean;
@@ -48,17 +49,29 @@ export function NcrModal({
 		};
 	}, [open]);
 
+	// Moves the app's one Toaster into this dialog while it is open, so
+	// toasts paint in the dialog's top layer instead of underneath it.
+	useEffect(() => {
+		const dialog = dialogRef.current;
+		if (!open || !dialog) return;
+		setToastHost(dialog);
+		return () => clearToastHost(dialog);
+	}, [open]);
+
 	function requestClose() {
-		if (
-			dirtyRef.current &&
-			!window.confirm(
-				"Close without saving? Changes in sections you have not saved will be lost. Sections you saved come back when you open this form again.",
-			)
-		) {
-			return;
-		}
-		onClose();
+	const wasDirty = dirtyRef.current;
+	if (
+		wasDirty &&
+		!window.confirm(
+			"Close without saving? Changes in sections you have not saved will be lost. Sections you saved come back when you open this form again.",
+		)
+	) {
+		return;
 	}
+	if (wasDirty) notifyError("Form closed without saving.");
+	onClose();
+}
+
 
 	return (
 		<>
@@ -326,6 +339,15 @@ export function NcrDetailsModal({
 			cancelled = true;
 		};
 	}, [open, data]);
+
+	// Moves the app's one Toaster into this dialog while it is open, so
+	// toasts paint in the dialog's top layer instead of underneath it.
+	useEffect(() => {
+		const dialog = dialogRef.current;
+		if (!open || !dialog) return;
+		setToastHost(dialog);
+		return () => clearToastHost(dialog);
+	}, [open]);
 
 	const number = data?.ncr_number;
 	const isDraft = !!data && isDraftRecord(data);

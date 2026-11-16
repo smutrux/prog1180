@@ -27,6 +27,7 @@ import {
 	INVALID_TEXT_CONTROLS,
 	isReworkDisposition,
 } from "./ncrConstraints";
+import { dismissToast, notifyLoading, notifySuccess } from "./toast";
 
 export interface NcrFormProps {
 	edit?: boolean;
@@ -985,6 +986,7 @@ export default function NcrForm({
 			return;
 		}
 		setSavingDraft(true);
+		const toastId = notifyLoading("Saving draft...");
 		try {
 			const result = await saveDraft(
 				{
@@ -1003,8 +1005,10 @@ export default function NcrForm({
 			setStatus(
 				`Draft ${result.ncrNumber} saved. You can close this form and choose Continue on it in the NCR list later. Chosen files are not kept in a draft.`,
 			);
+			notifySuccess(`Draft ${result.ncrNumber} saved.`, toastId);
 			onSaved?.(result.ncrNumber);
 		} catch (err) {
+			dismissToast(toastId);
 			if (err instanceof DuplicateNcrNumberError) {
 				const next = await nextNcrNumber().catch(() => "");
 				if (next) update("process", { ncrNumber: next });
@@ -1083,6 +1087,7 @@ export default function NcrForm({
 					? `${current.title} was saved to the database, but this browser blocked local saving. Now on the next section.`
 					: "Your answers are on screen, but this browser blocked saving. Now on the next section.",
 		);
+		if (ok || savedToDatabase) notifySuccess(`${current.title} saved.`);
 	}
 
 	async function submit() {
@@ -1107,6 +1112,7 @@ export default function NcrForm({
 		}
 		setSubmitting(true);
 		setSubmitError("");
+		const toastId = notifyLoading(edit ? "Updating NCR..." : "Submitting NCR...");
 		try {
 			const submission = buildSubmission(
 				stampSections(values, myName, todayLocal(), dirtyIds),
@@ -1126,9 +1132,15 @@ export default function NcrForm({
 			setSubmitted(result.ncrNumber);
 			focusHeading.current = true;
 			setStatus(`NCR ${result.ncrNumber} ${edit ? "updated" : "submitted"}.`);
+			notifySuccess(
+				`NCR ${result.ncrNumber} ${edit ? "updated" : "submitted"}.`,
+				toastId,
+			);
 			onSaved?.(result.ncrNumber);
 			void refreshLookups();
+			
 		} catch (err) {
+			dismissToast(toastId);
 			if (err instanceof DuplicateNcrNumberError) {
 				const next = await nextNcrNumber().catch(() => "");
 				if (next) update("process", { ncrNumber: next });
@@ -1183,6 +1195,7 @@ export default function NcrForm({
 		setFileInputKey((k) => k + 1);
 		goTo(d.step);
 		setStatus("Your saved sections were restored.");
+		notifySuccess("Your saved sections were restored.");
 		void refreshLookups();
 	}
 

@@ -11,6 +11,8 @@ import Button from "../components/button";
 import { useNavigate } from "react-router-dom";
 import { Show, useAuth, useClerk } from "@clerk/react";
 import Login from "../components/login";
+import { fireQueuedToast, notifyError, queueToast } from "./toast";
+import { notifySuccess } from "./toast";
 
 const links: { to: string; label: string; icon: IconType }[] = [
 	{ to: "/dashboard", label: "Dashboard", icon: LuLayoutDashboard },
@@ -18,7 +20,7 @@ const links: { to: string; label: string; icon: IconType }[] = [
 	// { to: "/reports", label: "Reports", icon: FaRegChartBar },
 	{ to: "/archive", label: "Archive", icon: IoTrashOutline },
 ];
-
+const WAS_SIGNED_OUT_KEY = "wasSignedOut";
 /**
  * The site navigation. On wide screens it is a fixed sidebar. On narrow
  * screens it is a menu button that opens a drawer. Escape closes the drawer
@@ -32,16 +34,44 @@ const SidebarNav = () => {
 	const menuButton = useRef<HTMLButtonElement>(null);
 	const navigate = useNavigate();
 
-	const { isSignedIn } = useAuth();
+	const { isLoaded, isSignedIn } = useAuth();
 	const { signOut } = useClerk();
 
 	/** Returns true (and alerts) when the click should be blocked. */
 	const blockIfSignedOut = (e?: React.MouseEvent) => {
 		if (isSignedIn) return false;
 		e?.preventDefault();
-		alert("Please log in first.");
+		notifyError("Please log in first.");
 		return true;
 	};
+
+	// Shows a toast queued just before a reload or a sign-out redirect.
+	useEffect(() => {
+		fireQueuedToast();
+	}, []);
+
+	const handleSignOut = () => {
+		queueToast("You have been signed out.");
+		void signOut();
+	};
+
+	
+	const wasSignedIn = useRef<boolean | undefined>(undefined);
+	useEffect(() => {
+		const prev = wasSignedIn.current;
+		wasSignedIn.current = isSignedIn;
+		if (prev === true && isSignedIn === false) fireQueuedToast();
+	}, [isSignedIn]);
+
+	useEffect(() => {
+		if (!isLoaded) return;
+		if (isSignedIn === false) {
+			sessionStorage.setItem(WAS_SIGNED_OUT_KEY, "1");
+		} else if (sessionStorage.getItem(WAS_SIGNED_OUT_KEY)) {
+			sessionStorage.removeItem(WAS_SIGNED_OUT_KEY);
+			notifySuccess("You have been signed in.");
+		}
+	}, [isLoaded, isSignedIn]);
 
 	useEffect(() => {
 		if (!isOpen) return;
@@ -56,6 +86,7 @@ const SidebarNav = () => {
 
 	const reload = () => {
 		if (blockIfSignedOut()) return;
+		queueToast("Page data refreshed.");
 		navigate(0);
 	};
 
@@ -146,7 +177,7 @@ const SidebarNav = () => {
 							text="Sign out"
 							icon={FiLogOut}
 							aria="Log out"
-							onClick={() => signOut()}
+							onClick={handleSignOut}
 						/>
 					</Show>
 				</div>
