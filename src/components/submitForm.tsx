@@ -22,6 +22,7 @@ import {
 import DefectSection from "./ncrForm/DefectSection";
 import EngineeringSection from "./ncrForm/EngineeringSection";
 import EvidenceSection from "./ncrForm/EvidenceSection";
+import FormNav from "./ncrForm/FormNav";
 import FormStyles from "./ncrForm/FormStyles";
 import InspectorSection from "./ncrForm/InspectorSection";
 import ItemSection from "./ncrForm/ItemSection";
@@ -733,31 +734,16 @@ export default function NcrForm({
 				{edit ? `Edit NCR ${p.ncrNumber}` : "Non-conformance report (NCR)"}
 			</h1>
 
-			<nav aria-label="Form sections" className="ncr-steps">
-				<ol>
-					{sections.map((s, i) => {
-						const state =
-							s.id === "review"
-								? ""
-								: saved[s.id as SectionId]
-									? "Saved"
-									: "Not saved";
-						return (
-							<li key={s.id}>
-								<button
-									type="button"
-									className="ncr-step-btn"
-									aria-current={i === step ? "step" : undefined}
-									onClick={() => goTo(i)}
-								>
-									{i + 1}. {s.title}
-									{state && <span className="ncr-step-state">{state}</span>}
-								</button>
-							</li>
-						);
-					})}
-				</ol>
-			</nav>
+			<FormNav
+				sections={sections}
+				step={step}
+				onSelect={goTo}
+				headingRef={headingRef}
+			/>
+
+			<p className="ncr-progress">
+				Section {step + 1} of {sections.length}
+			</p>
 
 			<div className="ncr-tools">
 				{!isArchived && (
@@ -791,12 +777,6 @@ export default function NcrForm({
 			</p>
 
 			<div className="ncr-section">
-				<p className="ncr-progress">
-					Section {step + 1} of {sections.length}
-				</p>
-				<h2 ref={headingRef} tabIndex={-1}>
-					{current.title}
-				</h2>
 				<p className="ncr-help">
 					Fields marked (required) must be filled in before you can save this
 					section.
