@@ -22,7 +22,6 @@ export default function FormStyles() {
 			}
 			.ncr-form h2 {
 				font-size: 1.6rem;
-				margin: 0;
 				font-weight: 600;
 				color: var(--text-h);
 			}
@@ -90,7 +89,7 @@ export default function FormStyles() {
 				margin: 0.75rem 0;
 			}
 			.ncr-progress {
-				margin: 2rem 0 0 0;
+				margin: 0 0 1rem 0;
 				font-size: 0.95rem;
 			}
 			.ncr-section {
