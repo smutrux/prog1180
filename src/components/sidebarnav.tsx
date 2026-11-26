@@ -5,7 +5,7 @@ import { LuLayoutDashboard, LuMenu, LuX } from "react-icons/lu";
 import { FiAlertTriangle, FiLogOut } from "react-icons/fi";
 import { FaSyncAlt } from "react-icons/fa";
 // import { FaRegChartBar } from "react-icons/fa";
-import { IoArchiveOutline, IoArchiveSharp, IoTrashOutline, } from "react-icons/io5";
+import { IoArchiveOutline } from "react-icons/io5";
 import crossfireLogo from "../assets/crossfireLogo.svg";
 import Button from "../components/button";
 import { useNavigate } from "react-router-dom";
