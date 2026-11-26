@@ -5,7 +5,7 @@ import { LuLayoutDashboard, LuMenu, LuX } from "react-icons/lu";
 import { FiAlertTriangle, FiLogOut } from "react-icons/fi";
 import { FaSyncAlt } from "react-icons/fa";
 // import { FaRegChartBar } from "react-icons/fa";
-import { IoTrashOutline } from "react-icons/io5";
+import { IoArchiveOutline, IoArchiveSharp, IoTrashOutline, } from "react-icons/io5";
 import crossfireLogo from "../assets/crossfireLogo.svg";
 import Button from "../components/button";
 import { useNavigate } from "react-router-dom";
@@ -18,7 +18,7 @@ const links: { to: string; label: string; icon: IconType }[] = [
 	{ to: "/dashboard", label: "Dashboard", icon: LuLayoutDashboard },
 	{ to: "/ncrs", label: "NCRs", icon: FiAlertTriangle },
 	// { to: "/reports", label: "Reports", icon: FaRegChartBar },
-	{ to: "/archive", label: "Archive", icon: IoTrashOutline },
+	{ to: "/archive", label: "Archive", icon: IoArchiveOutline },
 ];
 const WAS_SIGNED_OUT_KEY = "wasSignedOut";
 /**
