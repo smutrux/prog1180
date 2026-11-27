@@ -33,6 +33,10 @@ export default function FormStyles() {
 				outline: 3px solid var(--border);
 				outline-offset: 2px;
 			}
+			.ncr-form button.ncr-submit-confirmation {
+				background-color: #b45309;
+				color: #fff;
+			}
 			.ncr-steps ol {
 				list-style: none;
 				display: flex;

@@ -90,6 +90,9 @@ interface ButtonProps {
 	 * button that says "Edit".
 	 */
 	aria: string;
+
+	/** Optional class for styling this button instance. */
+	className?: string;
 }
 
 /**
@@ -114,10 +117,12 @@ const Button = ({
 	size = "1rem",
 	bold,
 	aria,
+	className,
 }: ButtonProps) => (
 	<>
 		<button
 			type="button"
+			className={className}
 			onClick={onClick}
 			disabled={!enabled}
 			aria-label={aria}
