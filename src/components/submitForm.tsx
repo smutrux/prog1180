@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { FiAlertTriangle } from "react-icons/fi";
 import Button from "./button";
 import { useCurrentUser } from "./currentUser";
 import {
@@ -104,6 +105,7 @@ export default function NcrForm({
 	const [status, setStatus] = useState("");
 	const [submitted, setSubmitted] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
+	const [confirmingSubmit, setConfirmingSubmit] = useState(false);
 	const [submitError, setSubmitError] = useState("");
 	const [lookups, setLookups] = useState<FormLookups>({
 		statuses: [],
@@ -296,6 +298,7 @@ export default function NcrForm({
 	});
 
 	function goTo(i: number) {
+		setConfirmingSubmit(false);
 		setStep(i);
 		setErrors({});
 		setSubmitError("");
@@ -306,6 +309,7 @@ export default function NcrForm({
 		section: K,
 		patch: Partial<FormValues[K]>,
 	) {
+		setConfirmingSubmit(false);
 		setValues((prev) => ({
 			...prev,
 			[section]: { ...prev[section], ...patch },
@@ -524,6 +528,7 @@ export default function NcrForm({
 			if (!canEdit(section.id)) continue;
 			const found = validate(section.id, values, files, true);
 			if (Object.keys(found).length) {
+				setConfirmingSubmit(false);
 				goTo(i);
 				showErrors(found);
 				return;
@@ -536,6 +541,12 @@ export default function NcrForm({
 			focusSubmitError.current = true;
 			return;
 		}
+		if (!confirmingSubmit) {
+			setConfirmingSubmit(true);
+			setSubmitError("");
+			return;
+		}
+		setConfirmingSubmit(false);
 		setSubmitting(true);
 		setSubmitError("");
 		const toastId = notifyLoading(edit ? "Updating NCR..." : "Submitting NCR...");
@@ -702,6 +713,8 @@ export default function NcrForm({
 				? edit
 					? "Saving..."
 					: "Submitting..."
+				: confirmingSubmit
+					? "Are you sure?"
 				: edit
 					? "Save changes"
 					: "Submit NCR"
@@ -870,7 +883,10 @@ export default function NcrForm({
 								<EvidenceSection
 									{...bind("evidence")}
 									files={files}
-									onFilesChange={setFiles}
+									onFilesChange={(nextFiles) => {
+										setConfirmingSubmit(false);
+										setFiles(nextFiles);
+									}}
 									fileInputKey={fileInputKey}
 									existingFiles={edit ? (editData?.existingFiles ?? []) : []}
 									focusAfterRender={(id) => {
@@ -938,8 +954,16 @@ export default function NcrForm({
 							)}
 							<Button
 								text={primaryLabel}
-								aria={primaryLabel}
+								aria={
+									confirmingSubmit
+										? `Are you sure? Click again to ${edit ? "save changes" : "submit the NCR"}`
+										: primaryLabel
+								}
 								bold
+								className={
+									confirmingSubmit ? "ncr-submit-confirmation" : undefined
+								}
+								icon={confirmingSubmit ? FiAlertTriangle : undefined}
 								enabled={!submitting}
 								onClick={() => {
 									if (step === reviewStep) void submit();
