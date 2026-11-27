@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import type { IconType } from "react-icons";
 import { LuLayoutDashboard, LuMenu, LuX } from "react-icons/lu";
 import { FiAlertTriangle, FiLogOut } from "react-icons/fi";
@@ -33,6 +33,7 @@ const SidebarNav = () => {
 	const [isOpen, setIsOpen] = useState(false);
 	const menuButton = useRef<HTMLButtonElement>(null);
 	const navigate = useNavigate();
+	const { pathname } = useLocation();
 
 	const { isLoaded, isSignedIn } = useAuth();
 	const { signOut } = useClerk();
@@ -141,7 +142,11 @@ const SidebarNav = () => {
 						<li key={to} className="sidebarLink">
 							<NavLink
 								to={to}
-								className={({ isActive }) => (isActive ? "active" : "")}
+								className={({ isActive }) =>
+									isActive || (to === "/dashboard" && pathname === "/")
+										? "active"
+										: ""
+								}
 								onClick={(e) => {
 									if (blockIfSignedOut(e)) return;
 									setIsOpen(false);
