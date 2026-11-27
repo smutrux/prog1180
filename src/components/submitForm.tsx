@@ -706,7 +706,7 @@ export default function NcrForm({
 					? "Save changes"
 					: "Submit NCR"
 			: currentEditable
-				? "Save and continue"
+				? "Save & Next Section"
 				: "Next";
 
 	return (
@@ -933,7 +933,7 @@ export default function NcrForm({
 									aria-disabled={savingDraft || undefined}
 									onClick={() => void saveDraftNow()}
 								>
-									{savingDraft ? "Saving draft..." : "Save draft"}
+									{savingDraft ? "Saving draft..." : "Save Draft for Later"}
 								</button>
 							)}
 							<Button
