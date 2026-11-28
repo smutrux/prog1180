@@ -187,7 +187,8 @@ function printNcrDetails(args: {
 	.company-name { font-size: 1.25rem; font-weight: 700; margin-top: 0.25rem; }
 	h2 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; border-bottom: 1px solid #ccc; padding-bottom: 0.25rem; }
 	.draft { border: 1px solid #999; padding: 0.5rem 0.75rem; }
-	dl { margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem 1.5rem; }
+	hr.sep { border: none; border-top: 1px solid #ccc; margin: 1.5rem 0 0; }
+	dl { margin: 0.75rem 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem 1.5rem; }
 	.row { min-width: 0; page-break-inside: avoid; break-inside: avoid; }
 	.row.wide { grid-column: 1 / -1; }
 	dt { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; }
@@ -207,9 +208,8 @@ function printNcrDetails(args: {
 	</div>
 </header>
 ${args.isDraft ? `<p class="draft">This NCR is a draft. It has not been submitted yet, and some details below fill in once it is.</p>` : ""}
-<h2>Related details</h2>
 <dl>${args.related.map(([label, value]) => printRow(label, value)).join("")}</dl>
-<h2>Report</h2>
+<hr class="sep">
 <dl>${args.report.map(([label, value]) => printRow(label, value)).join("")}</dl>
 <script>window.onload = () => window.print();</script>
 </body>
@@ -392,10 +392,6 @@ export function NcrDetailsModal({
 						)}
 
 						<section aria-labelledby="ncr-related-title" aria-busy={!settled}>
-							<h3 id="ncr-related-title" className="ncr-details-heading">
-								Related details
-								{settled && !related.ed && " (could not be loaded)"}
-							</h3>
 							<dl className="ncr-details-list">
 								{RELATED_LABELS.map((label, i) => {
 									const shown = formatValue(values[i]);
@@ -415,11 +411,8 @@ export function NcrDetailsModal({
 								})}
 							</dl>
 						</section>
-
+						<hr className="ncr-details-sep" />
 						<section aria-labelledby="ncr-fields-title">
-							<h3 id="ncr-fields-title" className="ncr-details-heading">
-								Report
-							</h3>
 							<dl className="ncr-details-list">
 								{REPORT_LABELS.map((label, i) => {
 									const text = formatValue(reportRows[i]);
@@ -598,8 +591,14 @@ function ModalStyles() {
 				color: var(--text-h);
 			}
 
+			.ncr-details-sep {
+				border: none;
+				border-top: 1px solid var(--border);
+				margin: 0.5rem 0 1rem;
+			}
+
 			.ncr-details-row dd {
-				min-height: 1.5em;
+				min-height: 1.5em;n
 			}
 
 			.ncr-details-row dd.ncr-skeleton {
